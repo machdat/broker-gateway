@@ -1,18 +1,22 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25
+**Stand:** 2026-04-25 (Service-Version 0.3.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.1.0)
+### Implementation Status (Service-Version 0.3.0)
 
 | Section | Implementiert |
 |---|---|
 | 3.1 Public Health (`GET /v1/health`) | ✅ in v0.1.0 |
+| 1.3 Authentifizierung, 1.4 Scopes | ✅ in v0.3.0 |
+| 2.1 Token erstellen (`POST /v1/auth/token`) | ✅ in v0.3.0 |
+| 2.2 Token revoken (`DELETE /v1/auth/token`) | ✅ in v0.3.0 |
+| 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.1.0 ist `version` der Service-Version `0.1.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.3.0 ist `version` die Service-Version `0.3.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -55,16 +59,18 @@ Tokens sind opake Strings, ausgegeben über `/v1/auth/token`. Sie tragen Scope-C
 
 ### 1.4 Scopes
 
+Single Source of Truth ist `src/broker_gateway/auth/models.py`. Aktuell definiert sind genau diese sechs Scopes:
+
 | Scope | Berechtigt zu |
 |---|---|
 | `instruments:read` | Symbol-Lookup, conid-Lookup |
 | `quotes:read` | Snapshots + Streams |
-| `portfolio:read` | Portfolio + Positions + Ledger |
-| `orders:read` | Order-Status abfragen |
-| `orders:write` | Orders platzieren / canceln |
+| `portfolio:read` | Portfolio + Positions + Ledger + Trade-Historie |
+| `orders:write` | Orders platzieren / canceln + Order-Status abfragen |
 | `events:read` | Events-Stream (Execution-Reports etc.) |
-| `trades:read` | Historische Trades |
-| `admin:*` | Token-Verwaltung, Service-internals |
+| `admin:*` | Token-Verwaltung, Service-Internals; passt automatisch alle Scope-Checks |
+
+Weitere Splits (z.B. `orders:read` separat von `orders:write` oder `trades:read` separat von `portfolio:read`) sind bewusst nicht vorgesehen — Granularität wird erst eingeführt, wenn ein Consumer sie tatsächlich braucht.
 
 ### 1.5 Idempotency
 
@@ -131,42 +137,66 @@ Alle Geld-Felder als Objekt:
 
 ## 2. Authentifizierung
 
-### 2.1 Token erstellen
+Tokens sind **opake Strings** (kein JWT), serverseitig generiert über `secrets.token_urlsafe(32)` und im Token-Store persistiert. Backend-Auswahl per ENV:
 
-**Hinweis:** Token-Erstellung selbst ist nicht öffentlich. In v1 läuft sie via Admin-CLI / Config-Datei (provisioniert mit dem Service-Deployment). Dieser Endpoint ist nur für Token-Refresh und Service-Inspektion.
+- ohne `BG_TOKEN_FILE` → `InMemoryTokenStore` (Default; State geht beim Neustart verloren — das ist Absicht, der Service ist transient).
+- mit `BG_TOKEN_FILE=/path/to/tokens.json` → `FileTokenStore` (atomarer Write via temp-file + rename).
+
+Beim Start liest die App optional `BG_BOOTSTRAP_ADMIN_TOKEN`; ist die Variable gesetzt und das Token noch nicht im Store, wird es als Token mit `caller_id=bootstrap-admin` und Scopes `[admin:*]` registriert. So kann initial mindestens ein Admin-Aufruf erfolgen, ohne dass weitere Tokens im Repo oder Compose-File liegen.
+
+### 2.1 Token erstellen
 
 ```
 POST /v1/auth/token
-Authorization: Bearer <admin-token>
+Authorization: Bearer <admin-token>          ← muss admin:* tragen
 Content-Type: application/json
 
 {
-  "name": "psm-production",
+  "caller_id": "psm",
   "scopes": ["quotes:read", "portfolio:read", "instruments:read"],
-  "ttl_days": 365
+  "expires_at": "2027-04-24T17:30:00Z"        ← optional
 }
 ```
 
-Response 200:
+Response `201 Created`:
 
 ```json
 {
-  "token": "bgw_live_a3f7...",
-  "name": "psm-production",
+  "value": "RANDOM_OPAQUE_TOKEN_VALUE",
+  "caller_id": "psm",
   "scopes": ["quotes:read", "portfolio:read", "instruments:read"],
-  "expires_at": "2027-04-24T17:30:00Z",
-  "created_at": "2026-04-24T17:30:00Z"
+  "created_at": "2026-04-24T17:30:00.123Z",
+  "expires_at": "2027-04-24T17:30:00Z"
 }
 ```
+
+Fehlerfälle:
+
+| Status | Bedingung |
+|---|---|
+| `401 Unauthorized` | kein/ungültiges Bearer-Token |
+| `403 Forbidden` | aufrufendes Token hat nicht `admin:*` |
+| `422 Unprocessable Entity` | unbekannte Scope-Namen oder leere `caller_id` |
 
 ### 2.2 Token revoken
 
 ```
-DELETE /v1/auth/token/{token-id}
-Authorization: Bearer <admin-token>
+DELETE /v1/auth/token
+Authorization: Bearer <token>
+DELETE /v1/auth/token?value=<other-token>     ← admin:* nötig
 ```
 
-Response 204.
+Ohne Query-Parameter `value` revoket der Aufruf das eigene Bearer-Token (Self-Revoke, kein admin:* nötig). Wird ein fremdes Token-Value angegeben, ist `admin:*` Pflicht.
+
+Response `204 No Content`.
+
+Fehlerfälle:
+
+| Status | Bedingung |
+|---|---|
+| `401 Unauthorized` | kein/ungültiges Bearer-Token |
+| `403 Forbidden` | fremdes Token ohne `admin:*` |
+| `404 Not Found` | Token-Value existiert nicht (mehr) |
 
 ---
 

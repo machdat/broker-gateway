@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** Deployed mit `/v1/health` (v0.1.0) und pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0). Weitere Endpoints folgen über das KanProject `broker-gateway`.
+**Status:** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0) und Auth-Modell mit Token-Management (v0.3.0). Weitere Endpoints folgen über das KanProject `broker-gateway`.
 
 ## Lokal starten
 
@@ -14,6 +14,50 @@ pytest
 uvicorn broker_gateway.main:app --reload
 curl http://localhost:8000/v1/health
 ```
+
+## Authentifizierung
+
+Alle Endpunkte außer `GET /v1/health` verlangen einen Bearer-Token.
+Tokens sind opake Strings (kein JWT) und werden serverseitig generiert.
+
+Bootstrap: beim Start liest die App `BG_BOOTSTRAP_ADMIN_TOKEN` aus dem
+Environment. Ist die Variable gesetzt, wird der Wert als Admin-Token mit
+Scope `admin:*` registriert — initialer Einstiegspunkt für die
+Token-Verwaltung. Niemals einen Bootstrap-Token-Wert ins Repo oder
+Compose-File einchecken.
+
+```bash
+export BG_BOOTSTRAP_ADMIN_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+uvicorn broker_gateway.main:app --reload
+
+# 1) Consumer-Token mit gewünschten Scopes erzeugen
+curl -X POST http://localhost:8000/v1/auth/token \
+     -H "Authorization: Bearer $BG_BOOTSTRAP_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"caller_id":"psm","scopes":["quotes:read","portfolio:read","instruments:read"]}'
+
+# 2) Mit dem ausgegebenen value gegen geschützte Endpunkte sprechen
+curl -H "Authorization: Bearer <value-aus-Schritt-1>" http://localhost:8000/v1/...
+
+# 3) Token revoken (Self oder admin:*)
+curl -X DELETE -H "Authorization: Bearer <value>" http://localhost:8000/v1/auth/token
+```
+
+Persistenz wahlweise über `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json`
+(JSON-Backend, atomare Writes). Ohne diese Variable arbeitet der Service
+mit einem In-Memory-Store — Tokens gehen beim Neustart verloren, was zur
+transienten Service-Natur passt.
+
+Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
+
+| Scope | Berechtigt zu |
+|---|---|
+| `instruments:read` | Symbol-/conid-Lookup |
+| `quotes:read` | Snapshots + Streams |
+| `portfolio:read` | Portfolio + Positions + Ledger + Trades |
+| `orders:write` | Orders platzieren / canceln + Order-Status |
+| `events:read` | Events-Stream |
+| `admin:*` | Token-Verwaltung; passt automatisch alle Scope-Checks |
 
 ## Tests
 
@@ -112,4 +156,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 0.2.0*
+*Version 0.3.0*
