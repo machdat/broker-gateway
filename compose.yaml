@@ -1,0 +1,25 @@
+name: broker-gateway
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: broker-gateway:0.1.0
+    container_name: broker-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      - cpgateway
+
+  # Platzhalter-Container fuer das IBKR Client Portal Gateway.
+  # Die echte CP-Gateway-Integration (Download, Konfiguration, TLS, Reauth)
+  # erfolgt in Karte AP-01-04 ("CP-Gateway-Adapter mit Auth-Lifecycle").
+  # Bis dahin laeuft hier nur ein Idle-Process, damit depends_on aufloest
+  # und der Compose-Stack ohne externe Secrets startet.
+  cpgateway:
+    image: eclipse-temurin:21-jre-noble
+    container_name: broker-cpgateway
+    restart: unless-stopped
+    command: ["tail", "-f", "/dev/null"]

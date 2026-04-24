@@ -1,9 +1,18 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-24
+**Stand:** 2026-04-25
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
+
+### Implementation Status (Service-Version 0.1.0)
+
+| Section | Implementiert |
+|---|---|
+| 3.1 Public Health (`GET /v1/health`) | ✅ in v0.1.0 |
+| Alle anderen | ⏳ Folgekarten in AP-01 |
+
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.1.0 ist `version` der Service-Version `0.1.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 

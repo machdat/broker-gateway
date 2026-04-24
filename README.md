@@ -2,7 +2,29 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** Bootstrap. Keine Implementierung. Erste Architektur-Karte folgt im KanProject `broker-gateway`.
+**Status:** Erste deploybare Iteration (`/v1/health`). Weitere Endpoints folgen ueber das KanProject `broker-gateway`.
+
+## Lokal starten
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate    # Windows / Git-Bash: source .venv/Scripts/activate
+pip install -e .[dev]
+pytest
+uvicorn broker_gateway.main:app --reload
+curl http://localhost:8000/v1/health
+```
+
+## Container-Stack
+
+```bash
+docker compose up -d
+curl http://localhost:8000/v1/health
+```
+
+Der Stack besteht aus zwei Services: `gateway` (FastAPI-App) und `cpgateway`
+(IBKR Client Portal Gateway, in v0.1.0 noch Platzhalter — die echte
+Integration folgt in einer spaeteren Karte).
 
 ## Warum dieser Service existiert
 
@@ -54,4 +76,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 0.0.1 — Bootstrap (2026-04-24)*
+*Version 0.1.0*
