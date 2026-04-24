@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** Erste deploybare Iteration (`/v1/health`). Weitere Endpoints folgen ueber das KanProject `broker-gateway`.
+**Status:** Deployed mit `/v1/health` (v0.1.0) und pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0). Weitere Endpoints folgen über das KanProject `broker-gateway`.
 
 ## Lokal starten
 
@@ -14,6 +14,40 @@ pytest
 uvicorn broker_gateway.main:app --reload
 curl http://localhost:8000/v1/health
 ```
+
+## Tests
+
+Tests laufen strikt in-process gegen einen Mock des internen IBKR Client
+Portal Gateways. Es werden niemals echte HTTP-Calls nach außen gemacht und
+es ist kein laufendes CP-Gateway erforderlich.
+
+```bash
+pytest
+```
+
+Die Fixture `cp_gateway_mock` (definiert in `tests/conftest.py`) ist die
+**Single Source of Truth** für Mock-Antworten — Folge-Karten dürfen keine
+eigenen Mocks definieren, sondern konfigurieren stattdessen Flags am
+Fixture-Objekt:
+
+```python
+def test_quote_snapshot_with_auth_loss(cp_gateway_mock):
+    cp_gateway_mock.auth_lost = True
+    # eigentlicher Test gegen broker_gateway-Code, der unter der Haube
+    # einen httpx-Client gegen cp_gateway_mock.base_url instantiiert
+```
+
+Konfigurierbare Flags:
+
+| Flag | Wirkung |
+|------|---------|
+| `auth_lost` | `/iserver/auth/status` liefert `authenticated=false` |
+| `slow_response_ms` | künstliche Latenz pro Request in Millisekunden |
+| `pacing_violation_after_n` | nach N Requests HTTP 429 für jeden weiteren |
+
+Live-Tests gegen ein echtes CP-Gateway (z.B. lokal über Docker Desktop)
+laufen ausschließlich außerhalb der pytest-Suite und sind nicht Teil
+des Default-Workflows.
 
 ## Container-Stack
 
@@ -78,4 +112,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 0.1.0*
+*Version 0.2.0*
