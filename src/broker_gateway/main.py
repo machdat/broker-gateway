@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from typing import cast
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, cast
 
 from fastapi import FastAPI
 
@@ -10,6 +11,8 @@ from broker_gateway.api.v1 import router as v1_router
 from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
+from broker_gateway.cp.client import CPGatewayClient
+from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -31,11 +34,37 @@ def _ensure_bootstrap_admin(store: TokenStore) -> None:
     )
 
 
-def create_app(*, store: TokenStore | None = None) -> FastAPI:
+def create_app(
+    *,
+    store: TokenStore | None = None,
+    lifecycle: AuthLifecycle | None = None,
+) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        owns_lifecycle = lifecycle is None
+        if owns_lifecycle:
+            client = CPGatewayClient()
+            cp_lifecycle = AuthLifecycle(client)
+        else:
+            client = None
+            cp_lifecycle = lifecycle
+
+        app.state.cp_lifecycle = cp_lifecycle
+        app.dependency_overrides[get_cp_lifecycle] = lambda: cast(AuthLifecycle, app.state.cp_lifecycle)
+
+        await cp_lifecycle.start()
+        try:
+            yield
+        finally:
+            await cp_lifecycle.stop()
+            if client is not None:
+                await client.aclose()
+
     app = FastAPI(
         title="broker-gateway",
         version=__version__,
         description="Versionierte HTTP-API fuer broker-vermittelten Aktienhandel und Marktdaten-Streaming.",
+        lifespan=lifespan,
     )
     app.include_router(v1_router)
 

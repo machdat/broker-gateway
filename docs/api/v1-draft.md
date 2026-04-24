@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.3.0)
+**Stand:** 2026-04-25 (Service-Version 0.4.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.3.0)
+### Implementation Status (Service-Version 0.4.0)
 
 | Section | Implementiert |
 |---|---|
@@ -13,10 +13,12 @@
 | 1.3 Authentifizierung, 1.4 Scopes | ✅ in v0.3.0 |
 | 2.1 Token erstellen (`POST /v1/auth/token`) | ✅ in v0.3.0 |
 | 2.2 Token revoken (`DELETE /v1/auth/token`) | ✅ in v0.3.0 |
+| 3.2 Internal Health (`GET /v1/internal/health`) | ✅ in v0.4.0 (vereinfachter Body, siehe Section 3.2) |
+| Auth-Lifecycle (Tickle + Reauth + 503-Guard) | ✅ in v0.4.0 |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.3.0 ist `version` die Service-Version `0.3.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.4.0 ist `version` die Service-Version `0.4.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -213,9 +215,11 @@ Kein Auth nötig. Response 200:
 ```json
 {
   "status": "ok",
-  "version": "1.0.0"
+  "version": "0.4.0"
 }
 ```
+
+`version` ist die Service-Version (`broker_gateway.__version__`).
 
 ### 3.2 Internal Health (Detail)
 
@@ -224,35 +228,60 @@ GET /v1/internal/health
 Authorization: Bearer <admin-token>
 ```
 
-Response 200:
+Erfordert Scope `admin:*`. Liefert immer `200`, auch wenn die IBKR-Session verloren ist - das Endpunkt-Ziel ist genau, das zu zeigen.
+
+Response 200 (v0.4.0):
 
 ```json
 {
-  "status": "ok",
-  "version": "1.0.0",
-  "broker": {
-    "name": "ibkr-cp-gateway",
-    "version": "10.44.1h",
-    "session": {
-      "authenticated": true,
-      "established": true,
-      "connected": true,
-      "session_age_seconds": 4823,
-      "last_tickle": "2026-04-24T17:29:14Z"
-    }
-  },
-  "subscriptions": {
-    "active_count": 17,
-    "max": 250
-  },
-  "queue": {
-    "depth": 0,
-    "throttle_per_sec": 50
-  }
+  "auth_status": "ok",
+  "cp_reachable": true,
+  "last_tickle_at": "2026-04-25T11:30:14.512Z",
+  "last_reauth_at": null,
+  "session_age_s": 4823.42,
+  "consecutive_reauth_failures": 0
 }
 ```
 
-Bei `503 Service Unavailable` — Body enthält `error.code` aus `{auth_session_expired, broker_unavailable, queue_overflow}` und `retry_after`.
+| Feld | Bedeutung |
+|---|---|
+| `auth_status` | `ok` / `reauth_pending` / `auth_lost` / `cp_down` |
+| `cp_reachable` | Letzter HTTP-Call zum CP-Gateway hat geantwortet |
+| `last_tickle_at` | UTC-Timestamp des letzten Tickle-Calls (`null` vor dem ersten Aufruf) |
+| `last_reauth_at` | UTC-Timestamp des letzten Reauth-Versuchs (`null` solange nie nötig) |
+| `session_age_s` | Sekunden seit letztem Übergang in `auth_status=ok` |
+| `consecutive_reauth_failures` | Aufeinanderfolgende fehlgeschlagene Reauth-Versuche; reset auf `0` bei `ok` |
+
+#### Auth-Lifecycle
+
+Der Service hält genau **eine** IBKR-Trading-Session offen und betreibt einen Hintergrund-Tickle-Job:
+
+- Intervall: alle `BG_CP_TICKLE_INTERVAL_S` Sekunden (Default `60`).
+- Bei `authenticated=false` aus `tickle`/`auth_status` wechselt der Status auf `reauth_pending`. Es werden bis zu drei `reauthenticate`-Versuche mit exponential backoff (Basis `2 s`) gemacht. Bleibt der Versuch erfolglos, fällt der Status auf `auth_lost`.
+- HTTP-Fehler beim Aufruf des CP-Gateways setzen den Status auf `cp_down`.
+
+Erfolgreiches Tickle nach Verlust setzt `auth_status` direkt zurück auf `ok`, ohne dass externe Endpunkte etwas tun müssen.
+
+#### 503-Verhalten der Business-Endpunkte
+
+Alle nachfolgenden Endpunkte (Quotes, Portfolio, Orders, Trades, Events) hängen die Dependency `require_session_ok` ein. Bei `auth_status in {auth_lost, cp_down}` antworten sie mit:
+
+```
+HTTP/1.1 503 Service Unavailable
+Retry-After: 30
+Content-Type: application/json
+
+{"detail": "IBKR-Session nicht verfuegbar (status=auth_lost)"}
+```
+
+`/v1/health` und `/v1/internal/health` sind von dieser Sperre **ausgenommen**, damit Operations auch bei verlorener Session noch arbeiten können.
+
+#### ENV-Variablen
+
+| Variable | Default | Wirkung |
+|---|---|---|
+| `BG_CP_BASE_URL` | `http://cpgateway:5000` | Base-URL des internen CP Gateways |
+| `BG_CP_TICKLE_INTERVAL_S` | `60` | Tickle-Periode in Sekunden |
 
 ---
 

@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0) und Auth-Modell mit Token-Management (v0.3.0). Weitere Endpoints folgen über das KanProject `broker-gateway`.
+**Status:** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0) und CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0). Weitere Endpoints folgen über das KanProject `broker-gateway`.
 
 ## Lokal starten
 
@@ -47,6 +47,28 @@ Persistenz wahlweise über `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json`
 (JSON-Backend, atomare Writes). Ohne diese Variable arbeitet der Service
 mit einem In-Memory-Store — Tokens gehen beim Neustart verloren, was zur
 transienten Service-Natur passt.
+
+## CP-Gateway-Auth-Lifecycle
+
+Der Service hält **genau eine** IBKR-Trading-Session offen und betreibt
+im Hintergrund einen Tickle-Job (`asyncio`). Bei verlorener Session wird
+bis zu dreimal `reauthenticate` versucht, sonst kippt der Status auf
+`auth_lost` und alle Business-Endpunkte (Quotes/Orders/...) liefern ab
+Karte 06 `503 Service Unavailable` + `Retry-After: 30`.
+
+Der aktuelle Zustand ist über den admin-geschützten Endpunkt abrufbar:
+
+```bash
+curl -H "Authorization: Bearer $BG_BOOTSTRAP_ADMIN_TOKEN" \
+     http://localhost:8000/v1/internal/health
+```
+
+Konfigurierbar über ENV:
+
+| Variable | Default | Wirkung |
+|---|---|---|
+| `BG_CP_BASE_URL` | `http://cpgateway:5000` | Base-URL des internen CP Gateways |
+| `BG_CP_TICKLE_INTERVAL_S` | `60` | Tickle-Intervall in Sekunden |
 
 Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
 
@@ -156,4 +178,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 0.3.0*
+*Version 0.4.0*
