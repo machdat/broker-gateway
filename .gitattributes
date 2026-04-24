@@ -1,0 +1,35 @@
+# Normalisiere Zeilenenden: LF im Repo, plattform-natives Auschecken nur fuer
+# Windows-spezifische Dateien (.bat/.cmd/.ps1).
+* text=auto eol=lf
+
+# Windows-Skripte behalten CRLF beim Auschecken
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binaer
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+*.whl   binary
+
+# Explizit als Text + LF (verhindert Auto-Detection-Stolperer)
+*.py        text eol=lf
+*.toml      text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+*.json      text eol=lf
+*.cfg       text eol=lf
+*.ini       text eol=lf
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
