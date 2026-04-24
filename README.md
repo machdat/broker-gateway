@@ -19,12 +19,14 @@ curl http://localhost:8000/v1/health
 
 ```bash
 docker compose up -d
-curl http://localhost:8000/v1/health
+curl http://localhost:4000/v1/health
 ```
 
 Der Stack besteht aus zwei Services: `gateway` (FastAPI-App) und `cpgateway`
 (IBKR Client Portal Gateway, in v0.1.0 noch Platzhalter — die echte
-Integration folgt in einer spaeteren Karte).
+Integration folgt in einer spaeteren Karte). Extern publiziert auf Port 4000
+(intern 8000), passend zum geplanten Default `broker-gateway:4000` aus
+`docs/api/v1-draft.md` Section 1.1.
 
 ## Warum dieser Service existiert
 

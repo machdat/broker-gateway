@@ -8,8 +8,10 @@ services:
     image: broker-gateway:0.1.0
     container_name: broker-gateway
     restart: unless-stopped
+    # Extern 4000 (Default laut API-Draft 1.1), intern 8000 (FastAPI/Dockerfile-CMD).
+    # Port 8000 ist auf cma-pi-1 von KanPrompt belegt.
     ports:
-      - "8000:8000"
+      - "4000:8000"
     depends_on:
       - cpgateway
 
