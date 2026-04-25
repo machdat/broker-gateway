@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.4.0)
+**Stand:** 2026-04-25 (Service-Version 0.5.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.4.0)
+### Implementation Status (Service-Version 0.5.0)
 
 | Section | Implementiert |
 |---|---|
@@ -15,10 +15,12 @@
 | 2.2 Token revoken (`DELETE /v1/auth/token`) | ✅ in v0.3.0 |
 | 3.2 Internal Health (`GET /v1/internal/health`) | ✅ in v0.4.0 (vereinfachter Body, siehe Section 3.2) |
 | Auth-Lifecycle (Tickle + Reauth + 503-Guard) | ✅ in v0.4.0 |
+| 4.1 Search (`GET /v1/instruments/search`) | ✅ in v0.5.0 (vereinfachter Body, siehe Section 4.1) |
+| 4.2 Detail (`GET /v1/instruments/{conid}`) | ✅ in v0.5.0 (vereinfachter Body, siehe Section 4.2) |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.4.0 ist `version` die Service-Version `0.4.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.5.0 ist `version` die Service-Version `0.5.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -287,31 +289,40 @@ Content-Type: application/json
 
 ## 4. Instruments
 
+Alle Endpunkte erfordern Scope `instruments:read` und einen aktiven Auth-Lifecycle (`auth_status=ok`). Bei `auth_status in {auth_lost, cp_down}` antworten sie mit `503 Service Unavailable` + `Retry-After: 30` (Section 3.2).
+
+Symbol-Lookups werden in einem **TTL-Cache (Default 7 Tage)** gehalten. conid-Mappings ändern sich praktisch nie, und CP-Gateway-Calls sind teuer und ratelimitiert (Section 10).
+
 ### 4.1 Search
 
 ```
-GET /v1/instruments/search?symbol=AAPL&sec_type=STK&limit=20
+GET /v1/instruments/search?symbol=AAPL[&exchange=NASDAQ]
 Authorization: Bearer <token (instruments:read)>
 ```
 
-Response 200:
+Response 200 (v0.5.0 - Liste statt Paginierungs-Wrapper, da Suchen aktuell wenige Treffer liefern):
 
 ```json
-{
-  "items": [
-    {
-      "conid": 265598,
-      "symbol": "AAPL",
-      "name": "APPLE INC",
-      "sec_type": "STK",
-      "exchange": "NASDAQ",
-      "primary_exchange": "NASDAQ",
-      "currency": "USD"
-    }
-  ],
-  "next_cursor": null
-}
+[
+  {
+    "conid": 265598,
+    "symbol": "AAPL",
+    "company_name": "APPLE INC",
+    "currency": "USD",
+    "sec_type": "STK"
+  }
+]
 ```
+
+| Feld | Bedeutung |
+|---|---|
+| `conid` | IBKR-interne Instrument-ID (int) |
+| `symbol` | Ticker, immer upper-case |
+| `company_name` | Klartext-Name (kann `null` sein) |
+| `currency` | ISO-4217-Code (kann `null` sein) |
+| `sec_type` | `STK` / `OPT` / `FUT` / ... (kann `null` sein) |
+
+Unbekannte Symbole liefern `200` mit leerem Array, **nicht** `404`.
 
 ### 4.2 Detail
 
@@ -320,19 +331,16 @@ GET /v1/instruments/{conid}
 Authorization: Bearer <token (instruments:read)>
 ```
 
-Response 200:
+Response 200 (v0.5.0):
 
 ```json
 {
   "conid": 265598,
   "symbol": "AAPL",
-  "name": "APPLE INC",
-  "sec_type": "STK",
-  "exchange": "NASDAQ",
-  "primary_exchange": "NASDAQ",
+  "company_name": "APPLE INC",
   "currency": "USD",
-  "min_tick": "0.01",
-  "valid_exchanges": ["NASDAQ", "BATS", "ARCA", "IEX"]
+  "sec_type": "STK",
+  "exchange": "NASDAQ"
 }
 ```
 

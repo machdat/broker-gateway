@@ -8,10 +8,12 @@ from fastapi import FastAPI
 
 from broker_gateway import __version__
 from broker_gateway.api.v1 import router as v1_router
+from broker_gateway.api.v1.instruments import get_instruments_service
 from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
 from broker_gateway.cp.client import CPGatewayClient
+from broker_gateway.cp.instruments import InstrumentsService
 from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
 
 
@@ -38,6 +40,7 @@ def create_app(
     *,
     store: TokenStore | None = None,
     lifecycle: AuthLifecycle | None = None,
+    instruments_service: InstrumentsService | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -52,6 +55,22 @@ def create_app(
         app.state.cp_lifecycle = cp_lifecycle
         app.dependency_overrides[get_cp_lifecycle] = lambda: cast(AuthLifecycle, app.state.cp_lifecycle)
 
+        owns_instruments = instruments_service is None
+        if owns_instruments:
+            instruments_client = client if client is not None else CPGatewayClient()
+            inst_service = InstrumentsService(instruments_client)
+            app.state._owns_instruments_client = client is None
+            app.state._instruments_client = instruments_client
+        else:
+            inst_service = instruments_service
+            app.state._owns_instruments_client = False
+            app.state._instruments_client = None
+
+        app.state.instruments_service = inst_service
+        app.dependency_overrides[get_instruments_service] = (
+            lambda: cast(InstrumentsService, app.state.instruments_service)
+        )
+
         await cp_lifecycle.start()
         try:
             yield
@@ -59,6 +78,8 @@ def create_app(
             await cp_lifecycle.stop()
             if client is not None:
                 await client.aclose()
+            if app.state._owns_instruments_client and app.state._instruments_client is not None:
+                await app.state._instruments_client.aclose()
 
     app = FastAPI(
         title="broker-gateway",
