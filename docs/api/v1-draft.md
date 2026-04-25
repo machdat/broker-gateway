@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.8.0)
+**Stand:** 2026-04-25 (Service-Version 0.9.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.8.0)
+### Implementation Status (Service-Version 0.9.0)
 
 | Section | Implementiert |
 |---|---|
@@ -24,10 +24,15 @@
 | 6.2 Positions (`GET /v1/portfolio/{accountId}/positions`) | ✅ in v0.8.0 |
 | 6.3 Ledger (`GET /v1/portfolio/{accountId}/ledger`) | ✅ in v0.8.0 |
 | Money-Normalisierung (`{value, currency}` als Single Source of Truth) | ✅ in v0.8.0 |
+| 7.1 Place (`POST /v1/orders`) mit Idempotency-Key + Reply-Confirmation-Loop | ✅ in v0.9.0 (vereinfachter Body, siehe Section 7.1) |
+| 7.2 Status (`GET /v1/orders/{order_id}`) mit Money-Normalisierung | ✅ in v0.9.0 |
+| 7.3 Cancel (`DELETE /v1/orders/{order_id}`) mit Idempotency-Key | ✅ in v0.9.0 |
+| Idempotency-Cache (`Idempotency-Key` -> 200-Replay) | ✅ in v0.9.0 |
+| 7.4 What-If (Preview) | ⏳ Folgekarte |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.8.0 ist `version` die Service-Version `0.8.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.9.0 ist `version` die Service-Version `0.9.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -563,7 +568,20 @@ Response 200 (v0.8.0):
 
 ## 7. Orders
 
-### 7.1 Place
+### 7.0 Idempotency-Konvention
+
+Schreiboperationen (`POST /v1/orders`, `DELETE /v1/orders/{order_id}`) verlangen den HTTP-Header `Idempotency-Key`. Konvention: vom Caller erzeugte UUID v4 oder andere kollisionsarme Token. Pflicht-Verhalten:
+
+- **Fehlt** der Header: `400 Bad Request`, Body `{"detail": "Idempotency-Key-Header ist Pflicht"}`.
+- **Erstaufruf** mit Key wird verarbeitet und das Ergebnis im Idempotency-Cache abgelegt (TTL Default 24 h, ENV `BG_IDEMPOTENCY_TTL_S`).
+- **Replay** mit demselben Key liefert die gespeicherte Antwort, aber mit Status `200 OK` (statt 201 für Place). Der Body ist identisch zum Erstaufruf - der CP-Gateway wird nicht erneut getroffen.
+- Der Schluessel wird pro HTTP-Methode gescoped, d.h. POST und DELETE koennen denselben Key tragen, ohne zu kollidieren.
+
+| ENV | Default | Wirkung |
+|---|---|---|
+| `BG_IDEMPOTENCY_TTL_S` | `86400` | TTL in Sekunden fuer einen Idempotency-Eintrag |
+
+### 7.1 Place (implementiert in v0.9.0)
 
 ```
 POST /v1/orders
@@ -575,66 +593,112 @@ Content-Type: application/json
   "account_id": "U25235077",
   "conid": 265598,
   "side": "BUY",
-  "quantity": 1,
+  "quantity": "1",
   "order_type": "LMT",
   "limit_price": "270.00",
   "tif": "DAY"
 }
 ```
 
-Response 202:
+`order_type` ist eines aus `LMT`, `MKT`, `STP`, `STP-LMT` — Werte ausserhalb dieser Menge werden mit `422 Unprocessable Content` abgelehnt. `quantity`, `limit_price`, `stop_price` sind Decimal-Strings (kein Float). Combinations:
+
+| `order_type` | Pflichtfelder |
+|---|---|
+| `LMT` | `limit_price` |
+| `MKT` | (keine) |
+| `STP` | `stop_price` |
+| `STP-LMT` | `limit_price` + `stop_price` |
+
+Reply-Confirmation-Loop: Das CP-Gateway antwortet bei einer Place-Anfrage gelegentlich mit einer Liste von Warning-Confirmations (Schema `[{id, message: [...]}]`) statt direkt mit der Order. Der Service quittiert solche Warnings transparent per `POST /iserver/reply/{id}` mit `{"confirmed": true}` und liefert erst die finale Order. Die Warning-Texte werden an den Caller im Feld `warnings` durchgereicht.
+
+Response 201 (Erstaufruf):
 
 ```json
 {
-  "order_id": "ord_abc123",
-  "status": "submitted",
-  "broker_order_id": "1979132751",
-  "preview": {
-    "estimated_commission": { "value": "1.00", "currency": "USD" },
-    "warnings": ["mandatory_cap_price"]
-  },
-  "submitted_at": "2026-04-24T17:30:00Z"
+  "order_id": "1000000",
+  "account_id": "U25235077",
+  "conid": 265598,
+  "side": "BUY",
+  "quantity": "1",
+  "order_type": "LMT",
+  "tif": "DAY",
+  "status": "PendingSubmit",
+  "limit_price": "270.00",
+  "stop_price": null,
+  "avg_fill_price": null,
+  "commission": null,
+  "filled_quantity": null,
+  "submitted_at": null,
+  "warnings": []
 }
 ```
 
-### 7.2 Get Status
+Response 200 bei Replay (gleicher Key): identischer Body.
+
+Fehler:
+
+| Status | Bedingung |
+|---|---|
+| 400 | `Idempotency-Key`-Header fehlt |
+| 401/403 | kein Token / falscher Scope |
+| 422 | `order_type` ungueltig oder Pflichtfeld fehlt |
+| 503 | IBKR-Session nicht verfuegbar (`Retry-After: 30`) |
+
+### 7.2 Status (implementiert in v0.9.0)
 
 ```
 GET /v1/orders/{order_id}
-Authorization: Bearer <token (orders:read)>
+Authorization: Bearer <token (orders:write)>
 ```
 
 Response 200:
 
 ```json
 {
-  "order_id": "ord_abc123",
-  "status": "filled",
-  "filled_quantity": 1,
-  "avg_fill_price": { "value": "270.00", "currency": "USD" },
-  "commission": { "value": "1.00", "currency": "USD" },
-  "submitted_at": "2026-04-24T17:30:00Z",
-  "filled_at": "2026-04-24T17:31:42Z"
+  "order_id": "1000000",
+  "account_id": "U25235077",
+  "conid": 265598,
+  "side": "BUY",
+  "quantity": "1",
+  "order_type": "LMT",
+  "tif": "DAY",
+  "status": "Filled",
+  "limit_price": "150.00",
+  "stop_price": null,
+  "avg_fill_price": { "value": "150.00", "currency": "USD" },
+  "commission":     { "value": "1.00",   "currency": "USD" },
+  "filled_quantity": "1",
+  "submitted_at": null,
+  "warnings": []
 }
 ```
 
-### 7.3 Cancel
+`status`-Vokabular spiegelt den CP-Gateway-Lifecycle: `PendingSubmit`, `Submitted`, `Filled`, `Cancelled`, `Rejected`, `Inactive`. Geldfelder folgen Section 1.9.
+
+### 7.3 Cancel (implementiert in v0.9.0)
 
 ```
 DELETE /v1/orders/{order_id}
 Authorization: Bearer <token (orders:write)>
 Idempotency-Key: 7c3b2a8e-...
+X-Account-Id: U25235077
 ```
+
+Da das CP-Gateway den Account-Kontext braucht, ist `X-Account-Id` Pflicht. Fehlt der Header, antwortet der Service mit 400.
 
 Response 200:
 
 ```json
 {
-  "order_id": "ord_abc123",
-  "status": "cancelled",
-  "cancelled_at": "2026-04-24T17:31:00Z"
+  "order_id": "1000000",
+  "status": "Cancelled",
+  "cancelled_at": "2026-04-25T07:30:00Z"
 }
 ```
+
+### Cache-Invalidation (Portfolio)
+
+`POST /v1/orders` und `DELETE /v1/orders/{order_id}` busten beim Erstaufruf den `PortfolioService`-Cache fuer das betroffene Account, damit ein anschliessender `GET /v1/portfolio/{accountId}/positions`-Aufruf den frischen Bestand liefert.
 
 ### 7.4 What-If (Preview)
 

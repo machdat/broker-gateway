@@ -11,6 +11,7 @@ from broker_gateway.cp.lifecycle import (
     LifecycleSnapshot,
     require_session_ok,
 )
+from broker_gateway.cp.orders import OrdersService
 from broker_gateway.cp.portfolio import (
     Ledger,
     LedgerEntry,
@@ -36,6 +37,7 @@ __all__ = [
     "require_session_ok",
     "Ledger",
     "LedgerEntry",
+    "OrdersService",
     "PortfolioService",
     "PortfolioSummary",
     "Position",

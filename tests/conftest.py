@@ -6,6 +6,7 @@ sie konfigurieren stattdessen Flags an `cp_gateway_mock`.
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections import defaultdict
@@ -14,6 +15,12 @@ from typing import Any
 import httpx
 import pytest
 import respx
+
+
+def _to_str_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 # Default-Symbole und ihre conids (Werte realitätsnah, nicht echt verifiziert).
@@ -48,11 +55,21 @@ class MockCPGateway:
         auth_lost: bool = False,
         slow_response_ms: int = 0,
         pacing_violation_after_n: int | None = None,
+        reply_warnings: list[dict[str, Any]] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.auth_lost = auth_lost
         self.slow_response_ms = slow_response_ms
         self.pacing_violation_after_n = pacing_violation_after_n
+        # Liste von Warning-Confirmations, die place_order vor der echten
+        # Order durchschiebt. Jedes Element ist ein Dict mit mindestens
+        # `id` (UUID-aehnlich) und `message` (Liste von Warning-Strings).
+        # Tests setzen das beim Bedarf, Default ist leer (= sofort
+        # echte Order).
+        self.reply_warnings: list[dict[str, Any]] = list(reply_warnings or [])
+        # Sequenz der unbestaetigten Warnings pro Order-Place-Aufruf:
+        # mock fuegt sie in dieser Reihenfolge ein.
+        self._pending_replies: dict[str, dict[str, Any]] = {}
 
         # Session-globaler State (für Refcount-Tests in späteren Karten relevant).
         self.subscriptions: set[int] = set()
@@ -246,11 +263,56 @@ class MockCPGateway:
             return resp
         match = re.search(r"/iserver/account/([^/]+)/orders", request.url.path)
         account_id = match.group(1) if match else "UNKNOWN"
+        try:
+            body = json.loads(request.content.decode() or "{}")
+        except json.JSONDecodeError:
+            body = {}
+        order_specs = body.get("orders") or [body]
+        spec = order_specs[0] if order_specs else {}
+
+        # Reply-Confirmation-Loop: wenn reply_warnings konfiguriert ist,
+        # liefert der erste Place-Call die Warning-Liste, jeder folgende
+        # Reply-Confirm verschiebt eine Warning weiter, bis die echte
+        # Order rauskommt.
+        if self.reply_warnings:
+            warning_ids: list[str] = []
+            for warn in self.reply_warnings:
+                wid = warn["id"]
+                self._pending_replies[wid] = {
+                    "spec": spec,
+                    "account_id": account_id,
+                    "remaining": [w for w in self.reply_warnings if w["id"] != wid],
+                }
+                warning_ids.append(wid)
+                break  # Nur die erste Warning ausgeben - Folgereplies kommen via /iserver/reply/{id}.
+            first = self.reply_warnings[0]
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": first["id"],
+                        "message": list(first.get("message", [])),
+                        "isSuppressed": False,
+                    }
+                ],
+            )
+
+        return self._create_real_order(account_id, spec)
+
+    def _create_real_order(self, account_id: str, spec: dict[str, Any]) -> httpx.Response:
         oid = str(self._next_order_id)
         self._next_order_id += 1
         self.orders[oid] = {
             "order_id": oid,
             "account_id": account_id,
+            "conid": spec.get("conid"),
+            "side": (spec.get("side") or "BUY").upper(),
+            "quantity": str(spec.get("quantity", spec.get("qty", 0))),
+            "order_type": (spec.get("orderType") or spec.get("order_type") or "MKT").upper(),
+            "tif": (spec.get("tif") or "DAY").upper(),
+            "limit_price": _to_str_or_none(spec.get("price") or spec.get("limit_price")),
+            "stop_price": _to_str_or_none(spec.get("auxPrice") or spec.get("stop_price")),
+            "currency": spec.get("currency") or "USD",
             "status": "PendingSubmit",
             "_status_calls": 0,
         }
@@ -258,6 +320,43 @@ class MockCPGateway:
             200,
             json=[{"order_id": oid, "order_status": "PendingSubmit", "encrypt_message": "1"}],
         )
+
+    def _h_order_reply(self, request: httpx.Request) -> httpx.Response:
+        if (resp := self._pre()) is not None:
+            return resp
+        match = re.search(r"/iserver/reply/([^/]+)$", request.url.path)
+        if match is None:
+            return httpx.Response(400, json={"error": "invalid path"})
+        reply_id = match.group(1)
+        pending = self._pending_replies.pop(reply_id, None)
+        if pending is None:
+            return httpx.Response(404, json={"error": "unknown reply id"})
+        try:
+            body = json.loads(request.content.decode() or "{}")
+        except json.JSONDecodeError:
+            body = {}
+        if not body.get("confirmed", False):
+            return httpx.Response(400, json={"error": "must confirm reply"})
+
+        remaining = pending["remaining"]
+        if remaining:
+            nxt = remaining[0]
+            self._pending_replies[nxt["id"]] = {
+                "spec": pending["spec"],
+                "account_id": pending["account_id"],
+                "remaining": remaining[1:],
+            }
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": nxt["id"],
+                        "message": list(nxt.get("message", [])),
+                        "isSuppressed": False,
+                    }
+                ],
+            )
+        return self._create_real_order(pending["account_id"], pending["spec"])
 
     def _h_order_status(self, request: httpx.Request) -> httpx.Response:
         if (resp := self._pre()) is not None:
@@ -275,7 +374,24 @@ class MockCPGateway:
             order["status"] = "Submitted"
         elif order["status"] == "Submitted":
             order["status"] = "Filled"
-        return httpx.Response(200, json={"order_id": order_id, "order_status": order["status"]})
+        result = {
+            "order_id": order_id,
+            "order_status": order["status"],
+            "conid": order.get("conid"),
+            "side": order.get("side"),
+            "size": order.get("quantity"),
+            "order_type": order.get("order_type"),
+            "tif": order.get("tif"),
+            "currency": order.get("currency"),
+            "limit_price": order.get("limit_price"),
+            "stop_price": order.get("stop_price"),
+            "account_id": order.get("account_id"),
+        }
+        if order["status"] == "Filled":
+            result["avg_price"] = order.get("limit_price") or "150.00"
+            result["filled_quantity"] = order.get("quantity")
+            result["commission"] = "1.00"
+        return httpx.Response(200, json=result)
 
     def _h_order_cancel(self, request: httpx.Request) -> httpx.Response:
         if (resp := self._pre()) is not None:
@@ -327,6 +443,7 @@ class MockCPGateway:
         router.get(url__regex=rf"^{b}/iserver/account/[^/]+/positions$").mock(side_effect=self._h_positions)
         router.get(url__regex=rf"^{b}/iserver/account/[^/]+/ledger$").mock(side_effect=self._h_ledger)
         router.post(url__regex=rf"^{b}/iserver/account/[^/]+/orders$").mock(side_effect=self._h_orders_post)
+        router.post(url__regex=rf"^{b}/iserver/reply/[^/]+$").mock(side_effect=self._h_order_reply)
         router.get(url__regex=rf"^{b}/iserver/account/orders/[^/]+$").mock(side_effect=self._h_order_status)
         router.delete(url__regex=rf"^{b}/iserver/account/[^/]+/order/[^/]+$").mock(side_effect=self._h_order_cancel)
         router.get(url__regex=rf"^{b}/iserver/account/trades(\?.*)?$").mock(side_effect=self._h_trades)

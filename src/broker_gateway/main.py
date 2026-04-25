@@ -9,6 +9,11 @@ from fastapi import FastAPI
 from broker_gateway import __version__
 from broker_gateway.api.v1 import router as v1_router
 from broker_gateway.api.v1.instruments import get_instruments_service
+from broker_gateway.api.v1.orders import (
+    get_idempotency_store,
+    get_orders_portfolio_invalidator,
+    get_orders_service,
+)
 from broker_gateway.api.v1.portfolio import get_portfolio_service
 from broker_gateway.api.v1.quotes import get_quotes_service
 from broker_gateway.auth.middleware import get_token_store
@@ -17,8 +22,10 @@ from broker_gateway.auth.store import TokenStore, build_default_store
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
 from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
+from broker_gateway.cp.orders import OrdersService
 from broker_gateway.cp.portfolio import PortfolioService
 from broker_gateway.cp.quotes import QuotesService
+from broker_gateway.idempotency import IdempotencyStore
 from broker_gateway.streams.manager import (
     SubscriptionManager,
     get_subscription_manager,
@@ -52,6 +59,8 @@ def create_app(
     quotes_service: QuotesService | None = None,
     subscription_manager: SubscriptionManager | None = None,
     portfolio_service: PortfolioService | None = None,
+    orders_service: OrdersService | None = None,
+    idempotency_store: IdempotencyStore | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -73,6 +82,7 @@ def create_app(
             or quotes_service is None
             or subscription_manager is None
             or portfolio_service is None
+            or orders_service is None
         ):
             if services_client is None:
                 services_client = CPGatewayClient()
@@ -101,11 +111,21 @@ def create_app(
             if portfolio_service is not None
             else PortfolioService(cast(CPGatewayClient, services_client))
         )
+        ord_service = (
+            orders_service
+            if orders_service is not None
+            else OrdersService(cast(CPGatewayClient, services_client))
+        )
+        idem_store = (
+            idempotency_store if idempotency_store is not None else IdempotencyStore()
+        )
 
         app.state.instruments_service = inst_service
         app.state.quotes_service = qts_service
         app.state.subscription_manager = sub_manager
         app.state.portfolio_service = pf_service
+        app.state.orders_service = ord_service
+        app.state.idempotency_store = idem_store
         app.dependency_overrides[get_instruments_service] = (
             lambda: cast(InstrumentsService, app.state.instruments_service)
         )
@@ -116,6 +136,15 @@ def create_app(
             lambda: cast(SubscriptionManager, app.state.subscription_manager)
         )
         app.dependency_overrides[get_portfolio_service] = (
+            lambda: cast(PortfolioService, app.state.portfolio_service)
+        )
+        app.dependency_overrides[get_orders_service] = (
+            lambda: cast(OrdersService, app.state.orders_service)
+        )
+        app.dependency_overrides[get_idempotency_store] = (
+            lambda: cast(IdempotencyStore, app.state.idempotency_store)
+        )
+        app.dependency_overrides[get_orders_portfolio_invalidator] = (
             lambda: cast(PortfolioService, app.state.portfolio_service)
         )
 
