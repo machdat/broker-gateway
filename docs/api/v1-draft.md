@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.10.0)
+**Stand:** 2026-04-25 (Service-Version 0.11.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.10.0)
+### Implementation Status (Service-Version 0.11.0)
 
 | Section | Implementiert |
 |---|---|
@@ -31,10 +31,11 @@
 | 7.4 What-If (Preview) | ⏳ Folgekarte |
 | 8.1 Trade-Historie (`GET /v1/trades`) | ✅ in v0.10.0 (vereinfachter Body, siehe Section 8.1) |
 | 8.2 Aggregates (`GET /v1/trades/aggregates?metric=commissions_mtd`) | ✅ in v0.10.0 |
+| 9. Events-Stream (`GET /v1/events/stream`) | ✅ in v0.11.0 (vereinfachter Body, siehe Section 9; Mock-Source statt CP-Gateway-WebSocket) |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.10.0 ist `version` die Service-Version `0.10.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.11.0 ist `version` die Service-Version `0.11.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -833,30 +834,70 @@ Response 200:
 
 ## 9. Events Stream (SSE)
 
+### 9.1 Endpunkt
+
 ```
-GET /v1/events/stream
+GET /v1/events/stream?types=<csv>
 Authorization: Bearer <token (events:read)>
 Accept: text/event-stream
 ```
 
-Server pusht Events:
+| Query | Optional? | Beschreibung |
+|---|---|---|
+| `types` | ja | Komma-separierte Filterliste. Erlaubt: `execution`, `position`, `status`. Default = alle drei. Unbekannte Werte -> `400 Bad Request`. |
+
+| Header | Optional? | Beschreibung |
+|---|---|---|
+| `Last-Event-ID` | ja | Letzte beim Client gesehene `id`. Server sendet zunaechst gepufferte Events mit `event_id > Last-Event-ID` und schaltet dann auf den Live-Stream um. |
+
+### 9.2 Event-Typen
+
+Single Source of Truth fuer das Schema: `src/broker_gateway/streams/events.py`. Felder sind additiv - Consumer duerfen unbekannte Felder ignorieren.
+
+`event: execution` (Order-Ausfuehrung, Fill oder Partial-Fill):
 
 ```
-event: execution_report
-id: 1776974321-abc
-data: {"order_id":"ord_abc123","status":"partial_fill","filled_quantity":0.5,...}
-
-event: position_update
-id: 1776974345-xyz
-data: {"conid":265598,"new_quantity":"11.0","change":"0.5"}
-
-event: order_status_change
-id: 1776974400-def
-data: {"order_id":"ord_def456","old_status":"submitted","new_status":"cancelled","reason":"user_cancel"}
-
-event: keepalive
-data: {}
+id: 0
+event: execution
+data: {"order_id":"ord_abc","account_id":"U25235077","conid":265598,"symbol":"AAPL","side":"BUY","filled_quantity":"0.5","avg_fill_price":"150.50","status":"PartiallyFilled","occurred_at":"2026-04-25T11:30:14.481Z"}
 ```
+
+`event: position` (Positionsaenderung nach Ausfuehrung):
+
+```
+id: 1
+event: position
+data: {"account_id":"U25235077","conid":265598,"symbol":"AAPL","new_quantity":"11.0","change":"+0.5","occurred_at":"2026-04-25T11:30:14.500Z"}
+```
+
+`event: status` (Order-Status-Wechsel ohne Fill):
+
+```
+id: 2
+event: status
+data: {"order_id":"ord_def","account_id":"U25235077","old_status":"Submitted","new_status":"Cancelled","reason":null,"occurred_at":"2026-04-25T11:30:15.001Z"}
+```
+
+`id` ist eine vom Server vergebene, **monoton steigende** Event-ID (Single Source of Truth: `EventBus._next_event_id`).
+
+### 9.3 EventBus (Fan-Out)
+
+- Genau **eine** EventBus-Instanz pro App-Lifespan.
+- Jeder verbundene HTTP-Consumer bekommt jeden Event seines Filters; der Bus fan'ed in alle Queues gleichzeitig.
+- Ringpuffer (Default 200 Events) erlaubt Reconnect via `Last-Event-ID`. Wenn der Reconnect zu spaet kommt, fehlen Events - Consumer sollte in dem Fall einen `/v1/orders/{id}` (Status) und `/v1/portfolio/{accountId}/positions` (Positionen) als Cold-Start ergaenzen.
+
+### 9.4 Source-Implementierung (Status v0.11.0)
+
+In v0.11.0 enthaelt `broker-gateway` noch keinen aktiven CP-Gateway-WebSocket-Adapter. Die Events-Quelle ist eine Schnittstelle (`EventSource`), die Tests und ein spaeterer Adapter implementieren. Solange noch keine Source registriert ist, liefert der Bus nur Events, die andere Komponenten direkt einspeisen (z.B. interne Test-Hooks). Das CP-Gateway-WebSocket-Backend (`/v1/api/ws`) wird in einer Folgekarte angeschlossen, ohne dass sich das Wireformat aendert.
+
+### 9.5 Limits + Fehlercodes
+
+| Status | Bedingung |
+|---|---|
+| `400 Bad Request` | `types`-Filter enthaelt unbekannte Werte |
+| `401 Unauthorized` | Bearer fehlt oder ungueltig |
+| `403 Forbidden` | Token besitzt nicht `events:read` |
+| `503 Service Unavailable` mit `Retry-After: 30` | `auth_status in {auth_lost, cp_down}` (siehe Section 3.2) |
 
 ---
 

@@ -28,6 +28,7 @@ from broker_gateway.cp.portfolio import PortfolioService
 from broker_gateway.cp.quotes import QuotesService
 from broker_gateway.cp.trades import TradesService
 from broker_gateway.idempotency import IdempotencyStore
+from broker_gateway.streams.events import EventBus, get_event_bus
 from broker_gateway.streams.manager import (
     SubscriptionManager,
     get_subscription_manager,
@@ -64,6 +65,7 @@ def create_app(
     orders_service: OrdersService | None = None,
     idempotency_store: IdempotencyStore | None = None,
     trades_service: TradesService | None = None,
+    event_bus: EventBus | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -128,6 +130,7 @@ def create_app(
             if trades_service is not None
             else TradesService(cast(CPGatewayClient, services_client))
         )
+        evt_bus = event_bus if event_bus is not None else EventBus()
 
         app.state.instruments_service = inst_service
         app.state.quotes_service = qts_service
@@ -136,6 +139,7 @@ def create_app(
         app.state.orders_service = ord_service
         app.state.idempotency_store = idem_store
         app.state.trades_service = trd_service
+        app.state.event_bus = evt_bus
         app.dependency_overrides[get_instruments_service] = (
             lambda: cast(InstrumentsService, app.state.instruments_service)
         )
@@ -160,11 +164,15 @@ def create_app(
         app.dependency_overrides[get_trades_service] = (
             lambda: cast(TradesService, app.state.trades_service)
         )
+        app.dependency_overrides[get_event_bus] = (
+            lambda: cast(EventBus, app.state.event_bus)
+        )
 
         await cp_lifecycle.start()
         try:
             yield
         finally:
+            await evt_bus.shutdown()
             await sub_manager.shutdown()
             await cp_lifecycle.stop()
             if client is not None:
