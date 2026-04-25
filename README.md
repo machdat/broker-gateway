@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** **v1.0.1 — Foundation komplett, AP-02 (Live-IBKR-Validierung) gestartet.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release und CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1). AP-01 (Foundation) abgeschlossen, AP-02 (Live-IBKR-Validierung) läuft.
+**Status:** **v1.1.0 — Recorder-Hook scharfgeschaltet, AP-02 (Live-IBKR-Validierung) im Aufbau.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release, CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1) und CP-Recorder als Voraussetzung für den Mock-Replay (v1.1.0). AP-01 (Foundation) abgeschlossen, AP-02 (Live-IBKR-Validierung) läuft.
 
 ## Lokal starten
 
@@ -136,6 +136,19 @@ Live-Tests gegen ein echtes CP-Gateway (z.B. lokal über Docker Desktop)
 laufen ausschließlich außerhalb der pytest-Suite und sind nicht Teil
 des Default-Workflows.
 
+## Recordings
+
+Ab v1.1.0 kann der `CPGatewayClient` Live-HTTP-Verkehr als deterministische
+JSON-Fixtures unter `tests/fixtures/recorded/` ablegen. Aktivierung
+ausschließlich über die Environment-Variable `BG_CP_RECORD_DIR` — im
+Produktiv-Default ist der Recorder nicht aktiv und verursacht keine
+Disk-IO. Authorization-, Cookie- und API-Key-Header werden vor dem
+Schreiben gefiltert; Timestamps und Order-/Execution-/Session-IDs in
+Bodies werden durch Platzhalter ersetzt. Konzept, Naming, Diff-Bewertung:
+[`docs/cp-recordings.md`](docs/cp-recordings.md). Die Fixtures dienen ab
+AP-02 #03 als Single Source of Truth des Mock-Replays — handgeschriebene
+Mock-Antworten werden schrittweise abgelöst.
+
 ## Container-Stack
 
 ```bash
@@ -225,4 +238,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.0.4*
+*Version 1.1.0*

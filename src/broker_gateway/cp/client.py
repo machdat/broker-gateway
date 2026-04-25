@@ -4,6 +4,12 @@ Methoden bilden die in der Mock-Fixture (tests/conftest.py) definierten
 Endpunkte 1:1 ab. Der `throttle`-Hook (Karte 12) zieht jeden Call durch
 einen Token-Bucket pro Endpoint-Klasse und meldet 429-Responses
 zurueck, damit der Bucket den Backoff anpasst.
+
+Optionaler Recorder (Karte AP-02 #02): wenn die Umgebungsvariable
+``BG_CP_RECORD_DIR`` gesetzt ist und kein expliziter ``http_client``
+injiziert wurde, wird ein :class:`CPRecorder` automatisch an die
+httpx-event-hooks angehaengt. Tests bleiben davon unbeeindruckt - sie
+bringen ihren eigenen Client mit und setzen die ENV nicht.
 """
 from __future__ import annotations
 
@@ -12,11 +18,13 @@ from typing import Any, Awaitable, Callable
 
 import httpx
 
+from broker_gateway.cp.recorder import CPRecorder
 from broker_gateway.throttle.manager import ThrottleManager
 
 
 _DEFAULT_BASE_URL = "http://cpgateway:5000/v1/api"
 _DEFAULT_TIMEOUT_S = 10.0
+_RECORD_DIR_ENV = "BG_CP_RECORD_DIR"
 
 
 PacingHook = Callable[[str, str], Awaitable[None]]
@@ -50,12 +58,22 @@ class CPGatewayClient:
         pacing_hook: PacingHook | None = None,
         throttle: ThrottleManager | None = None,
         http_client: httpx.AsyncClient | None = None,
+        recorder: CPRecorder | None = None,
     ) -> None:
         self.base_url = (base_url or os.environ.get("BG_CP_BASE_URL") or _DEFAULT_BASE_URL).rstrip("/")
         self._pacing = pacing_hook or _noop_pacing
         self._throttle = throttle
         self._owns_client = http_client is None
         self._client = http_client or httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
+
+        # Recorder-Aktivierung: explizit injiziert > ENV > nichts.
+        if recorder is None and self._owns_client:
+            record_dir = os.environ.get(_RECORD_DIR_ENV)
+            if record_dir:
+                recorder = CPRecorder(record_dir)
+        self._recorder = recorder
+        if self._recorder is not None:
+            self._recorder.install_into(self._client)
 
     async def aclose(self) -> None:
         if self._owns_client:
