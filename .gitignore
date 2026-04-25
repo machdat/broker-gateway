@@ -72,8 +72,12 @@ secrets/
 data/
 logs/
 
-# IBKR CP Gateway runtime artifacts (downloaded ZIP, session cookies, logs)
-cpgateway/clientportal.gw/
-cpgateway/logs/
-cpgateway/sso/
-cpgateway/*.zip
+# IBKR CP Gateway build inputs - Tarball wird separat von IBKR bezogen,
+# nie eingecheckt. SHA256-Pruefsumme (clientportal.gw.tar.gz.sha256) wird
+# committet, der Tarball selbst und ein optional lokal entpacktes
+# Verzeichnis bleiben aussen vor.
+ops/cpgateway/clientportal.gw.tar.gz
+ops/cpgateway/clientportal.gw/
+
+# CP Gateway runtime artifacts (compose-Volume-Mount: Logs, Session-Cookies)
+var/cpgateway/

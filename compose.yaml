@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:1.0.0
+    image: broker-gateway:1.0.1
     container_name: broker-gateway
     restart: unless-stopped
     # Extern 4000 (Default laut API-Draft 1.1), intern 8000 (FastAPI/Dockerfile-CMD).
@@ -13,15 +13,33 @@ services:
     ports:
       - "4000:8000"
     depends_on:
-      - cpgateway
+      cpgateway:
+        condition: service_healthy
 
-  # Platzhalter-Container fuer das IBKR Client Portal Gateway.
-  # Die echte CP-Gateway-Integration (Download, Konfiguration, TLS, Reauth)
-  # erfolgt in Karte AP-01-04 ("CP-Gateway-Adapter mit Auth-Lifecycle").
-  # Bis dahin laeuft hier nur ein Idle-Process, damit depends_on aufloest
-  # und der Compose-Stack ohne externe Secrets startet.
+  # IBKR Client Portal Gateway als interner Service. Nur intern im Compose-
+  # Netzwerk erreichbar (kein published port) - der gateway-Service spricht
+  # ueber http://cpgateway:5000, externer Zugriff ausschliesslich ueber
+  # SSH-Reverse-Tunnel fuer den Browser-2FA-Login (siehe
+  # docs/runbooks/cpgateway-login.md).
   cpgateway:
-    image: eclipse-temurin:21-jre-noble
+    build:
+      context: ops/cpgateway
+      dockerfile: ../../Dockerfile.cpgateway
+    image: broker-cpgateway:1.0.1
     container_name: broker-cpgateway
     restart: unless-stopped
-    command: ["tail", "-f", "/dev/null"]
+    volumes:
+      # CP-Gateway-Logs persistieren - bei Container-Restart bleiben sie
+      # erhalten und sind ohne docker exec einsehbar.
+      - ./var/cpgateway/logs:/opt/clientportal.gw/logs
+    healthcheck:
+      # 401 unauth ist erwartet, solange kein Browser-Login erfolgte -
+      # zeigt aber, dass der HTTP-Listener up ist. Erst nach erfolgreichem
+      # Login liefert der Endpunkt 200.
+      test:
+        - "CMD-SHELL"
+        - "curl -sS -o /dev/null -w '%{http_code}' http://localhost:5000/v1/api/one/user | grep -E '^(200|401)$' >/dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s

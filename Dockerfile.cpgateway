@@ -1,0 +1,39 @@
+# IBKR Client Portal Gateway als interner Service des broker-gateway-Stacks.
+#
+# Der Tarball clientportal.gw.tar.gz wird separat von IBKR bezogen und liegt
+# neben diesem Dockerfile im Build-Context (ops/cpgateway/). Er ist
+# .gitignored und wird nicht eingecheckt — siehe ops/cpgateway/README.md.
+FROM eclipse-temurin:21-jre-noble
+
+# Pfad zum IBKR-Tarball, relativ zum Build-Context (ops/cpgateway/).
+# Override per --build-arg moeglich, falls eine alternative Kopie genutzt
+# werden soll (z.B. ein gepinntes Archiv aus einem internen Mirror).
+ARG CPGW_TARBALL=clientportal.gw.tar.gz
+
+# curl wird vom compose-Healthcheck gegen http://localhost:5000/v1/api/one/user
+# gebraucht. tar + sha256sum sind im Base-Image bereits vorhanden.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/clientportal.gw
+
+# Tarball validieren, entpacken, conf.yaml ueberschreiben. SHA256-Check ist
+# strikt: schlaegt er fehl, scheitert der Build (kein --skip).
+COPY ${CPGW_TARBALL} /tmp/clientportal.gw.tar.gz
+COPY clientportal.gw.tar.gz.sha256 /tmp/clientportal.gw.tar.gz.sha256
+RUN cd /tmp \
+    && sha256sum -c clientportal.gw.tar.gz.sha256 \
+    && tar -xzf /tmp/clientportal.gw.tar.gz -C /opt/clientportal.gw \
+    && rm /tmp/clientportal.gw.tar.gz /tmp/clientportal.gw.tar.gz.sha256
+
+COPY conf.yaml /opt/clientportal.gw/root/conf.yaml
+
+# Logs schreibt das CP-Gateway nach /opt/clientportal.gw/logs/. Dieses
+# Verzeichnis wird per compose.yaml als Volume nach ./var/cpgateway/logs
+# auf dem Host gemountet.
+RUN mkdir -p /opt/clientportal.gw/logs
+
+EXPOSE 5000
+
+CMD ["bin/run.sh", "root/conf.yaml"]

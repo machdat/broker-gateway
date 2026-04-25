@@ -9,7 +9,7 @@ Anweisungen für Claude Code in diesem Repository.
 - **KanPrompt-Projekt-ID:** `a6a45428-ac37-48f5-b295-d3ff26f31711`
 - **GitHub:** https://github.com/machdat/broker-gateway (public)
 - **Lokal:** `C:\Users\christian.mangold\git\broker-gateway`
-- **Session-Farbe:** green
+- **Session-Farbe:** yellow
 
 ## Verbindliche Regeln
 

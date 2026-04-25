@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** **v1.0.0 — erster vollständiger v1-Release.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0) und Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release. AP-01 (Foundation) abgeschlossen.
+**Status:** **v1.0.1 — Foundation komplett, AP-02 (Live-IBKR-Validierung) gestartet.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release und CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1). AP-01 (Foundation) abgeschlossen, AP-02 (Live-IBKR-Validierung) läuft.
 
 ## Lokal starten
 
@@ -144,10 +144,28 @@ curl http://localhost:4000/v1/health
 ```
 
 Der Stack besteht aus zwei Services: `gateway` (FastAPI-App) und `cpgateway`
-(IBKR Client Portal Gateway, in v0.1.0 noch Platzhalter — die echte
-Integration folgt in einer spaeteren Karte). Extern publiziert auf Port 4000
+(IBKR Client Portal Gateway, ab v1.0.1 scharfgeschaltet — Build aus
+`Dockerfile.cpgateway` mit Tarball aus `ops/cpgateway/clientportal.gw.tar.gz`,
+siehe Abschnitt **CP-Gateway live betreiben**). Extern publiziert auf Port 4000
 (intern 8000), passend zum geplanten Default `broker-gateway:4000` aus
-`docs/api/v1-draft.md` Section 1.1.
+`docs/api/v1-draft.md` Section 1.1. Der `cpgateway`-Service ist nicht extern
+publiziert; `gateway` wartet via `depends_on: condition: service_healthy` auf
+einen healthy CP-Gateway-Container.
+
+## CP-Gateway live betreiben
+
+Der IBKR Client Portal Gateway läuft als interner Container im Compose-Stack.
+Beim ersten Start ist eine manuelle Browser-Anmeldung mit 2FA (Konto
+**U25235077**) erforderlich; danach hält der `gateway`-Service die Session
+über den Tickle-Lifecycle warm.
+
+- **Setup-Anleitung:** `ops/cpgateway/README.md` (Tarball-Download, SHA256, Layout).
+- **Login-Runbook:** `docs/runbooks/cpgateway-login.md` (SSH-Tunnel, Browser-Login, Validierung).
+- **Troubleshooting:** `docs/runbooks/cpgateway-troubleshooting.md` (sechs typische Fehlerbilder mit Fix).
+
+Der Tarball `clientportal.gw.tar.gz` wird **nicht** versioniert. Eingecheckt
+wird ausschließlich die SHA256-Prüfsumme (`ops/cpgateway/clientportal.gw.tar.gz.sha256`),
+die im Image-Build strikt verifiziert wird.
 
 ## Warum dieser Service existiert
 
@@ -199,4 +217,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.0.0*
+*Version 1.0.1*

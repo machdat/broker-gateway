@@ -1,0 +1,29 @@
+# IBKR Client Portal Gateway Konfiguration fuer den broker-gateway-Stack.
+#
+# Diese Datei wird beim Container-Build nach
+# /opt/clientportal.gw/root/conf.yaml kopiert und ist die Single Source
+# of Truth fuer alle CP-Gateway-Konfigurationswerte. Keine konkurrierenden
+# Werte im Dockerfile.cpgateway oder in compose.yaml.
+#
+# Aenderungen hier erfordern einen Image-Rebuild:
+#   docker compose build cpgateway
+#   docker compose up -d cpgateway
+
+# Plain-HTTP-Listener auf 5000. Der Service ist ausschliesslich intern
+# im Compose-Netzwerk erreichbar; externer Zugriff (z.B. fuer den
+# Browser-2FA-Login) erfolgt ueber temporaere SSH-Reverse-Tunnels und
+# nicht ueber published ports.
+listenPort: 5000
+listenSsl: false
+
+# Proxy-Konfiguration: kein vorgelagerter Proxy. IBKR-Defaults beibehalten.
+proxyRemoteHost: 127.0.0.1
+proxyRemotePort: 5000
+
+# IP-Whitelist: alles erlauben, weil der Container ohnehin nur intern
+# erreichbar ist. Container-Netzwerk-Isolation ist die Sicherheitsschicht,
+# nicht diese Liste.
+ips:
+  allow:
+    - "*"
+  deny: []
