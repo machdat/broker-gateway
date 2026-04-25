@@ -127,7 +127,7 @@ def test_trades_returns_deterministic_list(cp_gateway_mock) -> None:
     with httpx.Client(base_url=cp_gateway_mock.base_url) as client:
         trades = client.get("/iserver/account/trades", params={"days": "3"}).json()
     assert len(trades) == 3
-    assert trades[0]["execution_id"] == "exec-0"
+    assert trades[0]["execution_id"] == "exec-000"
 
 
 def test_pacing_violation_after_n(cp_gateway_mock) -> None:

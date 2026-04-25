@@ -16,6 +16,7 @@ from broker_gateway.api.v1.orders import (
 )
 from broker_gateway.api.v1.portfolio import get_portfolio_service
 from broker_gateway.api.v1.quotes import get_quotes_service
+from broker_gateway.api.v1.trades import get_trades_service
 from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
@@ -25,6 +26,7 @@ from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
 from broker_gateway.cp.orders import OrdersService
 from broker_gateway.cp.portfolio import PortfolioService
 from broker_gateway.cp.quotes import QuotesService
+from broker_gateway.cp.trades import TradesService
 from broker_gateway.idempotency import IdempotencyStore
 from broker_gateway.streams.manager import (
     SubscriptionManager,
@@ -61,6 +63,7 @@ def create_app(
     portfolio_service: PortfolioService | None = None,
     orders_service: OrdersService | None = None,
     idempotency_store: IdempotencyStore | None = None,
+    trades_service: TradesService | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -83,6 +86,7 @@ def create_app(
             or subscription_manager is None
             or portfolio_service is None
             or orders_service is None
+            or trades_service is None
         ):
             if services_client is None:
                 services_client = CPGatewayClient()
@@ -119,6 +123,11 @@ def create_app(
         idem_store = (
             idempotency_store if idempotency_store is not None else IdempotencyStore()
         )
+        trd_service = (
+            trades_service
+            if trades_service is not None
+            else TradesService(cast(CPGatewayClient, services_client))
+        )
 
         app.state.instruments_service = inst_service
         app.state.quotes_service = qts_service
@@ -126,6 +135,7 @@ def create_app(
         app.state.portfolio_service = pf_service
         app.state.orders_service = ord_service
         app.state.idempotency_store = idem_store
+        app.state.trades_service = trd_service
         app.dependency_overrides[get_instruments_service] = (
             lambda: cast(InstrumentsService, app.state.instruments_service)
         )
@@ -146,6 +156,9 @@ def create_app(
         )
         app.dependency_overrides[get_orders_portfolio_invalidator] = (
             lambda: cast(PortfolioService, app.state.portfolio_service)
+        )
+        app.dependency_overrides[get_trades_service] = (
+            lambda: cast(TradesService, app.state.trades_service)
         )
 
         await cp_lifecycle.start()

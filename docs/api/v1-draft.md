@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.9.0)
+**Stand:** 2026-04-25 (Service-Version 0.10.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.9.0)
+### Implementation Status (Service-Version 0.10.0)
 
 | Section | Implementiert |
 |---|---|
@@ -29,10 +29,12 @@
 | 7.3 Cancel (`DELETE /v1/orders/{order_id}`) mit Idempotency-Key | ✅ in v0.9.0 |
 | Idempotency-Cache (`Idempotency-Key` -> 200-Replay) | ✅ in v0.9.0 |
 | 7.4 What-If (Preview) | ⏳ Folgekarte |
+| 8.1 Trade-Historie (`GET /v1/trades`) | ✅ in v0.10.0 (vereinfachter Body, siehe Section 8.1) |
+| 8.2 Aggregates (`GET /v1/trades/aggregates?metric=commissions_mtd`) | ✅ in v0.10.0 |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.9.0 ist `version` die Service-Version `0.9.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.10.0 ist `version` die Service-Version `0.10.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -745,10 +747,26 @@ Response 200:
 
 ## 8. Trades
 
+### 8.1 Trade-Historie (implementiert in v0.10.0)
+
 ```
-GET /v1/trades?from=2026-04-01&to=2026-04-24&limit=200
-Authorization: Bearer <token (trades:read)>
+GET /v1/trades?from=2026-04-01&to=2026-04-25&account_id=U25235077
+Authorization: Bearer <token (portfolio:read)>
 ```
+
+Query-Parameter:
+
+| Parameter | Default | Wirkung |
+|---|---|---|
+| `from` | `today - 7d` | Startdatum (inklusive) |
+| `to` | `today` | Enddatum (inklusive) |
+| `account_id` | `null` | Optionaler Filter; Trades aus mehreren Accounts werden sonst zusammengefuegt |
+
+Constraints (CP-Gateway-bedingt):
+
+- Maximaler Lookback: **30 Tage** (`from` darf nicht weiter als 30 Tage vor `today` liegen → 400).
+- `to >= from`, sonst 400.
+- Der Service uebersetzt das Window in den CP-Gateway-Parameter `days = today - from + 1` und filtert clientseitig nach `to`.
 
 Response 200:
 
@@ -756,28 +774,60 @@ Response 200:
 {
   "items": [
     {
-      "execution_id": "00012978.69e8f717.01.01",
-      "order_id": "ord_abc123",
-      "broker_execution_id": "00012978.69e8f717.01.01",
+      "execution_id": "exec-000",
+      "order_id": "ord-000",
+      "account_id": "U25235077",
       "conid": 265598,
       "symbol": "AAPL",
       "side": "BUY",
-      "quantity": "0.9688",
-      "price":      { "value": "140.72", "currency": "USD" },
-      "net_amount": { "value": "136.33", "currency": "USD" },
-      "commission": { "value": "0.00", "currency": "USD" },
-      "executed_at": "2026-04-22T14:05:52Z"
+      "quantity": "1",
+      "price":      { "value": "150.00", "currency": "USD" },
+      "net_amount": { "value": "150.00", "currency": "USD" },
+      "commission": { "value": "1.50",   "currency": "USD" },
+      "executed_at": "2026-04-25T10:00:00Z",
+      "currency_assumed": false
     }
   ],
-  "summary": {
-    "trade_count": 70,
-    "commissions_total_by_currency": [
-      { "currency": "USD", "value": "24.75" }
-    ]
-  },
-  "next_cursor": null
+  "period_from": "2026-04-01",
+  "period_to":   "2026-04-25",
+  "trade_count": 25
 }
 ```
+
+`currency_assumed: true` markiert einen Trade, dessen Currency-Information beim CP-Gateway gefehlt hat und den der Service als `USD` annimmt. Caller koennen das auswerten, um Multi-Currency-Verteilungen kritisch zu pruefen.
+
+### 8.2 Aggregates (implementiert in v0.10.0)
+
+Aggregations-Layer fuer haeufige Reports - PSM ruft hier gegen `/aggregates`, statt selbst Trade-Listen aufzusummieren.
+
+```
+GET /v1/trades/aggregates?metric=commissions_mtd&account_id=U25235077
+Authorization: Bearer <token (portfolio:read)>
+```
+
+`metric` ist ein Whitelist-Wert. In v0.10.0 unterstuetzt:
+
+| Metrik | Bedeutung |
+|---|---|
+| `commissions_mtd` | Summe `commission` aller Trades vom Monatsanfang (UTC) bis heute. |
+
+Response 200:
+
+```json
+{
+  "metric": "commissions_mtd",
+  "period_from": "2026-04-01",
+  "period_to":   "2026-04-25",
+  "account_id":  "U25235077",
+  "value":       { "value": "37.50", "currency": "USD" },
+  "trade_count": 25,
+  "currency_assumption": null
+}
+```
+
+`currency_assumption` ist `null`, wenn das CP-Gateway fuer alle aggregierten Trades eine explizite Commission-Currency geliefert hat. Sonst trägt das Feld den angenommenen Wert (Default `USD`) und der Caller weiss, dass Trades ohne Currency-Information mitsummiert wurden.
+
+**Multi-Currency-Verhalten:** Liegen Commissions in mehreren Waehrungen vor, summiert das Aggregat nur die Trades in der erstgesehenen Currency. Multi-Currency-Aufteilung ist Folgekarte.
 
 ---
 

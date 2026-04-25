@@ -67,6 +67,9 @@ class MockCPGateway:
         # Tests setzen das beim Bedarf, Default ist leer (= sofort
         # echte Order).
         self.reply_warnings: list[dict[str, Any]] = list(reply_warnings or [])
+        # Wenn True, liefert _h_trades Trades ohne `currency`-Feld - testet
+        # die Currency-Assumption-Logik in TradesService.
+        self.omit_trade_currency: bool = False
         # Sequenz der unbestaetigten Warnings pro Order-Place-Aufruf:
         # mock fuegt sie in dieser Reihenfolge ein.
         self._pending_replies: dict[str, dict[str, Any]] = {}
@@ -412,21 +415,34 @@ class MockCPGateway:
         if (resp := self._pre()) is not None:
             return resp
         days = int(request.url.params.get("days", "1") or "1")
-        return httpx.Response(
-            200,
-            json=[
-                {
-                    "execution_id": f"exec-{i}",
-                    "symbol": "AAPL",
-                    "conid": 265598,
-                    "side": "B",
-                    "size": 1,
-                    "price": 150.0,
-                    "trade_time": f"2026-04-{20 + i:02d} 10:00:00",
-                }
-                for i in range(min(max(days, 1), 3))
-            ],
-        )
+        days = max(1, min(days, 30))
+        # Deterministische Mock-Liste: pro Tag ein Trade, Commission 1.50 USD
+        # mit explizitem currency-Feld. days bestimmt, wie weit die Liste
+        # zurueckreicht.
+        # Ankerdatum 2026-04-25 entspricht today im Test - so faellt Trade i=0
+        # auf 2026-04-25, i=1 auf 2026-04-24 usw. (immer im April -> selbes
+        # Monat, also alle MTD).
+        trades: list[dict[str, Any]] = []
+        for i in range(days):
+            day = max(1, 25 - i)
+            entry = {
+                "execution_id": f"exec-{i:03d}",
+                "order_id": f"ord-{i:03d}",
+                "account_id": "U25235077",
+                "symbol": "AAPL",
+                "conid": 265598,
+                "side": "BUY" if i % 2 == 0 else "SELL",
+                "size": "1",
+                "price": "150.00",
+                "net_amount": "150.00",
+                "commission": "1.50",
+                "currency": "USD",
+                "trade_time": f"2026-04-{day:02d} 10:00:00",
+            }
+            if self.omit_trade_currency:
+                entry.pop("currency", None)
+            trades.append(entry)
+        return httpx.Response(200, json=trades)
 
     # ---- Registrierung ----
 

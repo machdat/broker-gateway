@@ -25,6 +25,7 @@ from broker_gateway.cp.quotes import (
     QuotesService,
     resolve_fields,
 )
+from broker_gateway.cp.trades import Trade, TradesAggregate, TradesService
 
 __all__ = [
     "CPGatewayClient",
@@ -45,4 +46,7 @@ __all__ = [
     "Quote",
     "QuotesService",
     "resolve_fields",
+    "Trade",
+    "TradesAggregate",
+    "TradesService",
 ]
