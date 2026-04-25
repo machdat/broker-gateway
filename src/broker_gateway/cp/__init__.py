@@ -11,6 +11,12 @@ from broker_gateway.cp.lifecycle import (
     LifecycleSnapshot,
     require_session_ok,
 )
+from broker_gateway.cp.quotes import (
+    FIELD_ALIASES,
+    Quote,
+    QuotesService,
+    resolve_fields,
+)
 
 __all__ = [
     "CPGatewayClient",
@@ -21,4 +27,8 @@ __all__ = [
     "AuthStatus",
     "LifecycleSnapshot",
     "require_session_ok",
+    "FIELD_ALIASES",
+    "Quote",
+    "QuotesService",
+    "resolve_fields",
 ]

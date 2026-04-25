@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.5.0)
+**Stand:** 2026-04-25 (Service-Version 0.6.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.5.0)
+### Implementation Status (Service-Version 0.6.0)
 
 | Section | Implementiert |
 |---|---|
@@ -17,10 +17,12 @@
 | Auth-Lifecycle (Tickle + Reauth + 503-Guard) | ✅ in v0.4.0 |
 | 4.1 Search (`GET /v1/instruments/search`) | ✅ in v0.5.0 (vereinfachter Body, siehe Section 4.1) |
 | 4.2 Detail (`GET /v1/instruments/{conid}`) | ✅ in v0.5.0 (vereinfachter Body, siehe Section 4.2) |
+| 5.1 Quotes-Snapshot (`GET /v1/quotes/snapshot`) | ✅ in v0.6.0 (vereinfachter Body, siehe Section 5.1) |
+| Availability-Normalisierung 6509 → realtime/delayed/frozen | ✅ in v0.6.0 |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.5.0 ist `version` die Service-Version `0.5.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.6.0 ist `version` die Service-Version `0.6.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -351,46 +353,59 @@ Response 200 (v0.5.0):
 ### 5.1 Snapshot
 
 ```
-GET /v1/quotes/snapshot?conids=265598,14204&fields=last,bid,ask,volume,change_pct
+GET /v1/quotes/snapshot?conids=265598,272093[&fields=last,bid,ask,availability]
 Authorization: Bearer <token (quotes:read)>
 ```
 
-`fields` ist eine Komma-Liste aus normalisierten Namen. Mapping zu IBKR-Field-IDs ist intern.
+`fields` ist eine Komma-Liste aus normalisierten Namen. Mapping zu IBKR-Field-IDs ist intern (Single Source of Truth: `broker_gateway.cp.quotes.FIELD_ALIASES`).
 
-Response 200:
+| Alias | IBKR-Code | Bedeutung |
+|---|---|---|
+| `last` | `31` | Letzter gehandelter Preis |
+| `bid` | `84` | Aktuelles Bid |
+| `ask` | `86` | Aktuelles Ask |
+| `volume` | `7762` | Tagesvolumen |
+| `change_pct` | `83` | Änderung in % |
+| `high` | `70` | Tageshoch |
+| `low` | `71` | Tagestief |
+| `availability` | `6509` | Real-/Delayed-/Frozen-Code (intern automatisch normalisiert) |
+
+Default-Felder (wenn `fields` weggelassen): `last,bid,ask,availability`. `availability` (6509) wird **immer** mit angefordert, auch wenn es nicht in `fields` steht - Consumer brauchen die Information, ob sie Realtime- oder Delayed-Daten lesen.
+
+**Constraint:** Maximal 5 conids pro Snapshot-Request (CP-Gateway-Limit). Bei mehr → `422 Unprocessable Content`.
+
+Response 200 (v0.6.0 - Liste statt Wrapper, vereinfachte Felder):
 
 ```json
-{
-  "items": [
-    {
-      "conid": 265598,
-      "symbol": "AAPL",
-      "availability": "delayed",
-      "availability_raw": "DPB",
-      "updated_at": "2026-04-24T17:30:00.123Z",
-      "last":         { "value": "274.06", "currency": "USD" },
-      "bid":          { "value": "274.05", "currency": "USD" },
-      "ask":          { "value": "274.07", "currency": "USD" },
-      "volume":       2080500000,
-      "change_pct":   0.33
-    },
-    {
-      "conid": 14204,
-      "symbol": "SAP",
-      "availability": "realtime",
-      "availability_raw": "RPB",
-      "updated_at": "2026-04-24T17:30:00.480Z",
-      "last":         { "value": "140.96", "currency": "EUR" },
-      "bid":          { "value": "140.56", "currency": "EUR" },
-      "ask":          { "value": "140.96", "currency": "EUR" },
-      "volume":       7430000,
-      "change_pct":   -5.91
-    }
-  ]
-}
+[
+  {
+    "conid": 265598,
+    "last": "150.50",
+    "bid": "150.45",
+    "ask": "150.55",
+    "volume": null,
+    "change_pct": null,
+    "high": null,
+    "low": null,
+    "availability": "delayed",
+    "availability_raw": "DPB",
+    "updated_at": "2026-04-25T11:30:14.481Z"
+  }
+]
 ```
 
-**Server-internals:** Snapshot-Endpoint primt selbst (zwei IBKR-Calls), Consumer sieht immer Daten oder Error.
+| Feld | Bedeutung |
+|---|---|
+| `last`/`bid`/`ask`/... | als String, um Float-Rounding zu vermeiden; `null` falls IBKR den Wert (noch) nicht geliefert hat |
+| `availability` | normalisiert auf `realtime` / `delayed` / `frozen` / `null` (Single Source of Truth: `broker_gateway.availability.map_availability`) |
+| `availability_raw` | Originaler IBKR-6509-Code (z.B. `DPB`) - bleibt erhalten, falls Consumer ihn ausnahmsweise braucht |
+| `updated_at` | Aus `_updated`-Millisekunden-Timestamp des CP-Gateways, in UTC |
+
+#### First-Call-Prime (intern)
+
+CP-Gateway-Quirk (Anhang 1.5): der erste Snapshot-Call für eine neue conid liefert leere Felder - das `marketdata/snapshot`-Endpunkt primt CP-intern erst die Subscription. Erst der zweite Call hat die echten Werte.
+
+Der Service absorbiert das nach aussen: jeder `/v1/quotes/snapshot`-Aufruf macht intern **zwei** sequenzielle CP-Gateway-Calls (kurzer 300 ms-Delay dazwischen) und gibt nur das Second-Call-Ergebnis zurück. Consumer sieht immer Daten oder Error.
 
 ### 5.2 Stream (SSE)
 

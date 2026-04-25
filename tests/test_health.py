@@ -18,4 +18,4 @@ def test_health_returns_ok_and_version() -> None:
 def test_health_version_matches_package_version() -> None:
     response = client.get("/v1/health")
 
-    assert response.json()["version"] == "0.5.0"
+    assert response.json()["version"] == "0.6.0"

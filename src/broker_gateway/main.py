@@ -9,12 +9,14 @@ from fastapi import FastAPI
 from broker_gateway import __version__
 from broker_gateway.api.v1 import router as v1_router
 from broker_gateway.api.v1.instruments import get_instruments_service
+from broker_gateway.api.v1.quotes import get_quotes_service
 from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
 from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
+from broker_gateway.cp.quotes import QuotesService
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -41,6 +43,7 @@ def create_app(
     store: TokenStore | None = None,
     lifecycle: AuthLifecycle | None = None,
     instruments_service: InstrumentsService | None = None,
+    quotes_service: QuotesService | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -55,20 +58,36 @@ def create_app(
         app.state.cp_lifecycle = cp_lifecycle
         app.dependency_overrides[get_cp_lifecycle] = lambda: cast(AuthLifecycle, app.state.cp_lifecycle)
 
-        owns_instruments = instruments_service is None
-        if owns_instruments:
-            instruments_client = client if client is not None else CPGatewayClient()
-            inst_service = InstrumentsService(instruments_client)
-            app.state._owns_instruments_client = client is None
-            app.state._instruments_client = instruments_client
+        # Default-Client für Services, die keinen eigenen mitbringen.
+        services_client: CPGatewayClient | None = client
+        if instruments_service is None or quotes_service is None:
+            if services_client is None:
+                services_client = CPGatewayClient()
+                app.state._owns_services_client = True
+            else:
+                app.state._owns_services_client = False
         else:
-            inst_service = instruments_service
-            app.state._owns_instruments_client = False
-            app.state._instruments_client = None
+            app.state._owns_services_client = False
+        app.state._services_client = services_client
+
+        inst_service = (
+            instruments_service
+            if instruments_service is not None
+            else InstrumentsService(cast(CPGatewayClient, services_client))
+        )
+        qts_service = (
+            quotes_service
+            if quotes_service is not None
+            else QuotesService(cast(CPGatewayClient, services_client))
+        )
 
         app.state.instruments_service = inst_service
+        app.state.quotes_service = qts_service
         app.dependency_overrides[get_instruments_service] = (
             lambda: cast(InstrumentsService, app.state.instruments_service)
+        )
+        app.dependency_overrides[get_quotes_service] = (
+            lambda: cast(QuotesService, app.state.quotes_service)
         )
 
         await cp_lifecycle.start()
@@ -78,8 +97,8 @@ def create_app(
             await cp_lifecycle.stop()
             if client is not None:
                 await client.aclose()
-            if app.state._owns_instruments_client and app.state._instruments_client is not None:
-                await app.state._instruments_client.aclose()
+            if app.state._owns_services_client and app.state._services_client is not None:
+                await app.state._services_client.aclose()
 
     app = FastAPI(
         title="broker-gateway",
