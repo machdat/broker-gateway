@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.7.0)
+**Stand:** 2026-04-25 (Service-Version 0.8.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.7.0)
+### Implementation Status (Service-Version 0.8.0)
 
 | Section | Implementiert |
 |---|---|
@@ -20,10 +20,14 @@
 | 5.1 Quotes-Snapshot (`GET /v1/quotes/snapshot`) | ✅ in v0.6.0 (vereinfachter Body, siehe Section 5.1) |
 | Availability-Normalisierung 6509 → realtime/delayed/frozen | ✅ in v0.6.0 |
 | 5.2 Quotes-Stream (`GET /v1/quotes/stream`) | ✅ in v0.7.0 (Refcount + Fan-Out + 5-s-Cool-Down) |
+| 6.1 Portfolio-Summary (`GET /v1/portfolio/{accountId}`) | ✅ in v0.8.0 (Aggregat aus Positions + Ledger) |
+| 6.2 Positions (`GET /v1/portfolio/{accountId}/positions`) | ✅ in v0.8.0 |
+| 6.3 Ledger (`GET /v1/portfolio/{accountId}/ledger`) | ✅ in v0.8.0 |
+| Money-Normalisierung (`{value, currency}` als Single Source of Truth) | ✅ in v0.8.0 |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.7.0 ist `version` die Service-Version `0.7.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.8.0 ist `version` die Service-Version `0.8.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -463,6 +467,12 @@ Beide Endpunkte nutzen dasselbe Field-Alias-Mapping und denselben Quote-Body. We
 
 ## 6. Portfolio
 
+Alle Endpunkte erfordern Scope `portfolio:read` und einen aktiven Auth-Lifecycle (`auth_status=ok`). Bei `auth_status in {auth_lost, cp_down}` antworten sie mit `503 Service Unavailable` + `Retry-After: 30` (Section 3.2).
+
+Antworten werden in einem **TTL-Cache (Default 30 s, ENV `BG_PORTFOLIO_TTL_S`)** gehalten. Das Order-Subsystem (Section 7) ruft `PortfolioService.invalidate(account_id)` nach erfolgreichem Place/Cancel auf, damit nachfolgende Reads einen frischen Stand liefern.
+
+Geldwerte folgen Section 1.9 (`{value, currency}` mit String-Value gegen Float-Drift). Single Source of Truth fuer die Normalisierung: `broker_gateway.money.normalize_money`.
+
 ### 6.1 Summary
 
 ```
@@ -470,18 +480,18 @@ GET /v1/portfolio/{accountId}
 Authorization: Bearer <token (portfolio:read)>
 ```
 
-Response 200:
+Aggregat ueber Positions + Ledger. `base_currency` ist die erste Ledger-Currency (typischerweise die Konto-Heimatwaehrung). `cash_total`, `positions_value` und `net_liquidation` werden ausschliesslich in `base_currency` aggregiert; Werte in anderen Waehrungen finden sich in Section 6.2/6.3.
+
+Response 200 (v0.8.0):
 
 ```json
 {
   "account_id": "U25235077",
-  "currency": "EUR",
-  "net_liquidation":  { "value": "9724.29", "currency": "EUR" },
-  "available_funds":  { "value": "179.54",  "currency": "EUR" },
-  "buying_power":     { "value": "179.54",  "currency": "EUR" },
-  "gross_position_value": { "value": "9544.75", "currency": "EUR" },
-  "leverage": 0.98,
-  "as_of": "2026-04-24T17:30:00Z"
+  "base_currency": "USD",
+  "cash_total":       { "value": "25000", "currency": "USD" },
+  "positions_value":  { "value": "3105.5", "currency": "USD" },
+  "net_liquidation":  { "value": "28105.5", "currency": "USD" },
+  "position_count": 2
 }
 ```
 
@@ -492,24 +502,22 @@ GET /v1/portfolio/{accountId}/positions
 Authorization: Bearer <token (portfolio:read)>
 ```
 
-Response 200:
+Response 200 (v0.8.0 - nackte Liste analog Sections 4.1/5.1):
 
 ```json
-{
-  "items": [
-    {
-      "conid": 265598,
-      "symbol": "AAPL",
-      "sec_type": "STK",
-      "quantity": "10.5",
-      "avg_cost":     { "value": "245.30", "currency": "USD" },
-      "market_value": { "value": "2877.63", "currency": "USD" },
-      "unrealized_pnl": { "value": "299.13", "currency": "USD" },
-      "as_of": "2026-04-24T17:30:00Z"
-    }
-  ]
-}
+[
+  {
+    "account_id": "U25235077",
+    "conid": 265598,
+    "quantity": "10",
+    "avg_cost":     { "value": "145.0", "currency": "USD" },
+    "market_price": { "value": "150.5", "currency": "USD" },
+    "market_value": { "value": "1505.0", "currency": "USD" }
+  }
+]
 ```
+
+`quantity` ist Decimal-String (Bruchstuecke moeglich). `market_value` wird vom CP-Gateway geliefert; fehlt es, leitet der Service es aus `quantity * market_price` ab. Schlaegt das fehl (z.B. fehlende Market-Daten), bleibt das Feld `null`.
 
 ### 6.3 Ledger
 
@@ -518,26 +526,38 @@ GET /v1/portfolio/{accountId}/ledger
 Authorization: Bearer <token (portfolio:read)>
 ```
 
-Response 200:
+Response 200 (v0.8.0):
 
 ```json
 {
-  "items": [
+  "account_id": "U25235077",
+  "entries": [
     {
       "currency": "USD",
-      "cash_balance": { "value": "-150.30", "currency": "USD" },
-      "settled_cash": { "value": "-150.30", "currency": "USD" },
-      "interest_accrued": { "value": "0.42", "currency": "USD" }
+      "cash_balance": { "value": "25000.0", "currency": "USD" },
+      "settled_cash": { "value": "25000.0", "currency": "USD" }
     },
     {
       "currency": "EUR",
-      "cash_balance": { "value": "329.84", "currency": "EUR" },
-      "settled_cash": { "value": "329.84", "currency": "EUR" },
-      "interest_accrued": { "value": "0.00", "currency": "EUR" }
+      "cash_balance": { "value": "5000.0", "currency": "EUR" },
+      "settled_cash": { "value": "5000.0", "currency": "EUR" }
     }
   ]
 }
 ```
+
+#### Cache-Invalidierung
+
+| Trigger | Wirkung |
+|---|---|
+| `BG_PORTFOLIO_TTL_S` Sekunden seit letztem Refresh | naechster Read schlaegt das CP-Gateway erneut |
+| `PortfolioService.invalidate(account_id)` (Order-Lifecycle, Karte 09) | summary/positions/ledger sofort weg, naechster Read holt frisch |
+
+#### ENV
+
+| Variable | Default | Wirkung |
+|---|---|---|
+| `BG_PORTFOLIO_TTL_S` | `30` | TTL des Portfolio-Caches in Sekunden |
 
 ---
 

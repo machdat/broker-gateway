@@ -11,6 +11,13 @@ from broker_gateway.cp.lifecycle import (
     LifecycleSnapshot,
     require_session_ok,
 )
+from broker_gateway.cp.portfolio import (
+    Ledger,
+    LedgerEntry,
+    PortfolioService,
+    PortfolioSummary,
+    Position,
+)
 from broker_gateway.cp.quotes import (
     FIELD_ALIASES,
     Quote,
@@ -27,6 +34,11 @@ __all__ = [
     "AuthStatus",
     "LifecycleSnapshot",
     "require_session_ok",
+    "Ledger",
+    "LedgerEntry",
+    "PortfolioService",
+    "PortfolioSummary",
+    "Position",
     "FIELD_ALIASES",
     "Quote",
     "QuotesService",
