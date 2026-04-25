@@ -39,6 +39,9 @@ SemVer in `pyproject.toml`.
 - `cp/lifecycle.py` Keep-Alive ueber `/tickle` — IBKR-Doku empfiehlt
   explizit `GET /sso/validate` jede Minute. Plus: 24h-Hard-Limit fuer
   Re-Auth, das vom Service nicht signalisiert wird.
+- `cp/lifecycle.py::reauthenticate` ohne `?force=true`. IBKR-Doku
+  erlaubt bei `competing: true` ein Force-Reclaim — broker-gateway als
+  dokumentierter Single-Owner sollte das nutzen koennen.
 - Snapshot-Prime-Verhalten: bei Polling kommen Werte sofort, kein Prime.
 
 ## [1.2.0] — 2026-04-25
