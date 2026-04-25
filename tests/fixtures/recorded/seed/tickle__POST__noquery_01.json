@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/tickle",
+    "query": {},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": {
+      "session": "mock-session-id",
+      "ssoExpires": 600000,
+      "collission": false,
+      "userId": 123456,
+      "iserver": {
+        "authStatus": {
+          "authenticated": true,
+          "connected": true,
+          "competing": false
+        }
+      }
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T00:00:00+00:00",
+  "normalized": false,
+  "source": "seed"
+}

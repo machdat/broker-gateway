@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/reauthenticate",
+    "query": {},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": {
+      "message": "triggered"
+    },
+    "body_text": null
+  },
+  "recorded_at": "<TIMESTAMP>",
+  "normalized": true,
+  "source": "seed"
+}

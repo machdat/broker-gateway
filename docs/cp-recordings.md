@@ -119,3 +119,72 @@ tests/fixtures/recorded/` muss leer sein. Sollte ein Geheimnis
 durchgerutscht sein, betroffene Datei loeschen und Recorder-Filter
 erweitern (`_REDACTED_HEADERS_LOWER` in
 `src/broker_gateway/cp/recorder.py`).
+
+## Replay-Modus (AP-02 #03)
+
+Die pytest-Mock-Fixture ``cp_gateway_mock`` (definiert in
+`tests/conftest.py`) nutzt seit Karte AP-02 #03 die Klasse
+``ReplayCPGatewayMock`` aus ``tests/cp_mock/replay.py``. Statische
+Endpunkt-Antworten werden ueber den Loader
+``tests/cp_mock/loader.py::load_recording`` aus dem Recording-Ordner
+geladen, statt im Code hartcodiert zu sein.
+
+### Suchreihenfolge
+
+```
+tests/fixtures/recorded/live/<sanitized_path>__<METHOD>__<qhash>_<NN>.json
+                              ^ Vorrang
+tests/fixtures/recorded/seed/<sanitized_path>__<METHOD>__<qhash>_<NN>.json
+                              ^ Fallback (handgeschriebener Default)
+```
+
+Sobald ein Endpunkt eine `live/`-Datei hat, ueberschreibt sie das
+seed-Pendant automatisch - es gibt keinen manuellen Override.
+
+### seed vs. live
+
+- **seed/** = handgeschrieben in diesem Repo. Reproduziert das
+  Verhalten, das die hartcodierten Mocks vor dem Refactoring lieferten.
+  Konkrete Werte (z.B. `session: "mock-session-id"`), `normalized: false`.
+  Wird mit jedem live-Recording schrittweise abgeloest.
+- **live/** = aus echtem CP-Gateway via ``scripts/recording_session.py``.
+  Wert-felder duerchlaufen ``normalize_response``, daher Platzhalter
+  fuer Timestamps/IDs. Authoritative Quelle.
+
+### Stateful-Ausnahme
+
+Endpunkte mit Laufzeit-State werden **nicht** aus Recordings geladen,
+sondern bleiben Code-generiert in ``ReplayCPGatewayMock``:
+
+| Endpunkt | Warum Code statt Recording |
+|----------|---------------------------|
+| `/iserver/marketdata/snapshot` | First-Call-Prime und variable conids/fields-Combos pro Test |
+| `/iserver/marketdata/{cid}/unsubscribe` | mutiert ``subscriptions``-Set |
+| `POST /iserver/account/{acct}/orders` | order_id aus Counter ``_next_order_id`` |
+| `POST /iserver/reply/{id}` | Reply-Confirmation-Loop ueber ``_pending_replies`` |
+| `GET /iserver/account/orders/{id}` | Lifecycle PendingSubmit -> Submitted -> Filled |
+| `DELETE /iserver/account/{acct}/order/{id}` | mutiert ``orders``-Dict |
+| `GET /iserver/account/trades` | dynamische ``days``-Schleife |
+
+In Karte AP-02 #04 / #05 werden diese Endpunkte durch Live-Recordings
+mit echten IBKR-Antworten ergaenzt; danach kann der Code Lifecycle und
+Counter zur Laufzeit aus Templates substituieren.
+
+### Loader-API in Tests
+
+```python
+from tests.cp_mock import load_recording, RecordingNotFoundError
+
+response = load_recording(
+    "/iserver/auth/status",
+    method="GET",
+    query=None,
+    call_index=1,
+)
+assert response["status_code"] == 200
+assert response["body_json"]["authenticated"] is True
+```
+
+`base_dir` kann ueberschrieben werden (in Tests fuer tmp_path-basierte
+Szenarien). Bei fehlendem Recording wird ``RecordingNotFoundError``
+geworfen - Tests duerfen das fangen, der Mock-Code soll es nicht.

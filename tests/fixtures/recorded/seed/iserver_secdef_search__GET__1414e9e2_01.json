@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/secdef/search",
+    "query": {"symbol": "MSFT"},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": [
+      {
+        "conid": 272093,
+        "symbol": "MSFT",
+        "companyName": "MICROSOFT CORP",
+        "description": "USD",
+        "secType": "STK"
+      }
+    ],
+    "body_text": null
+  },
+  "recorded_at": "<TIMESTAMP>",
+  "normalized": true,
+  "source": "seed"
+}

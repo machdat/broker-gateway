@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/auth/status",
+    "query": {},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": {
+      "authenticated": true,
+      "competing": false,
+      "connected": true,
+      "MAC": "MOCKED",
+      "fail": ""
+    },
+    "body_text": null
+  },
+  "recorded_at": "<TIMESTAMP>",
+  "normalized": true,
+  "source": "seed"
+}

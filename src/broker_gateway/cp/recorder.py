@@ -134,20 +134,35 @@ class CPRecorder:
         return self.record_dir / f"{sanitized}__{method}__{qhash}_{n:02d}.json"
 
 
-def _sanitize_path(path: str) -> str:
+def sanitize_path(path: str) -> str:
+    """Wandelt einen URL-Pfad in einen dateinamen-tauglichen Slug.
+
+    Public, weil der Replay-Loader (tests/cp_mock/loader.py) dieselbe
+    Konvention braucht, um aufgezeichnete Dateien wiederzufinden.
+    """
     cleaned = re.sub(r"[^A-Za-z0-9]+", "_", path.strip("/"))
     return cleaned or "root"
+
+
+def query_hash(query: dict[str, str]) -> str:
+    """Stabiler 8-Hex-Slug ueber sortierte Query-Parameter.
+
+    Public aus demselben Grund wie :func:`sanitize_path`.
+    """
+    if not query:
+        return "noquery"
+    sorted_query = {k: query[k] for k in sorted(query.keys())}
+    serialized = "&".join(f"{k}={v}" for k, v in sorted_query.items())
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:8]
 
 
 def _query_dict(url: httpx.URL) -> dict[str, str]:
     return {key: url.params[key] for key in sorted(url.params.keys())}
 
 
-def _query_hash(query: dict[str, str]) -> str:
-    if not query:
-        return "noquery"
-    serialized = "&".join(f"{k}={v}" for k, v in query.items())
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:8]
+# Backward-kompatible Aliase fuer recorder-internen Code.
+_sanitize_path = sanitize_path
+_query_hash = query_hash
 
 
 def _filter_headers(headers: httpx.Headers) -> dict[str, str]:

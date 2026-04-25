@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/account/U25235077/positions",
+    "query": {},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": [
+      {"acctId": "U25235077", "conid": 265598, "position": 10, "mktPrice": 150.50, "mktValue": 1505.0, "currency": "USD"},
+      {"acctId": "U25235077", "conid": 272093, "position": 5,  "mktPrice": 320.10, "mktValue": 1600.5, "currency": "USD"}
+    ],
+    "body_text": null
+  },
+  "recorded_at": "<TIMESTAMP>",
+  "normalized": true,
+  "source": "seed"
+}

@@ -145,3 +145,84 @@ def test_reauthenticate_returns_triggered(cp_gateway_mock) -> None:
         response = client.post("/reauthenticate")
     assert response.status_code == 200
     assert response.json() == {"message": "triggered"}
+
+
+# ---- Replay-Loader-Tests (AP-02 #03) ----
+
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from tests.cp_mock import RecordingNotFoundError, load_recording  # noqa: E402
+
+
+def _write_recording(path: Path, body: dict, status_code: int = 200) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    envelope = {
+        "request": {"method": "GET", "url": "/x", "query": {}, "headers": {}, "body_json": None, "body_text": None},
+        "response": {"status_code": status_code, "headers": {}, "body_json": body, "body_text": None},
+        "recorded_at": "2026-04-25T00:00:00+00:00",
+        "normalized": False,
+        "source": "test",
+    }
+    path.write_text(json.dumps(envelope), encoding="utf-8")
+
+
+def test_replay_loader_picks_correct_recording_from_seed() -> None:
+    """Default-Loader liefert das mitgelieferte seed-Recording fuer
+    /iserver/auth/status."""
+    response = load_recording("/iserver/auth/status", method="GET")
+    assert response["status_code"] == 200
+    assert response["body_json"]["authenticated"] is True
+    assert response["body_json"]["MAC"] == "MOCKED"
+
+
+def test_replay_loader_first_call_prime(tmp_path: Path) -> None:
+    """Zwei aufeinanderfolgende Aufrufe (call_index 1 und 2) liefern
+    _01.json bzw. _02.json - das Suffix-Schema des Recorders."""
+    seed = tmp_path / "seed"
+    _write_recording(
+        seed / "iserver_marketdata_snapshot__GET__noquery_01.json",
+        body=[{"conid": 265598, "_updated": 1}],
+    )
+    _write_recording(
+        seed / "iserver_marketdata_snapshot__GET__noquery_02.json",
+        body=[{"conid": 265598, "_updated": 2, "31": "150.50"}],
+    )
+
+    first = load_recording(
+        "/iserver/marketdata/snapshot", method="GET", call_index=1, base_dir=tmp_path
+    )
+    second = load_recording(
+        "/iserver/marketdata/snapshot", method="GET", call_index=2, base_dir=tmp_path
+    )
+    assert "31" not in first["body_json"][0], "first call should be the prime (no value)"
+    assert second["body_json"][0]["31"] == "150.50"
+
+
+def test_replay_loader_falls_back_to_seed_when_no_live_recording(tmp_path: Path) -> None:
+    """Sobald ein live-Recording existiert, hat es Vorrang. Wenn nicht,
+    wird das seed-File genommen."""
+    seed = tmp_path / "seed"
+    _write_recording(
+        seed / "iserver_auth_status__GET__noquery_01.json",
+        body={"authenticated": True, "source": "from-seed"},
+    )
+
+    # Erst nur seed -> seed-Body kommt zurueck.
+    response = load_recording("/iserver/auth/status", method="GET", base_dir=tmp_path)
+    assert response["body_json"]["source"] == "from-seed"
+
+    # Jetzt zusaetzlich live -> live ueberschreibt seed.
+    live = tmp_path / "live"
+    _write_recording(
+        live / "iserver_auth_status__GET__noquery_01.json",
+        body={"authenticated": True, "source": "from-live"},
+    )
+    response = load_recording("/iserver/auth/status", method="GET", base_dir=tmp_path)
+    assert response["body_json"]["source"] == "from-live"
+
+
+def test_replay_loader_raises_when_no_recording_found(tmp_path: Path) -> None:
+    """Sauberer Fehler wenn weder live noch seed das Recording haben."""
+    with pytest.raises(RecordingNotFoundError):
+        load_recording("/nicht/vorhanden", method="GET", base_dir=tmp_path)

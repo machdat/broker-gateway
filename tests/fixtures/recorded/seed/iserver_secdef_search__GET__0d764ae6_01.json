@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/secdef/search",
+    "query": {"symbol": "AAPL"},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": [
+      {
+        "conid": 265598,
+        "symbol": "AAPL",
+        "companyName": "APPLE INC",
+        "description": "USD",
+        "secType": "STK"
+      }
+    ],
+    "body_text": null
+  },
+  "recorded_at": "<TIMESTAMP>",
+  "normalized": true,
+  "source": "seed"
+}
