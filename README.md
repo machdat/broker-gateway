@@ -163,6 +163,14 @@ Beim ersten Start ist eine manuelle Browser-Anmeldung mit 2FA (Konto
 - **Login-Runbook:** `docs/runbooks/cpgateway-login.md` (SSH-Tunnel, Browser-Login, Validierung).
 - **Troubleshooting:** `docs/runbooks/cpgateway-troubleshooting.md` (sechs typische Fehlerbilder mit Fix).
 
+Der `cpgateway`-Container läuft ab v1.0.3 als non-root-User `cpgw`. UID/GID
+werden über die Build-Args `CPGW_UID`/`CPGW_GID` (Default 1000) gesetzt und
+in `compose.yaml` aus den gleichnamigen Environment-Variablen / `.env`-Werten
+gelesen. Auf einem Host, dessen Betriebs-User eine andere UID hat als 1000,
+müssen die Werte in `.env` gepflegt werden — sonst gehören die Log-Dateien
+unter `var/cpgateway/logs/` einem im Host nicht existierenden User. Prüfen mit
+`id cma`.
+
 Der Tarball `clientportal.gw.tar.gz` wird **nicht** versioniert. Eingecheckt
 wird ausschließlich die SHA256-Prüfsumme (`ops/cpgateway/clientportal.gw.tar.gz.sha256`),
 die im Image-Build strikt verifiziert wird.
@@ -217,4 +225,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.0.2*
+*Version 1.0.3*

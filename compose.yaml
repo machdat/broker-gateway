@@ -30,7 +30,14 @@ services:
     build:
       context: ops/cpgateway
       dockerfile: ../../Dockerfile.cpgateway
-    image: broker-cpgateway:1.0.1
+      args:
+        # Match an den Host-User auf cma-pi-1 (id cma -> 1000:1000). Damit
+        # landen die ueber das logs-Volume rausgereichten Log-Dateien als
+        # cma:cma auf dem Host und sind ohne sudo lesbar/rotierbar. Override
+        # per .env (CPGW_UID, CPGW_GID), wenn der Ziel-Host eine andere UID hat.
+        CPGW_UID: ${CPGW_UID:-1000}
+        CPGW_GID: ${CPGW_GID:-1000}
+    image: broker-cpgateway:1.0.3
     container_name: broker-cpgateway
     restart: unless-stopped
     volumes:

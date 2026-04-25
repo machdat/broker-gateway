@@ -161,29 +161,42 @@ docker compose up -d
 
 ---
 
-## 6. Logs sind nicht persistent / leer
+## 6. Log-Dateien gehoeren root statt cma (UID-Mismatch)
 
-**Symptom:** Verzeichnis `var/cpgateway/logs/` auf dem Host bleibt leer,
-obwohl der Container laeuft.
+**Symptom:** Log-Dateien in `var/cpgateway/logs/` auf dem Host gehoeren
+`root:root` (oder einem anderen unerwarteten User), obwohl der Container
+laeuft. `cma` kann lesen, aber `rm`/`mv`/`logrotate` schlaegt fehl.
 
-**Ursache:** Volume-Mount-Pfad falsch oder Permissions-Problem auf dem
-Host-Verzeichnis.
+**Ursache:** UID/GID, mit der das Image gebaut wurde, passt nicht zum
+Host-User. Ab v1.0.3 laeuft der Container als `cpgw` mit UID/GID, die
+ueber Build-Args `CPGW_UID`/`CPGW_GID` (Default 1000) gesteuert werden.
+Wenn `id cma` auf dem Ziel-Host eine andere UID liefert als beim Build
+verwendet wurde, schreibt der Container Logs mit der internen UID -
+fuer den Host wirkt das wie ein fremder Owner.
 
 **Diagnose:**
 ```bash
-docker compose exec cpgateway ls -la /opt/clientportal.gw/logs
-ls -la var/cpgateway/logs
+id cma                           # UID/GID des Host-Users
+ls -n var/cpgateway/logs         # numerische UID/GID der Log-Dateien
+docker compose exec cpgateway id # UID/GID des Container-Prozesses
 ```
 
-Wenn der Container-interne Pfad Inhalt hat, der Host-Pfad aber leer:
-das Volume-Mapping greift nicht.
+Stimmen UID und GID zwischen Host-User und Container-Prozess nicht
+ueberein, ist das die Ursache.
 
 **Loesung:**
 
-- Pfad in `compose.yaml` pruefen: `./var/cpgateway/logs:/opt/clientportal.gw/logs`. Der erste Teil ist relativ zum compose.yaml-Verzeichnis.
-- Sicherstellen, dass der Container-Prozess (User innerhalb des
-  eclipse-temurin-Image) Schreibrechte auf `/opt/clientportal.gw/logs`
-  hat. Bei Bedarf im `Dockerfile.cpgateway` ein
-  `RUN chmod 777 /opt/clientportal.gw/logs` ergaenzen — Dev-Setup,
-  fuer Production strenger.
-- Nach Anpassung: `docker compose down && docker compose up -d`.
+1. UID/GID des Host-Users ermitteln: `id cma` -> z.B. `uid=1001 gid=1001`.
+2. Werte in `.env` (im Repo-Root) eintragen:
+   ```
+   CPGW_UID=1001
+   CPGW_GID=1001
+   ```
+3. Image neu bauen: `docker compose build cpgateway`.
+4. Bestehende Logs einmalig auf Host-User ueberfuehren:
+   `sudo chown -R cma:cma var/cpgateway/`.
+5. Stack neu starten: `docker compose up -d cpgateway`.
+
+Default 1000 deckt den Standard-Pi-Setup ab, daher ist auf cma-pi-1
+kein Override noetig. Aelteres `chmod 777`-Workaround (vor v1.0.3)
+ist obsolet und sollte aus lokalen Setups entfernt werden.
