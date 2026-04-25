@@ -4,6 +4,47 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.6.0] — 2026-04-26
+
+### Hinzugefuegt
+- Drift-Detection: `scripts/check_mock_drift.py` vergleicht
+  Live-CP-Gateway-Antworten gegen `tests/fixtures/recorded/live/` und
+  schreibt `reports/drift/<YYYY-MM-DD>.md` mit Klassifikation pro
+  Endpunkt (no/minor/value/breaking). Exit 0 bei nur additivem/value
+  drift, Exit 1 bei breaking drift, Exit 3 wenn `/iserver/auth/status`
+  nicht authentifiziert ist.
+- `tests/cp_mock/diff.py` als Single Source of Truth fuer Drift-Logik
+  (`DiffReport`, `diff_recording`, `DEFAULT_IGNORE_FIELDS`). 28 Unit-
+  Tests in `tests/test_drift_diff.py` decken alle Klassifikationsfaelle
+  ab (added/removed/type-change/value-change/null-Edges/Listen-Diff).
+- `scripts/recording_session.py refresh <fixture>`-Subkommando: zeigt
+  Diff vorher und ersetzt eine einzelne Fixture nur nach expliziter
+  Bestaetigung. CI-Modus mit `--yes`.
+- 10 Tests in `tests/test_check_mock_drift.py` (MockTransport-basiert):
+  no/additive/breaking/value-Drift, Status-Code-Aenderung, Skip-Logik
+  fuer Order-Endpunkte und 4xx/5xx-Recordings, Markdown-Rendering.
+- `docs/runbooks/mock-drift-check.md` mit Reaktion pro Drift-Klasse,
+  Refresh-Workflow und Troubleshooting.
+- `docs/cp-recordings.md` Section "Drift Detection" + "Refresh".
+- Erster eingecheckter Drift-Bericht unter `reports/drift/2026-04-26.md`
+  (9 no drift, 6 value drift, 0 breaking drift, 7 uebersprungen).
+
+### Geaendert
+- README-Status auf v1.6.0; AP-02 (Live-IBKR-Validierung) abgeschlossen.
+
+### Behoben
+- `diff_recording`: beidseitiges `None` wird nicht mehr als
+  `value drift` mit Note `filled-in` gemeldet. Vorher hat jedes
+  optionale, dauerhaft leere Feld bei jedem Live-Lauf einen
+  Lauer-Eintrag erzeugt.
+
+### Bekannt
+- Order-Endpunkte (`/orders`, `/order/`) und Session-Wechsler (`/logout`,
+  `/reauthenticate`) werden vom Drift-Check uebersprungen - Mock fuer
+  Order bleibt seed/erste-Live-Aufzeichnung.
+- Service-Code-Pfad-Bugs (cp/portfolio.py, cp/orders.py, cp/lifecycle.py)
+  bleiben offen unter Folgekarte 813fed62 (siehe v1.3.0-Bekannt).
+
 ## [1.5.0] — 2026-04-25
 
 ### Hinzugefuegt

@@ -188,3 +188,46 @@ assert response["body_json"]["authenticated"] is True
 `base_dir` kann ueberschrieben werden (in Tests fuer tmp_path-basierte
 Szenarien). Bei fehlendem Recording wird ``RecordingNotFoundError``
 geworfen - Tests duerfen das fangen, der Mock-Code soll es nicht.
+
+## Drift Detection (AP-02 #06, ab v1.6.0)
+
+Der Replay-Mock sieht nur die heutigen Fixtures - er merkt nicht, wenn
+IBKR ein Feld ergaenzt oder umbenennt. Dafuer gibt es das Skript
+`scripts/check_mock_drift.py`, das Live-Antworten gegen die eingecheckten
+Fixtures vergleicht und einen Markdown-Bericht unter
+`reports/drift/<YYYY-MM-DD>.md` ablegt.
+
+Klassifikation pro Endpunkt (Single Source of Truth: `tests/cp_mock/diff.py`):
+
+| Klasse | Bedeutung | Reaktion |
+|--------|-----------|----------|
+| no drift | identisch (oder nur ignorierte Felder geaendert) | nichts zu tun |
+| minor drift (additive) | nur neue Felder hinzu, Schema bleibt rueckwaerts-kompatibel | Karte 'Schema in <Endpunkt> erweitert' anlegen |
+| value drift | Skalar-Wert geaendert, Schema unveraendert | Sichtkontrolle, Karte falls semantisch relevant |
+| **breaking drift** | Felder entfernt, Typaenderung oder Wert-zu-null | sofort Karte mit `blocked=true` |
+
+Exit-Code: `0` wenn kein breaking drift, `1` wenn mindestens ein breaking
+drift gefunden wurde, `2` bei I/O-Fehlern, `3` wenn `/iserver/auth/status`
+nicht authentifiziert ist (Login fehlt - vorher
+`docs/runbooks/cpgateway-login.md`).
+
+Order-Endpunkte (alles mit `/orders`/`/order/`), `/logout` und
+`/reauthenticate` werden uebersprungen - sie haben Side Effects oder sind
+dokumentarische Beweis-Recordings.
+
+Voller Workflow: `docs/runbooks/mock-drift-check.md`.
+
+### Refresh einer einzelnen Fixture
+
+Wenn der Drift-Bericht eine erwartete Aenderung zeigt (z.B. additive
+Feld-Erweiterung von IBKR), wird die Fixture **nicht automatisch**
+ueberschrieben. Dafuer gibt es das `refresh`-Subkommando:
+
+```bash
+python scripts/recording_session.py refresh \
+    tests/fixtures/recorded/live/iserver_accounts__GET__noquery_01.json
+```
+
+Das Skript zeigt erst einen Diff (gleiche Logik wie `check_mock_drift.py`),
+fragt nach Bestaetigung und ersetzt die Datei nur danach. Mit `--yes` wird
+die Bestaetigung uebersprungen (CI-Modus).

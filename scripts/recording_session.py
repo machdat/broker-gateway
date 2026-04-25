@@ -104,6 +104,34 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Konsolen-Abfragen unterdruecken.",
     )
 
+    refresh = sub.add_parser(
+        "refresh",
+        help=(
+            "AP-02 #06: Einzelne Fixture neu aufzeichnen (z.B. nach Drift-Befund). "
+            "Zeigt Diff vorher und fragt nach Bestaetigung."
+        ),
+    )
+    refresh.add_argument(
+        "fixture",
+        type=Path,
+        help="Pfad zur bestehenden Fixture-Datei, die ersetzt werden soll.",
+    )
+    refresh.add_argument(
+        "--base-url",
+        default=_DEFAULT_BASE_URL,
+        help=f"CP-Gateway Base-URL (default: {_DEFAULT_BASE_URL}).",
+    )
+    refresh.add_argument(
+        "--normalize-prices",
+        action="store_true",
+        help="Auch Preise normalisieren (default: aus).",
+    )
+    refresh.add_argument(
+        "--yes",
+        action="store_true",
+        help="Bestaetigungsabfrage unterdruecken (CI/Skript-Modus).",
+    )
+
     legacy_skel = sub.add_parser(
         "skeleton",
         help="Frueheres Skelett (nur Konfig drucken). Bleibt fuer Backwards-Compat.",
@@ -143,6 +171,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _legacy_skeleton(args)
     if args.scenario == "error-path":
         return asyncio.run(run_error_path(args))
+    if args.scenario == "refresh":
+        return asyncio.run(run_refresh(args))
     return asyncio.run(run_happy_path(args))
 
 
@@ -577,6 +607,125 @@ async def run_error_path(args: argparse.Namespace) -> int:
               "durchfuehren (docs/runbooks/cpgateway-login.md), bevor weitere "
               "Recordings oder produktive Calls erfolgen.")
     return 0
+
+
+# ---- Refresh (AP-02 #06) ----
+
+async def run_refresh(args: argparse.Namespace) -> int:
+    """Liest eine bestehende Fixture, fuehrt den darin gespeicherten
+    Request erneut aus, zeigt einen Diff und ersetzt die Datei nur
+    nach expliziter Bestaetigung."""
+    fixture = Path(args.fixture)
+    if not fixture.is_file():
+        print(f"Fixture nicht gefunden: {fixture}", file=sys.stderr)
+        return 2
+
+    envelope = json.loads(fixture.read_text(encoding="utf-8"))
+    request = envelope.get("request", {})
+    method = (request.get("method") or "GET").upper()
+    url_path = request.get("url", "")
+    query = request.get("query") or {}
+    body_json = request.get("body_json")
+    expected_response = envelope.get("response", {})
+    expected_body = expected_response.get("body_json")
+
+    print(f"[refresh] fixture: {fixture}")
+    print(f"[refresh] {method} {url_path} (query={query})")
+    print()
+
+    async with httpx.AsyncClient(
+        base_url=args.base_url, timeout=_REQUEST_TIMEOUT_S
+    ) as client:
+        try:
+            await check_preconditions(client)
+        except PreconditionError as exc:
+            print(f"VORAUSSETZUNG FEHLT: {exc}", file=sys.stderr)
+            return 3
+
+        try:
+            if method == "GET":
+                resp = await client.get(url_path, params=query)
+            elif method == "POST":
+                resp = await client.post(url_path, params=query, json=body_json)
+            else:
+                print(f"Methode {method} nicht im Refresh erlaubt.", file=sys.stderr)
+                return 2
+        except httpx.HTTPError as exc:
+            print(f"Transport-Fehler: {exc}", file=sys.stderr)
+            return 2
+
+    actual_status = resp.status_code
+    expected_status = expected_response.get("status_code")
+    if actual_status != expected_status:
+        print(f"[diff] Status-Code: {expected_status} -> {actual_status}")
+
+    actual_body: Any = None
+    try:
+        actual_body = resp.json()
+    except (json.JSONDecodeError, ValueError):
+        actual_body = None
+
+    from broker_gateway.cp.normalize import normalize_response
+    from tests.cp_mock.diff import diff_recording
+
+    if actual_body is not None:
+        actual_normalized = normalize_response(
+            actual_body, url_path, normalize_prices=args.normalize_prices
+        )
+    else:
+        actual_normalized = None
+
+    diff = diff_recording(actual_normalized, expected_body)
+    print("[diff] Klassifikation:", diff.classification)
+    print()
+    print(diff.render_markdown(title=f"{method} {url_path}"))
+
+    if diff.is_clean() and actual_status == expected_status:
+        print("[refresh] Fixture ist bereits aktuell - kein Schreiben noetig.")
+        return 0
+
+    if not _confirm_or_skip(
+        f"Fixture {fixture.name} mit Live-Antwort ueberschreiben?", yes=args.yes
+    ):
+        print("[refresh] abgebrochen, Fixture unveraendert.")
+        return 1
+
+    new_envelope = {
+        "request": {
+            "method": method,
+            "url": url_path,
+            "query": query,
+            "headers": request.get("headers", {}),
+            "body_json": body_json,
+            "body_text": request.get("body_text"),
+        },
+        "response": {
+            "status_code": actual_status,
+            "headers": _filter_response_headers(resp.headers),
+            "body_json": actual_normalized,
+            "body_text": resp.text if actual_normalized is None else None,
+        },
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "normalized": True,
+        "refreshed_from": envelope.get("recorded_at"),
+    }
+    fixture.write_text(
+        json.dumps(new_envelope, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(f"[refresh] Fixture aktualisiert: {fixture}")
+    return 0
+
+
+def _filter_response_headers(headers: httpx.Headers) -> dict[str, str]:
+    """Sicherheits-Filter: dieselbe Liste wie der CPRecorder."""
+    redacted = {"authorization", "cookie", "set-cookie", "x-api-key",
+                "proxy-authorization", "x-auth-token"}
+    return {
+        name: value
+        for name, value in headers.items()
+        if name.lower() not in redacted
+    }
 
 
 # ---- Manifest ----
