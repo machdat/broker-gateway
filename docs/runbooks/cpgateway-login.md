@@ -103,18 +103,13 @@ Das ist eine Wegwerf-Loesung fuer einen einmaligen Login.
 Auf dem Laptop (mit aktivem SSH-Tunnel aus Schritt 2):
 
 1. Browser oeffnen, Adresse: <http://localhost:5000>
-2. Es erscheint die IBKR-Login-Seite (HTML-Form).
+2. Es erscheint die IBKR-Login-Seite (HTML-Form). Keine Zertifikats-
+   warnung, weil die CP-Gateway-Konfiguration `listenSsl: false`
+   verwendet — der Transport ist durch den SSH-Tunnel abgesichert.
 3. Username `U25235077` und Passwort eingeben.
 4. 2FA-Bestaetigung im IBKR-Mobile-App (Push) oder via SMS-/Soft-Token.
 5. Nach erfolgreicher Anmeldung zeigt die Seite "Client login succeeds"
    bzw. "You're now logged in".
-
-> **Hinweis Zertifikatswarnung:** Wenn `listenSsl: false` (Default
-> dieses Repos) ist die Verbindung plain HTTP — keine Warnung. Falls
-> das Setup auf `listenSsl: true` umkonfiguriert wurde, zeigt der
-> Browser eine Warnung wegen selbstsigniertem Zertifikat. Dann unter
-> Vorbehalt akzeptieren — die Verbindung laeuft ueber den
-> SSH-Tunnel und ist transport-verschluesselt.
 
 ### 4. Login validieren
 

@@ -8,21 +8,44 @@
 # Aenderungen hier erfordern einen Image-Rebuild:
 #   docker compose build cpgateway
 #   docker compose up -d cpgateway
+#
+# Basis ist die mitgelieferte Original-conf.yaml von IBKR. Abweichungen
+# sind unten am Feld dokumentiert.
 
-# Plain-HTTP-Listener auf 5000. Der Service ist ausschliesslich intern
-# im Compose-Netzwerk erreichbar; externer Zugriff (z.B. fuer den
-# Browser-2FA-Login) erfolgt ueber temporaere SSH-Reverse-Tunnels und
-# nicht ueber published ports.
+ip2loc: "US"
+proxyRemoteSsl: true
+proxyRemoteHost: "https://api.ibkr.com"
 listenPort: 5000
+# Plain-HTTP-Listener auf 5000. Abweichend vom IBKR-Default
+# (listenSsl: true) - der Service ist nur intern im Compose-Netzwerk
+# erreichbar; externer Zugriff (Browser-2FA-Login) erfolgt ueber einen
+# SSH-Reverse-Tunnel und nicht ueber published ports. So spart sich
+# der gateway-Service ein selbstsigniertes Cert im httpx-Trust-Store.
 listenSsl: false
+ccp: false
+svcEnvironment: "v1"
+sslCert: "vertx.jks"
+sslPwd: "mywebapi"
+authDelay: 3000
+portalBaseURL: ""
+serverOptions:
+    blockedThreadCheckInterval: 1000000
+    eventLoopPoolSize: 20
+    workerPoolSize: 20
+    maxWorkerExecuteTime: 100
+    internalBlockingPoolSize: 20
+cors:
+    origin.allowed: "*"
+    allowCredentials: false
+webApps:
+    - name: "demo"
+      index: "index.html"
 
-# Proxy-Konfiguration: kein vorgelagerter Proxy. IBKR-Defaults beibehalten.
-proxyRemoteHost: 127.0.0.1
-proxyRemotePort: 5000
-
-# IP-Whitelist: alles erlauben, weil der Container ohnehin nur intern
-# erreichbar ist. Container-Netzwerk-Isolation ist die Sicherheitsschicht,
-# nicht diese Liste.
+# IP-Whitelist: alles erlauben. Abweichend vom IBKR-Default
+# (192.*, 131.216.*, 127.0.0.1), weil der gateway-Service aus dem
+# Compose-Netz mit dynamischen 172.x-IPs zugreift. Container-Netz-
+# Isolation ist die Sicherheitsschicht (kein published port), nicht
+# diese Liste.
 ips:
   allow:
     - "*"
