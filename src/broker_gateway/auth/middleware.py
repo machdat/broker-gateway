@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 
 from broker_gateway.auth.models import Token
 from broker_gateway.auth.store import TokenStore
@@ -44,6 +44,7 @@ def _parse_bearer(authorization: str | None) -> str:
 
 
 def get_current_token(
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     store: TokenStore = Depends(get_token_store),
 ) -> Token:
@@ -61,6 +62,7 @@ def get_current_token(
             detail="Token abgelaufen",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    request.state.auth_token = token
     return token
 
 

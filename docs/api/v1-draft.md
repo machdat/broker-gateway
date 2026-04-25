@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.12.0)
+**Stand:** 2026-04-25 (Service-Version 1.0.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.12.0)
+### Implementation Status (Service-Version 1.0.0)
 
 | Section | Implementiert |
 |---|---|
@@ -33,10 +33,11 @@
 | 8.2 Aggregates (`GET /v1/trades/aggregates?metric=commissions_mtd`) | ✅ in v0.10.0 |
 | 9. Events-Stream (`GET /v1/events/stream`) | ✅ in v0.11.0 (vereinfachter Body, siehe Section 9; Mock-Source statt CP-Gateway-WebSocket) |
 | 11. Rate-Limit-Throttle (intern, Token-Bucket pro Endpoint-Klasse) | ✅ in v0.12.0 (siehe Section 11) |
+| Observability (structured Logs + `GET /metrics` Prometheus-Endpoint) | ✅ in v1.0.0 (siehe Section 12) |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
-| Alle anderen | ⏳ Folgekarten in AP-01 |
+| Alle anderen | ⏳ Folgekarten ausserhalb AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.12.0 ist `version` die Service-Version `0.12.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v1.0.0 ist `version` die Service-Version `1.0.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -951,7 +952,44 @@ Jede Rate ist via ENV einstellbar: `BG_THROTTLE_<CLASS>_RPS` und `BG_THROTTLE_<C
 
 ---
 
-## 12. OpenAPI / Schema
+## 12. Observability (Logs + Metrics)
+
+### 12.1 Structured Logs
+
+Jeder HTTP-Request emittiert genau ein JSON-Log-Event auf stdout mit Pflichtfeldern:
+
+| Feld | Typ | Inhalt |
+|---|---|---|
+| `event` | string | Immer `http_request` (`http_request_failed` bei unhandled Exception) |
+| `request_id` | string (hex) | UUID, auch im Response-Header `X-Request-ID` |
+| `method` | string | HTTP-Methode |
+| `path` | string | Routen-Template (`/v1/orders/{order_id}`, nicht der konkrete Pfad) |
+| `status` | int | HTTP-Status-Code |
+| `latency_ms` | float | Server-Latenz in Millisekunden |
+| `caller_id` | string \| null | `caller_id` des Tokens; `null` bei unauthentifizierten Endpunkten (`/v1/health`, `/metrics`) |
+| `scopes` | list[string] | Scope-Liste des aufgelösten Tokens |
+| `idempotency_key` | string \| null | Aus dem Request-Header (falls gesetzt) |
+
+**Token-Werte werden niemals geloggt.** Single Source of Truth fuer das Schema: `src/broker_gateway/middleware/observability.py`.
+
+### 12.2 Prometheus-Metrics
+
+`GET /metrics` (kein `/v1`-Prefix; im Compose-Setup nur intern publiziert) liefert das Prometheus-Text-Format mit folgenden Familien:
+
+| Metrik | Typ | Labels | Quelle |
+|---|---|---|---|
+| `broker_gateway_requests_total` | Counter | `path`, `status`, `scope` | Observability-Middleware |
+| `broker_gateway_request_latency_seconds` | Histogram | `path` | Observability-Middleware |
+| `broker_gateway_pacing_violations_total` | Counter | `class` | ThrottleManager (Karte 12) |
+| `broker_gateway_session_age_seconds` | Gauge | — | AuthLifecycle.snapshot() |
+| `broker_gateway_subscription_count` | Gauge | — | SubscriptionManager.active_conids |
+| `broker_gateway_throttle_extra_wait_seconds` | Gauge | `class` | ThrottleManager.metrics() |
+
+Die Gauges werden ueber einen Custom-Collector beim Scrape live aus den Singletons gelesen - kein Background-Job pflegt einen separaten Cache.
+
+---
+
+## 13. OpenAPI / Schema
 
 Wird in einer der ersten Karten als `openapi.yaml` neben dieser Doku gepflegt. Diese Markdown-Datei bleibt die Referenz für Konzepte und Erklärungen.
 

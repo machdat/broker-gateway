@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0) und Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0). Weitere Endpoints folgen über das KanProject `broker-gateway`.
+**Status:** **v1.0.0 — erster vollständiger v1-Release.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0) und Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release. AP-01 (Foundation) abgeschlossen.
 
 ## Lokal starten
 
@@ -80,6 +80,27 @@ Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
 | `orders:write` | Orders platzieren / canceln + Order-Status |
 | `events:read` | Events-Stream |
 | `admin:*` | Token-Verwaltung; passt automatisch alle Scope-Checks |
+
+## Observability
+
+Service emittiert pro HTTP-Request ein **JSON-Log-Event** (structlog) mit Pflichtfeldern `request_id`, `method`, `path`, `status`, `latency_ms`, `caller_id`, `scopes`, `idempotency_key`. **Token-Werte werden niemals geloggt** — nur die `caller_id` und die `scopes` aus dem aufgelösten Token.
+
+Prometheus-Scrape-Endpoint unter `GET /metrics` (kein `/v1`-Prefix, im Compose-Setup nur intern publiziert):
+
+| Metrik | Typ | Labels |
+|---|---|---|
+| `broker_gateway_requests_total` | Counter | `path`, `status`, `scope` |
+| `broker_gateway_request_latency_seconds` | Histogram | `path` |
+| `broker_gateway_pacing_violations_total` | Counter | `class` |
+| `broker_gateway_session_age_seconds` | Gauge | — |
+| `broker_gateway_subscription_count` | Gauge | — |
+| `broker_gateway_throttle_extra_wait_seconds` | Gauge | `class` |
+
+Die Gauges werden per Custom-Collector beim Scrape live aus den Singletons (AuthLifecycle, SubscriptionManager, ThrottleManager) gelesen — keine Stale-State-Probleme.
+
+```bash
+curl http://localhost:4000/metrics
+```
 
 ## Tests
 
@@ -178,4 +199,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 0.12.0*
+*Version 1.0.0*

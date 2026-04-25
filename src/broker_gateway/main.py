@@ -7,6 +7,7 @@ from typing import AsyncIterator, cast
 from fastapi import FastAPI
 
 from broker_gateway import __version__
+from broker_gateway.api.metrics import router as metrics_router
 from broker_gateway.api.v1 import router as v1_router
 from broker_gateway.api.v1.instruments import get_instruments_service
 from broker_gateway.api.v1.orders import (
@@ -28,6 +29,13 @@ from broker_gateway.cp.portfolio import PortfolioService
 from broker_gateway.cp.quotes import QuotesService
 from broker_gateway.cp.trades import TradesService
 from broker_gateway.idempotency import IdempotencyStore
+from broker_gateway.logging_setup import configure_logging
+from broker_gateway.metrics import (
+    BrokerGatewayMetrics,
+    get_metrics,
+    make_live_collector,
+)
+from broker_gateway.middleware.observability import ObservabilityMiddleware
 from broker_gateway.streams.events import EventBus, get_event_bus
 from broker_gateway.streams.manager import (
     SubscriptionManager,
@@ -68,10 +76,15 @@ def create_app(
     trades_service: TradesService | None = None,
     event_bus: EventBus | None = None,
     throttle: ThrottleManager | None = None,
+    metrics: BrokerGatewayMetrics | None = None,
 ) -> FastAPI:
+    configure_logging()
+    actual_metrics = metrics if metrics is not None else BrokerGatewayMetrics()
+    actual_throttle_outer = throttle if throttle is not None else ThrottleManager()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        actual_throttle = throttle if throttle is not None else ThrottleManager()
+        actual_throttle = actual_throttle_outer
         owns_lifecycle = lifecycle is None
         if owns_lifecycle:
             client = CPGatewayClient(throttle=actual_throttle)
@@ -134,6 +147,13 @@ def create_app(
             else TradesService(cast(CPGatewayClient, services_client))
         )
         evt_bus = event_bus if event_bus is not None else EventBus()
+        actual_metrics.attach_live_collector(
+            make_live_collector(
+                lifecycle_snapshot=cp_lifecycle.snapshot,
+                subscription_count=lambda: len(sub_manager.active_conids),
+                throttle_metrics=actual_throttle.metrics,
+            )
+        )
 
         app.state.instruments_service = inst_service
         app.state.quotes_service = qts_service
@@ -144,6 +164,7 @@ def create_app(
         app.state.trades_service = trd_service
         app.state.event_bus = evt_bus
         app.state.throttle_manager = actual_throttle
+        app.state.metrics = actual_metrics
         app.dependency_overrides[get_throttle_manager] = (
             lambda: cast(ThrottleManager, app.state.throttle_manager)
         )
@@ -193,12 +214,17 @@ def create_app(
         description="Versionierte HTTP-API fuer broker-vermittelten Aktienhandel und Marktdaten-Streaming.",
         lifespan=lifespan,
     )
+    app.add_middleware(ObservabilityMiddleware, metrics=actual_metrics)
     app.include_router(v1_router)
+    app.include_router(metrics_router)
 
     actual_store = store if store is not None else build_default_store()
     _ensure_bootstrap_admin(actual_store)
     app.state.token_store = actual_store
+    app.state.metrics = actual_metrics
+    app.state.throttle_manager = actual_throttle_outer
     app.dependency_overrides[get_token_store] = lambda: cast(TokenStore, app.state.token_store)
+    app.dependency_overrides[get_metrics] = lambda: cast(BrokerGatewayMetrics, app.state.metrics)
     return app
 
 
