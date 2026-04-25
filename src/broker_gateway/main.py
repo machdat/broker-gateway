@@ -33,6 +33,7 @@ from broker_gateway.streams.manager import (
     SubscriptionManager,
     get_subscription_manager,
 )
+from broker_gateway.throttle.manager import ThrottleManager, get_throttle_manager
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -66,12 +67,14 @@ def create_app(
     idempotency_store: IdempotencyStore | None = None,
     trades_service: TradesService | None = None,
     event_bus: EventBus | None = None,
+    throttle: ThrottleManager | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        actual_throttle = throttle if throttle is not None else ThrottleManager()
         owns_lifecycle = lifecycle is None
         if owns_lifecycle:
-            client = CPGatewayClient()
+            client = CPGatewayClient(throttle=actual_throttle)
             cp_lifecycle = AuthLifecycle(client)
         else:
             client = None
@@ -91,7 +94,7 @@ def create_app(
             or trades_service is None
         ):
             if services_client is None:
-                services_client = CPGatewayClient()
+                services_client = CPGatewayClient(throttle=actual_throttle)
                 services_owned = True
 
         app.state._owns_services_client = services_owned
@@ -140,6 +143,10 @@ def create_app(
         app.state.idempotency_store = idem_store
         app.state.trades_service = trd_service
         app.state.event_bus = evt_bus
+        app.state.throttle_manager = actual_throttle
+        app.dependency_overrides[get_throttle_manager] = (
+            lambda: cast(ThrottleManager, app.state.throttle_manager)
+        )
         app.dependency_overrides[get_instruments_service] = (
             lambda: cast(InstrumentsService, app.state.instruments_service)
         )

@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.11.0)
+**Stand:** 2026-04-25 (Service-Version 0.12.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.11.0)
+### Implementation Status (Service-Version 0.12.0)
 
 | Section | Implementiert |
 |---|---|
@@ -32,10 +32,11 @@
 | 8.1 Trade-Historie (`GET /v1/trades`) | ✅ in v0.10.0 (vereinfachter Body, siehe Section 8.1) |
 | 8.2 Aggregates (`GET /v1/trades/aggregates?metric=commissions_mtd`) | ✅ in v0.10.0 |
 | 9. Events-Stream (`GET /v1/events/stream`) | ✅ in v0.11.0 (vereinfachter Body, siehe Section 9; Mock-Source statt CP-Gateway-WebSocket) |
+| 11. Rate-Limit-Throttle (intern, Token-Bucket pro Endpoint-Klasse) | ✅ in v0.12.0 (siehe Section 11) |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.11.0 ist `version` die Service-Version `0.11.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.12.0 ist `version` die Service-Version `0.12.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -925,8 +926,28 @@ Nur dokumentiert für Service-Entwickler, nicht für Consumer:
 - **Order-Cache:** `{order_id → order_state}` mit TTL 24 h für Idempotency-Antworten
 - **Auth-Session-Tickle:** Hintergrund-Job alle 60 s `POST /tickle` an CP-Gateway
 - **Field-Mapping-Tabelle:** normalisierte Quote-Field-Namen ↔ IBKR-Field-IDs (z.B. `last` ↔ `31`, `bid` ↔ `84`)
-- **Pacing-Throttle:** Token-Bucket pro IBKR-Endpoint-Klasse mit Backpressure auf eigene Queue
 - **Reconnect-Logic:** bei Session-Drop: 3 Versuche `reauthenticate`, dann `503` mit `Retry-After: 60` für Consumer + Health-Endpoint flagt `auth_session_expired`
+
+### 11.1 Rate-Limit-Throttle (Token-Bucket pro Endpoint-Klasse)
+
+Alle CP-Gateway-Calls passieren `ThrottleManager` (Single Source of Truth: `src/broker_gateway/throttle/manager.py`). Pro Klasse existiert genau ein Token-Bucket:
+
+| Klasse | Default rps | Default Burst | Pfade |
+|---|---|---|---|
+| `auth_lifecycle` | 5 | 10 | `/tickle`, `/reauthenticate`, `/iserver/auth/status` |
+| `instruments` | 5 | 10 | `/iserver/secdef/*` |
+| `quotes_snapshot` | 10 | 20 | `/iserver/marketdata/snapshot` |
+| `quotes_stream` | 10 | 20 | `/iserver/marketdata/{conid}/unsubscribe` (Poll-Loop pro conid) |
+| `portfolio` | 5 | 10 | `/iserver/account/{acct}/{portfolio,positions,ledger}` |
+| `orders` | 5 | 10 | `/iserver/account/{acct}/orders`, `/iserver/account/orders/{id}`, `/iserver/account/{acct}/order/{id}`, `/iserver/reply/{id}` |
+| `trades` | 2 | 5 | `/iserver/account/trades` |
+| `events` | 5 | 10 | `/v1/api/ws...` (Folgekarte) |
+
+Jede Rate ist via ENV einstellbar: `BG_THROTTLE_<CLASS>_RPS` und `BG_THROTTLE_<CLASS>_BURST` (z.B. `BG_THROTTLE_QUOTES_SNAPSHOT_RPS=20`).
+
+**Pacing-Violation-Backoff:** liefert das CP-Gateway HTTP 429, ruft der Client `bucket.register_pacing_violation()`. Der Bucket setzt einen `extra_wait_s` ein (Start 0.5 s, verdoppelt mit ±20 % Jitter, gedeckelt auf 30 s), den nachfolgende Acquire-Calls zusaetzlich abwarten. Nach 5 erfolgreichen Calls in Folge wird der Backoff zurueckgesetzt.
+
+**Constraint Tickle-Bucket:** der `auth_lifecycle`-Bucket ist von den anderen entkoppelt - eine Pacing-Violation auf `quotes_snapshot` blockiert nicht das Tickle-Job-Heartbeat. Damit bleibt die Session auch unter Last lebendig.
 
 ---
 
