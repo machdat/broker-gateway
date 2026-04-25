@@ -200,3 +200,99 @@ ueberein, ist das die Ursache.
 Default 1000 deckt den Standard-Pi-Setup ab, daher ist auf cma-pi-1
 kein Override noetig. Aelteres `chmod 777`-Workaround (vor v1.0.3)
 ist obsolet und sollte aus lokalen Setups entfernt werden.
+
+---
+
+## 7. conf.yaml nutzt Property, das CP-Gateway nicht kennt
+
+**Symptom:** Container geht in CrashLoop kurz nach dem Start. Compose-
+Healthcheck erreicht `unhealthy` und Container wird endlos neu gestartet.
+`docker compose logs cpgateway` zeigt:
+
+```
+loading configuration file error:Cannot create property=XYZ for
+JavaBean=ibgroup.web.core.clientportal.gw.Config
+ in 'reader', line N, column 1:
+    listenPort: 5000
+    ^
+Unable to find property 'XYZ' on class: ibgroup.web.core.clientportal.gw.Config
+```
+
+**Ursache:** Die `ops/cpgateway/conf.yaml` enthaelt einen Eintrag, den
+das IBKR-Schema nicht kennt. Konkret aufgetreten waehrend der
+Erst-Inbetriebnahme: ein erfundenes `proxyRemotePort` (existiert nicht;
+korrekt ist nur `proxyRemoteHost: "https://api.ibkr.com"`). Snake-YAML
+laedt jeden Top-Level-Schluessel in eine Java-Bean-Property und scheitert
+hart, wenn die Property fehlt.
+
+**Loesung:**
+
+1. Original-conf des installierten Tarballs als Referenz oeffnen, um die
+   gueltigen Felder zu sehen:
+   ```bash
+   tar xzf ops/cpgateway/clientportal.gw.tar.gz -C /tmp/cpgw-inspect
+   cat /tmp/cpgw-inspect/root/conf.yaml
+   ```
+   Alternativ aus dem laufenden (oder zuletzt erfolgreich gebauten) Image:
+   ```bash
+   docker run --rm broker-cpgateway:VERSION cat /opt/clientportal.gw/root/conf.yaml
+   ```
+2. Nicht-existierendes Property aus `ops/cpgateway/conf.yaml` entfernen
+   oder durch das tatsaechlich existierende Schluesselwort ersetzen.
+3. Image neu bauen und Container starten:
+   ```bash
+   docker compose build cpgateway
+   docker compose up -d cpgateway
+   ```
+
+Faustregel: nur Felder verwenden, die in der mitgelieferten Original-
+`conf.yaml` vorkommen. Eigene Felder erfindet das CP-Gateway nicht zu.
+
+---
+
+## 8. ips.allow Wildcard fuehrt zu HTTP 500 auf jedem Request
+
+**Symptom:** Container ist `healthy`, der HTTP-Listener auf 5000 antwortet,
+aber jeder Request liefert HTTP 500 mit Body `Internal Server Error` und
+`Content-Length: 21`. Browser-Login-Seite laedt nicht, `/v1/api/...`
+schlaegt fehl, der `gateway`-Service zeigt `cp_reachable=false` mit
+HTTP-Errors.
+
+**Diagnose:** Die Antwort-Body sagt nichts. Die echte Ursache steht im
+internen Container-Log (Volume-Mount `var/cpgateway/logs/`):
+
+```bash
+grep -A5 PatternSyntaxException var/cpgateway/logs/gw.YYYY-MM-DD.log
+```
+
+oder im laufenden Container:
+```bash
+docker compose exec cpgateway tail -50 /opt/clientportal.gw/logs/gw.*.log
+```
+
+Erwartete Spuren: ein Java-Stacktrace mit `IPv4Validator.setPattern` und
+`java.util.regex.PatternSyntaxException` in der ersten Zeile.
+
+**Ursache:** Das CP-Gateway interpretiert die Eintraege unter
+`ips.allow` als Java-Regex-Patterns (nicht als Glob-Pattern). Das
+nackte Sternchen `*` allein ist **kein** gueltiges Regex - es muss `.*`
+heissen, oder als Glob-Praefix wie `192.*` (was zu Regex `192\..*` wird).
+Mit `["*"]` scheitert die Pattern-Compilation und jeder Request wird
+serverseitig mit HTTP 500 abgewiesen.
+
+**Loesung:** explizite Liste mit den realen Sub-Netzen, aus denen
+Zugriffe kommen:
+
+```yaml
+ips:
+  allow:
+    - 127.0.0.1
+    - 10.*
+    - 172.*       # Compose-Default-Bridge ist 172.x
+    - 192.168.*
+  deny: []
+```
+
+Oder noch enger, wenn das Compose-Netz fest gepinnt ist (z.B. nur
+`172.18.*`). `127.0.0.1` muss bleiben, sonst scheitert auch der
+Healthcheck im Container selbst.
