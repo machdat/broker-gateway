@@ -26,8 +26,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Dedizierten Service-User anlegen (kein Login-Shell, kein Home jenseits
-# von /opt/clientportal.gw) und gleich GID/UID festziehen.
-RUN groupadd --system --gid ${CPGW_GID} cpgw \
+# von /opt/clientportal.gw) und gleich GID/UID festziehen. Das Base-Image
+# eclipse-temurin:21-jre-noble liefert einen Default-User ubuntu mit
+# UID/GID 1000 mit - der muss weichen, damit wir die UID frei zuordnen
+# koennen (sonst "useradd: UID 1000 already exists", Build-Exit 4).
+RUN if id ubuntu >/dev/null 2>&1; then userdel --remove ubuntu 2>/dev/null || userdel ubuntu; fi \
+    && if getent group ubuntu >/dev/null 2>&1; then groupdel ubuntu; fi \
+    && groupadd --system --gid ${CPGW_GID} cpgw \
     && useradd --system --uid ${CPGW_UID} --gid cpgw \
         --home /opt/clientportal.gw --shell /usr/sbin/nologin cpgw
 
