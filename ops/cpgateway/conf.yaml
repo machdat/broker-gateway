@@ -41,12 +41,17 @@ webApps:
     - name: "demo"
       index: "index.html"
 
-# IP-Whitelist: alles erlauben. Abweichend vom IBKR-Default
-# (192.*, 131.216.*, 127.0.0.1), weil der gateway-Service aus dem
-# Compose-Netz mit dynamischen 172.x-IPs zugreift. Container-Netz-
-# Isolation ist die Sicherheitsschicht (kein published port), nicht
-# diese Liste.
+# IP-Whitelist: alle Standard-Private-Bereiche plus Loopback. Das
+# CP-Gateway interpretiert die Eintraege als Glob-aehnliche Patterns
+# (intern als Java-Regex), das nackte "*" alleine ist ungueltig
+# (RegEx-Compile-Fehler) und fuehrt zu HTTP 500 auf jedem Request.
+# Der Default des IBKR-Tarballs ist (192.*, 131.216.*, 127.0.0.1) -
+# wir ergaenzen 10.* und 172.* fuer Container-Netzwerke (Compose-
+# Default ist 172.x).
 ips:
   allow:
-    - "*"
+    - 127.0.0.1
+    - 10.*
+    - 172.*
+    - 192.168.*
   deny: []
