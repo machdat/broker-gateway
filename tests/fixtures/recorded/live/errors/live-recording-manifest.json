@@ -2,13 +2,16 @@
   "scenario": "error-path",
   "account_id": "U25235077",
   "base_url": "http://localhost:5000/v1/api",
-  "broker_gateway_version": "1.3.0",
-  "recorded_at": "2026-04-25T13:58:00+00:00",
-  "note": "Pacing-Calls 02-60 nach Lauf entfernt - liefen alle 200 OK, IBKR-Pacing griff im Test nicht.",
+  "broker_gateway_version": "1.5.0",
+  "recorded_at": "2026-04-25T14:05:00+00:00",
+  "note": "Pacing-Calls 02-60 nach Lauf entfernt (alle 200 OK). Reauth-Fail-Variante aktiv: Session danach zerstoert.",
   "files": [
     "iserver_account_U25235077_orders_whatif__POST__noquery_01.json",
     "iserver_account_order_status_999999999999__GET__noquery_01.json",
+    "iserver_auth_status__GET__noquery_01.json",
     "iserver_marketdata_snapshot__GET__e6536a99_01.json",
-    "iserver_secdef_info__GET__63adaf00_01.json"
+    "iserver_secdef_info__GET__63adaf00_01.json",
+    "logout__POST__noquery_01.json",
+    "reauthenticate__POST__noquery_01.json"
   ]
 }

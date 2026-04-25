@@ -1,10 +1,11 @@
 {
   "request": {
-    "method": "GET",
-    "url": "/iserver/account/order/status/999999999999",
+    "method": "POST",
+    "url": "/reauthenticate",
     "query": {},
     "headers": {
       "host": "localhost:5000",
+      "content-length": "0",
       "accept": "*/*",
       "accept-encoding": "gzip, deflate",
       "connection": "keep-alive",
@@ -14,29 +15,25 @@
     "body_text": null
   },
   "response": {
-    "status_code": 503,
+    "status_code": 404,
     "headers": {
       "referrer-policy": "Origin-when-cross-origin",
-      "content-type": "application/json; charset=utf-8",
-      "x-response-time": "5001ms",
+      "content-type": "text/html; charset=utf-8",
+      "x-response-time": "0ms",
       "x-content-type-options": "nosniff",
-      "x-cnection": "close",
       "expires": "Sat, 25 Apr 2026 14:11:14 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
       "date": "Sat, 25 Apr 2026 14:11:14 GMT",
-      "connection": "keep-alive",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=14, origin; dur=5012, ak_p; desc=\"1777126269667_1600460630_227086039_501603_9608_8_0_-\";dur=1",
+      "connection": "close",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=17, origin; dur=13, ak_p; desc=\"1777126274864_1600460630_227099619_2995_9054_8_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Origin",
       "transfer-encoding": "chunked"
     },
-    "body_json": {
-      "error": "Order 999999999999 is not found",
-      "statusCode": 503
-    },
-    "body_text": null
+    "body_json": null,
+    "body_text": "<html><body><h1>Resource not found</h1></body></html>"
   },
-  "recorded_at": "2026-04-25T14:11:14.484406+00:00",
+  "recorded_at": "2026-04-25T14:11:14.742964+00:00",
   "normalized": true
 }

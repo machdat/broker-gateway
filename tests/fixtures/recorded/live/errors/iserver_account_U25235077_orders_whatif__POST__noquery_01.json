@@ -30,15 +30,15 @@
     "headers": {
       "referrer-policy": "Origin-when-cross-origin",
       "content-type": "application/json; charset=utf-8",
-      "x-response-time": "93ms",
+      "x-response-time": "92ms",
       "x-content-type-options": "nosniff",
       "x-cnection": "close",
-      "expires": "Sat, 25 Apr 2026 14:03:47 GMT",
+      "expires": "Sat, 25 Apr 2026 14:11:09 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 14:03:47 GMT",
+      "date": "Sat, 25 Apr 2026 14:11:09 GMT",
       "connection": "close",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=25, origin; dur=107, ak_p; desc=\"1777125827278_388397449_2956191508_17693_10347_9_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=24, origin; dur=109, ak_p; desc=\"1777126269358_388397449_2957037628_13350_11958_8_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Origin",
       "transfer-encoding": "chunked"
@@ -48,6 +48,6 @@
     },
     "body_text": null
   },
-  "recorded_at": "2026-04-25T14:03:47.213209+00:00",
+  "recorded_at": "2026-04-25T14:11:09.332289+00:00",
   "normalized": true
 }

@@ -1,12 +1,11 @@
 {
   "request": {
-    "method": "GET",
-    "url": "/iserver/secdef/info",
-    "query": {
-      "conid": "999999999"
-    },
+    "method": "POST",
+    "url": "/logout",
+    "query": {},
     "headers": {
       "host": "localhost:5000",
+      "content-length": "0",
       "accept": "*/*",
       "accept-encoding": "gzip, deflate",
       "connection": "keep-alive",
@@ -16,28 +15,26 @@
     "body_text": null
   },
   "response": {
-    "status_code": 503,
+    "status_code": 200,
     "headers": {
       "referrer-policy": "Origin-when-cross-origin",
-      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "1ms",
       "x-content-type-options": "nosniff",
-      "x-cnection": "close",
-      "expires": "Sat, 25 Apr 2026 14:11:09 GMT",
+      "expires": "Sat, 25 Apr 2026 14:11:14 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 14:11:09 GMT",
+      "date": "Sat, 25 Apr 2026 14:11:14 GMT",
       "connection": "keep-alive",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=13, origin; dur=10011, ak_p; desc=\"1777126259281_1600460630_227055719_1000746_11853_8_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=25, origin; dur=17, ak_p; desc=\"1777126274757_1600460630_227095399_4111_6194_7_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Origin",
       "transfer-encoding": "chunked"
     },
     "body_json": {
-      "error": "Service Unavailable",
-      "statusCode": 503
+      "status": true
     },
     "body_text": null
   },
-  "recorded_at": "2026-04-25T14:11:09.098115+00:00",
+  "recorded_at": "2026-04-25T14:11:14.589641+00:00",
   "normalized": true
 }

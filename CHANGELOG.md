@@ -15,9 +15,14 @@ SemVer in `pyproject.toml`.
 - `scripts/recording_session.py error-path` provoziert IBKR-Fehler:
   Pacing-Violation, ungueltige conid, ungueltige Order-Quantity,
   nicht-existente Order-ID, optional Reauth-Fail (`--with-reauth-fail`).
-- 4 Live-Error-Recordings unter `tests/fixtures/recorded/live/errors/`
+- 7 Live-Error-Recordings unter `tests/fixtures/recorded/live/errors/`
   + Manifest. Wertvollster Fund: IBKR liefert generisches HTTP 500/503
   statt 4xx — Service-Code-Mapping muss aus dem Body-Inhalt schliessen.
+  Bonus aus dem Reauth-Fail-Lauf: `/iserver/auth/status` bleibt nach
+  `/logout` erreichbar mit `{authenticated: false, established: false,
+  competing: false, connected: false, MAC: null}` — das ist das
+  zuverlaessige Signal fuer `cp/lifecycle.py`, in `AUTH_LOST` zu kippen.
+  `/reauthenticate` ohne Session liefert HTML 404 (kein JSON).
 - `tests/test_error_model.py` mit 14 Tests (5 Pflicht-Cases plus
   Default-Code-Mapping-Parametrisierung).
 - `docs/runbooks/recording-session-error-path.md` mit Reset-Anleitung

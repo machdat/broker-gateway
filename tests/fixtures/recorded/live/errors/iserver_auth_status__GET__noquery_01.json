@@ -1,10 +1,8 @@
 {
   "request": {
     "method": "GET",
-    "url": "/iserver/secdef/info",
-    "query": {
-      "conid": "999999999"
-    },
+    "url": "/iserver/auth/status",
+    "query": {},
     "headers": {
       "host": "localhost:5000",
       "accept": "*/*",
@@ -16,28 +14,31 @@
     "body_text": null
   },
   "response": {
-    "status_code": 503,
+    "status_code": 200,
     "headers": {
       "referrer-policy": "Origin-when-cross-origin",
       "content-type": "application/json; charset=utf-8",
+      "x-response-time": "0ms",
       "x-content-type-options": "nosniff",
-      "x-cnection": "close",
-      "expires": "Sat, 25 Apr 2026 14:11:09 GMT",
+      "expires": "Sat, 25 Apr 2026 14:11:15 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 14:11:09 GMT",
+      "date": "Sat, 25 Apr 2026 14:11:15 GMT",
       "connection": "keep-alive",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=13, origin; dur=10011, ak_p; desc=\"1777126259281_1600460630_227055719_1000746_11853_8_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=14, origin; dur=14, ak_p; desc=\"1777126275083_1600460630_227099949_2764_10668_13_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
-      "vary": "Origin",
+      "vary": "Accept-Encoding,Origin",
       "transfer-encoding": "chunked"
     },
     "body_json": {
-      "error": "Service Unavailable",
-      "statusCode": 503
+      "authenticated": false,
+      "established": false,
+      "competing": false,
+      "connected": false,
+      "MAC": null
     },
     "body_text": null
   },
-  "recorded_at": "2026-04-25T14:11:09.098115+00:00",
+  "recorded_at": "2026-04-25T14:11:14.922266+00:00",
   "normalized": true
 }

@@ -65,6 +65,10 @@ Zusaetzlicher Case:
 | Ungueltige conid | 404 / 400 | **HTTP 500** mit `{error: "Details currently unavailable. Please try again later..."}` | IBKR liefert generisches 500 statt 4xx. Service-Code-Mapping muss aus dem Body-Inhalt auf `not_found` schliessen, nicht aus dem HTTP-Status. |
 | `qty=0` (whatif) | 400 / 422 | **HTTP 500** mit `{error: "Order size 0 is not valid. Please enter size greater than 0."}` | Wieder 500. `error`-Feld im Body ist eine Klartext-Message — Service kann z.B. `code = "invalid_input"` ableiten, sobald die Message `not valid` enthaelt. |
 | Nicht-existente Order-ID | 404 | **HTTP 503** mit `{error: "Order ... is not found", "statusCode": 503}` | IBKR markiert sogar `not_found` als 503. Body enthaelt `statusCode: 503` als zusaetzliches Feld. Wieder: Mapping muss aus dem Body kommen. |
+| `POST /logout` | 200 | **HTTP 200** `{status: true}` | Sauberer Pfad, keine Auffaelligkeit. |
+| `POST /reauthenticate` (nach logout) | irgendeine 4xx/5xx | **HTTP 404** mit HTML `<h1>Resource not found</h1>` | IBKR liefert eine HTML-Error-Seite ohne JSON-Body. Der Recorder schreibt das in `body_text` statt `body_json`. Service-Code muss damit umgehen koennen. |
+| `GET /iserver/auth/status` (nach logout) | `authenticated: false` | **HTTP 200** mit `{authenticated: false, established: false, competing: false, connected: false, MAC: null}` | Wichtig: Status-Endpoint bleibt erreichbar (200), nur die Booleans flippen. **Genau das Signal, das `cp/lifecycle.py` lesen muss**, um in `AuthStatus.AUTH_LOST` zu kippen — `connected: false` plus `authenticated: false` ist die zuverlaessigste Erkennung. |
+| `GET /iserver/secdef/info` (im 2. Lauf) | wie zuvor | **HTTP 503** mit `{error: "Service Unavailable", statusCode: 503}` | Anders als beim ersten Lauf (`HTTP 500 + "Details currently unavailable"`). Bestaetigt die These, dass IBKR's generische Server-Errors zwischen 500 und 503 schwanken — Mapping muss tolerant sein. |
 
 → **Folgekarte 813fed62 muss den `cp_upstream_error`-Mapper schlauer machen**, sodass der Service IBKR's generische 500/503-Antworten nach `not_found` / `invalid_input` / `cp_upstream_error` aufschluesselt — abhaengig vom Body-Inhalt.
 
@@ -73,10 +77,13 @@ Zusaetzlicher Case:
 Aktuelle Files unter `tests/fixtures/recorded/live/errors/`:
 
 ```
-iserver_account_U25235077_orders_whatif__POST__noquery_01.json   HTTP 500
-iserver_account_order_status_999999999999__GET__noquery_01.json  HTTP 503
-iserver_marketdata_snapshot__GET__e6536a99_01.json                HTTP 200 (kein Pacing)
-iserver_secdef_info__GET__63adaf00_01.json                        HTTP 500
+iserver_account_U25235077_orders_whatif__POST__noquery_01.json   HTTP 500 (qty=0 invalid)
+iserver_account_order_status_999999999999__GET__noquery_01.json  HTTP 503 (unknown order)
+iserver_auth_status__GET__noquery_01.json                         HTTP 200 (authenticated: false nach logout)
+iserver_marketdata_snapshot__GET__e6536a99_01.json                HTTP 200 (kein Pacing-Treffer)
+iserver_secdef_info__GET__63adaf00_01.json                        HTTP 503 (Service Unavailable - 2. Lauf)
+logout__POST__noquery_01.json                                     HTTP 200 ({status: true})
+reauthenticate__POST__noquery_01.json                             HTTP 404 (HTML "Resource not found")
 ```
 
 `live-recording-manifest.json` haelt den Lauf-Snapshot (Cleanup der
