@@ -1,0 +1,42 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/account/order/status/999999999999",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 503,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "5010ms",
+      "x-content-type-options": "nosniff",
+      "x-cnection": "close",
+      "expires": "Sat, 25 Apr 2026 14:03:52 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 14:03:52 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=15, origin; dur=5025, ak_p; desc=\"1777125827531_388397449_2956191737_505059_14956_8_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": {
+      "error": "Order 999999999999 is not found",
+      "statusCode": 503
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T14:03:52.367200+00:00",
+  "normalized": true
+}

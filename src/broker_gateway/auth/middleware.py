@@ -30,14 +30,17 @@ def _parse_bearer(authorization: str | None) -> str:
     if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization-Header fehlt",
+            detail={"code": "missing_token", "message": "Authorization-Header fehlt"},
             headers={"WWW-Authenticate": "Bearer"},
         )
     parts = authorization.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization-Header muss 'Bearer <token>' sein",
+            detail={
+                "code": "invalid_token",
+                "message": "Authorization-Header muss 'Bearer <token>' sein",
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     return parts[1].strip()
@@ -53,13 +56,16 @@ def get_current_token(
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token unbekannt oder revoked",
+            detail={
+                "code": "invalid_token",
+                "message": "Token unbekannt oder revoked",
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     if token.is_expired():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token abgelaufen",
+            detail={"code": "invalid_token", "message": "Token abgelaufen"},
             headers={"WWW-Authenticate": "Bearer"},
         )
     request.state.auth_token = token
@@ -75,7 +81,11 @@ def require_scope(required: str):
         if not token.has_scope(required):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Token besitzt nicht den erforderlichen Scope '{required}'",
+                detail={
+                    "code": "missing_scope",
+                    "message": f"Token besitzt nicht den erforderlichen Scope '{required}'",
+                    "required_scope": required,
+                },
             )
         return token
 

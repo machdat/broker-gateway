@@ -231,3 +231,108 @@ async def test_happy_path_skip_orders_omits_whatif(
 def test_parser_requires_subcommand() -> None:
     with pytest.raises(SystemExit):
         recording_session._build_parser().parse_args([])
+
+
+def _make_error_handler(state: dict[str, Any]):
+    """Handler fuer Error-Path-Tests: bestimmte Pfade liefern provoziert Fehler."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.startswith("/v1/api"):
+            path = path[len("/v1/api"):]
+        method = request.method
+        state.setdefault("calls", []).append((method, path, dict(request.url.params)))
+
+        if path == "/iserver/auth/status":
+            return httpx.Response(200, json={
+                "authenticated": True, "competing": False, "connected": True,
+                "MAC": "MOCKED", "userId": 1, "fail": "",
+            })
+        if path == "/iserver/marketdata/snapshot":
+            n = state.setdefault("snap_count", 0) + 1
+            state["snap_count"] = n
+            if n >= 3:
+                return httpx.Response(429, json={"error": "pacing-violation"})
+            return httpx.Response(200, json=[])
+        if path == "/iserver/secdef/info":
+            cid = request.url.params.get("conid", "")
+            if cid == "999999999":
+                return httpx.Response(404, json={"error": "Resource not found"})
+            return httpx.Response(200, json={"conid": int(cid)})
+        if "orders/whatif" in path:
+            return httpx.Response(400, json={"error": "Order quantity must be > 0"})
+        if path.startswith("/iserver/account/order/status/"):
+            return httpx.Response(404, json={"error": "Unknown order id"})
+        if path == "/logout":
+            return httpx.Response(200, json={"status": True})
+        if path == "/reauthenticate":
+            return httpx.Response(401, json={"error": "Not authenticated"})
+        return httpx.Response(404, json={"error": "unhandled", "path": path})
+
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_error_path_records_at_least_four_cases(
+    tmp_path: Path, monkeypatch
+) -> None:
+    state: dict[str, Any] = {}
+    transport = httpx.MockTransport(_make_error_handler(state))
+    original = httpx.AsyncClient
+
+    def factory(*args, **kwargs):
+        kwargs.setdefault("transport", transport)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(recording_session.httpx, "AsyncClient", factory)
+
+    args = recording_session._build_parser().parse_args([
+        "error-path",
+        "--record-dir", str(tmp_path),
+        "--base-url", "http://mock.invalid/v1/api",
+        "--account-id", "U25235077",
+        "--yes",
+    ])
+    rc = await recording_session.run_error_path(args)
+    assert rc == 0
+
+    files = sorted(p.name for p in tmp_path.glob("*.json"))
+    recordings = [f for f in files if f != "live-recording-manifest.json"]
+    # Pacing (429), invalid conid (404), whatif qty=0 (400), unknown order (404).
+    assert len(recordings) >= 4, recordings
+
+    # Pacing-Recording vorhanden mit Status 429.
+    pacing_files = [f for f in recordings if "snapshot" in f]
+    assert pacing_files, "no snapshot recording"
+    pacing_envs = [
+        json.loads((tmp_path / f).read_text(encoding="utf-8")) for f in pacing_files
+    ]
+    assert any(e["response"]["status_code"] == 429 for e in pacing_envs)
+
+
+@pytest.mark.asyncio
+async def test_error_path_with_reauth_fail_writes_logout_and_reauth(
+    tmp_path: Path, monkeypatch
+) -> None:
+    state: dict[str, Any] = {}
+    transport = httpx.MockTransport(_make_error_handler(state))
+    original = httpx.AsyncClient
+
+    def factory(*args, **kwargs):
+        kwargs.setdefault("transport", transport)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(recording_session.httpx, "AsyncClient", factory)
+
+    args = recording_session._build_parser().parse_args([
+        "error-path",
+        "--record-dir", str(tmp_path),
+        "--base-url", "http://mock.invalid/v1/api",
+        "--with-reauth-fail",
+        "--yes",
+    ])
+    rc = await recording_session.run_error_path(args)
+    assert rc == 0
+    paths = {call[1] for call in state["calls"]}
+    assert "/logout" in paths
+    assert "/reauthenticate" in paths

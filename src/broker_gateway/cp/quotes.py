@@ -134,6 +134,16 @@ class QuotesService:
 
     async def _call_snapshot(self, params: dict[str, Any]) -> list[dict[str, Any]]:
         response = await self._client.get("/iserver/marketdata/snapshot", params=params)
+        if response.status_code == 429:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "code": "cp_pacing_violation",
+                    "message": "CP-Gateway pacing-violation (HTTP 429) bei marketdata/snapshot",
+                    "retry_after_s": 30,
+                },
+                headers={"Retry-After": "30"},
+            )
         if response.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

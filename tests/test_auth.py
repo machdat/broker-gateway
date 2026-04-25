@@ -192,7 +192,7 @@ def test_expired_token_is_rejected(client: TestClient, store: InMemoryTokenStore
         headers={"Authorization": f"Bearer {expired_value}"},
     )
     assert response.status_code == 401
-    assert "abgelaufen" in response.json()["detail"]
+    assert "abgelaufen" in response.json()["error"]["message"]
 
 
 def test_create_token_with_admin_returns_token_view(client: TestClient) -> None:

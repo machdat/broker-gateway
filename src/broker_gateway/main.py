@@ -4,11 +4,18 @@ import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from broker_gateway import __version__
 from broker_gateway.api.metrics import router as metrics_router
 from broker_gateway.api.v1 import router as v1_router
+from broker_gateway.api.v1.errors import (
+    CPGatewayError,
+    build_error_response,
+    default_code_for,
+)
 from broker_gateway.api.v1.instruments import get_instruments_service
 from broker_gateway.api.v1.orders import (
     get_idempotency_store,
@@ -215,6 +222,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.add_middleware(ObservabilityMiddleware, metrics=actual_metrics)
+    _install_error_handlers(app)
     app.include_router(v1_router)
     app.include_router(metrics_router)
 
@@ -226,6 +234,88 @@ def create_app(
     app.dependency_overrides[get_token_store] = lambda: cast(TokenStore, app.state.token_store)
     app.dependency_overrides[get_metrics] = lambda: cast(BrokerGatewayMetrics, app.state.metrics)
     return app
+
+
+def _install_error_handlers(app: FastAPI) -> None:
+    """Globale Handler, die alle Fehler in das v1-Section-1.6-Schema giessen."""
+
+    async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+        detail = exc.detail
+        code: str | None = None
+        message: str
+        retry_after_s: int | None = None
+        extra: dict | None = None
+        if isinstance(detail, dict):
+            code = detail.get("code")
+            message = str(
+                detail.get("message")
+                or detail.get("detail")
+                or default_code_for(exc.status_code)
+            )
+            retry_after_s = detail.get("retry_after_s")
+            extra = {
+                k: v
+                for k, v in detail.items()
+                if k not in {"code", "message", "detail", "retry_after_s"}
+            } or None
+        else:
+            message = str(detail) if detail else default_code_for(exc.status_code)
+        # Retry-After-Header kann auch von HTTPException.headers kommen.
+        if retry_after_s is None and exc.headers:
+            raw = exc.headers.get("Retry-After") or exc.headers.get("retry-after")
+            if raw is not None:
+                try:
+                    retry_after_s = int(raw)
+                except (TypeError, ValueError):
+                    retry_after_s = None
+        return build_error_response(
+            status_code=exc.status_code,
+            code=code,
+            message=message,
+            request_id=getattr(request.state, "request_id", None),
+            retry_after_s=retry_after_s,
+            extra=extra,
+            headers=exc.headers,
+        )
+
+    async def _validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ):
+        # Pydantic-Errors enthalten ggf. native Exceptions in `ctx.error`,
+        # die nicht JSON-serialisierbar sind - in str() umwandeln.
+        cleaned: list[dict] = []
+        for err in exc.errors():
+            entry = {k: v for k, v in err.items() if k != "ctx"}
+            ctx = err.get("ctx")
+            if isinstance(ctx, dict):
+                entry["ctx"] = {ck: str(cv) for ck, cv in ctx.items()}
+            cleaned.append(entry)
+        return build_error_response(
+            status_code=422,
+            code="invalid_input",
+            message="Request body or query parameters konnten nicht validiert werden",
+            request_id=getattr(request.state, "request_id", None),
+            extra={"errors": cleaned},
+        )
+
+    async def _cp_gateway_error_handler(request: Request, exc: CPGatewayError):
+        extra: dict = {}
+        if exc.upstream_status is not None:
+            extra["upstream_status"] = exc.upstream_status
+        if exc.upstream_code is not None:
+            extra["upstream_code"] = exc.upstream_code
+        return build_error_response(
+            status_code=exc.status_code,
+            code="cp_upstream_error",
+            message=exc.message,
+            request_id=getattr(request.state, "request_id", None),
+            retry_after_s=exc.retry_after_s,
+            extra=extra or None,
+        )
+
+    app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
+    app.add_exception_handler(RequestValidationError, _validation_exception_handler)
+    app.add_exception_handler(CPGatewayError, _cp_gateway_error_handler)
 
 
 app = create_app()

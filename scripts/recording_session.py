@@ -86,9 +86,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
     error = sub.add_parser(
         "error-path",
-        help="AP-02 #05: Error-Path - kommt in Folgekarte.",
+        help="AP-02 #05: Error-Path - provoziert IBKR-Fehler und zeichnet sie auf.",
     )
     _add_common_args(error)
+    error.add_argument(
+        "--with-reauth-fail",
+        action="store_true",
+        help=(
+            "Zerstoert die Session via /logout und ruft danach /reauthenticate "
+            "auf, um den auth-lost-Body aufzuzeichnen. Erfordert anschliessend "
+            "neuen Browser-Login (siehe docs/runbooks/recording-session-error-path.md)."
+        ),
+    )
+    error.add_argument(
+        "--yes",
+        action="store_true",
+        help="Konsolen-Abfragen unterdruecken.",
+    )
 
     legacy_skel = sub.add_parser(
         "skeleton",
@@ -128,12 +142,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.scenario == "skeleton":
         return _legacy_skeleton(args)
     if args.scenario == "error-path":
-        print(
-            "error-path ist Inhalt von AP-02 Karte #05 und noch nicht "
-            "implementiert.",
-            file=sys.stderr,
-        )
-        return 2
+        return asyncio.run(run_error_path(args))
     return asyncio.run(run_happy_path(args))
 
 
@@ -447,6 +456,127 @@ def _step_place_and_cancel(
 
 async def _step_trades(client: httpx.AsyncClient) -> None:
     await client.get("/iserver/account/trades", params={"days": "7"})
+
+
+# ---- Error-Path ----
+
+async def run_error_path(args: argparse.Namespace) -> int:
+    """Provoziert gezielt CP-Gateway-Fehlerfaelle und zeichnet sie auf.
+
+    Cases (laut AP-02 #05):
+      a. Pacing-Violation: 60 Snapshot-Calls in 1s.
+      b. Ungueltige conid: secdef/info?conid=999999999.
+      c. Ungueltige Order-Quantity: whatif mit qty=0.
+      d. Nicht-existente Order-ID: /iserver/account/order/status/<bogus>.
+      e. (optional, --with-reauth-fail) Auth-Lost: /logout dann /reauthenticate.
+    """
+    record_dir = Path(args.record_dir)
+    record_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[error-path] record_dir = {record_dir.resolve()}")
+    print(f"[error-path] base_url   = {args.base_url}")
+    print(f"[error-path] account    = {args.account_id}")
+    print(f"[error-path] reauth-fail-Variante: "
+          f"{'aktiviert (zerstoert Session!)' if args.with_reauth_fail else 'aus'}")
+    print()
+
+    recorder = CPRecorder(record_dir, normalize_prices=args.normalize_prices)
+    async with httpx.AsyncClient(
+        base_url=args.base_url, timeout=_REQUEST_TIMEOUT_S
+    ) as client:
+        try:
+            auth_body = await check_preconditions(client)
+        except PreconditionError as exc:
+            print(f"VORAUSSETZUNG FEHLT: {exc}", file=sys.stderr)
+            return 3
+        print(f"[ok] auth_status authenticated=true userId={auth_body.get('userId', '?')}")
+
+        recorder.install_into(client)
+
+        # a) Pacing-Violation - viele schnelle Calls.
+        print("[run] a) Pacing-Violation - 60 Snapshot-Calls in <1s")
+        for i in range(60):
+            try:
+                resp = await client.get(
+                    "/iserver/marketdata/snapshot",
+                    params={"conids": "265598", "fields": "31,84,86,6509"},
+                )
+                if resp.status_code == 429:
+                    print(f"  [hit] pacing-violation nach {i+1} Calls (HTTP 429)")
+                    break
+            except httpx.HTTPError as exc:
+                print(f"  [fail] {exc}", file=sys.stderr)
+                break
+        else:
+            print("  [miss] kein 429 nach 60 Calls - IBKR-Pacing greift moeglicherweise nicht")
+
+        # b) Ungueltige conid.
+        print("[run] b) Ungueltige conid 999999999")
+        try:
+            await client.get("/iserver/secdef/info", params={"conid": "999999999"})
+        except httpx.HTTPError as exc:
+            print(f"  [warn] {exc}")
+
+        # c) Ungueltige Order-Quantity (whatif mit qty=0).
+        if not _confirm_or_skip(
+            "c) whatif mit qty=0 (Preview, IBKR plaziert nichts)?", yes=args.yes
+        ):
+            print("  [skip] whatif-quantity-fehler uebersprungen.")
+        else:
+            try:
+                await client.post(
+                    f"/iserver/account/{args.account_id}/orders/whatif",
+                    json={"orders": [{
+                        "conid": int(_known_conids(["AAPL"])[0]),
+                        "orderType": "MKT",
+                        "side": "BUY",
+                        "quantity": 0,
+                        "tif": "DAY",
+                    }]},
+                )
+            except httpx.HTTPError as exc:
+                print(f"  [warn] {exc}")
+
+        # d) Nicht-existente Order-ID.
+        print("[run] d) Nicht-existente Order-ID")
+        try:
+            await client.get("/iserver/account/order/status/999999999999")
+        except httpx.HTTPError as exc:
+            print(f"  [warn] {exc}")
+
+        # e) Optional: Reauth-Fail durch /logout + /reauthenticate.
+        if args.with_reauth_fail:
+            if not _confirm_or_skip(
+                "e) /logout dann /reauthenticate? Zerstoert die Session, neuer Browser-Login noetig!",
+                yes=args.yes,
+            ):
+                print("  [skip] reauth-fail uebersprungen.")
+            else:
+                print("[run] e) /logout (zerstoert Session)")
+                try:
+                    await client.post("/logout")
+                except httpx.HTTPError as exc:
+                    print(f"  [warn] /logout: {exc}")
+                print("[run] e) /reauthenticate (sollte fail liefern)")
+                try:
+                    await client.post("/reauthenticate")
+                except httpx.HTTPError as exc:
+                    print(f"  [warn] /reauthenticate: {exc}")
+                print("[run] e) /iserver/auth/status (zeigt jetzt authenticated=false)")
+                try:
+                    await client.get("/iserver/auth/status")
+                except httpx.HTTPError as exc:
+                    print(f"  [warn] {exc}")
+
+    manifest = _write_manifest(record_dir, args)
+    print(f"\n[done] manifest: {manifest}")
+    print(f"[done] {len(list(record_dir.glob('*.json'))) - 1} recordings unter {record_dir}.")
+    if args.with_reauth_fail:
+        print()
+        print("ACHTUNG: Session ist jetzt zerstoert. Browser-2FA-Login erneut "
+              "durchfuehren (docs/runbooks/cpgateway-login.md), bevor weitere "
+              "Recordings oder produktive Calls erfolgen.")
+    return 0
 
 
 # ---- Manifest ----

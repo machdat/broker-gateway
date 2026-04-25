@@ -103,31 +103,57 @@ Idempotency-Key: <client-generated UUID>
 
 Server speichert `key → response` für 24 h. Wiederholte Requests mit demselben Key liefern die ursprüngliche Response — kein erneuter Broker-Call.
 
-### 1.6 Error-Modell
+### 1.6 Error-Modell (final ab v1.5.0)
 
-Alle Fehler liefern HTTP-Status + JSON-Body:
+Alle Fehlerantworten der v1-API folgen demselben Envelope-Schema:
 
 ```json
 {
   "error": {
-    "code": "<machine-readable code>",
-    "message": "<human-readable message>",
-    "details": { ... },
-    "retry_after": 30
+    "code": "missing_scope",
+    "message": "Token besitzt nicht den erforderlichen Scope 'orders:write'",
+    "request_id": "a4e9...",
+    "retry_after_s": 30,
+    "extra": {
+      "required_scope": "orders:write"
+    }
   }
 }
 ```
 
-| Status | Code-Beispiele | Bedeutung |
-|---|---|---|
-| 400 | `invalid_request`, `invalid_symbol` | Client-Fehler |
-| 401 | `missing_token`, `invalid_token` | Auth-Fehler |
-| 403 | `missing_scope`, `account_not_authorized` | Permission-Fehler |
-| 404 | `not_found` | Ressource existiert nicht |
-| 409 | `idempotency_conflict` | Idempotency-Key wurde mit anderem Body verwendet |
-| 422 | `validation_failed`, `order_rejected` | Request semantisch ungültig oder Broker-Reject |
-| 429 | `rate_limit_exceeded` | Throttle griff |
-| 503 | `broker_unavailable`, `auth_session_expired` | IBKR-Seite hat Probleme oder Re-Login nötig |
+Pflicht-Felder: `code` und `message`. Optional: `request_id`,
+`retry_after_s` und `extra`. Felder mit `null`-Wert werden vom Server
+**weggelassen** statt mit `null` ausgeliefert. `extra` ist endpunkt-
+spezifisch und niemals Teil des Vertrag-Stable-API — Consumer dürfen
+sich nicht darauf verlassen.
+
+#### Code-Tabelle (Single Source of Truth: `src/broker_gateway/api/v1/errors.py::KNOWN_ERROR_CODES`)
+
+| Status | `code` | Wann | `extra` |
+|--------|--------|------|---------|
+| 400 | `invalid_input` | Pflicht-Header / Pfad-Parameter fehlt oder ist syntaktisch falsch (z.B. `Idempotency-Key` fehlt, `account_id` leer). | optional `errors`-Liste mit Pydantic-Detail |
+| 401 | `missing_token` | `Authorization`-Header fehlt komplett. | — |
+| 401 | `invalid_token` | Token unbekannt, abgelaufen oder Format `Bearer ...` falsch. | — |
+| 403 | `missing_scope` | Token vorhanden aber Scope reicht nicht. | `{required_scope: "orders:write"}` |
+| 404 | `not_found` | Ressource existiert nicht (Token, Order, conid). | — |
+| 405 | `method_not_allowed` | Nicht-erlaubte HTTP-Methode auf bekanntem Pfad. | — |
+| 409 | `conflict` | Generischer Konflikt (z.B. Token bereits revoked). | — |
+| 409 | `idempotency_replay_mismatch` | Identischer `Idempotency-Key` mit anderem Body. | `{first_seen_at: ISO-8601}` |
+| 415 | `unsupported_media` | `Content-Type` nicht `application/json`. | — |
+| 422 | `invalid_input` | Request semantisch ungueltig (Pydantic-Validation, fachliche Pruefung). | optional `errors`-Liste |
+| 429 | `cp_pacing_violation` | CP-Gateway hat 429 geliefert (IBKR-Pacing-Limit). Server retried bereits intern; wenn 429 nach aussen kommt, ist das ein dauerhafter Backoff. | — |
+| 502 | `cp_upstream_error` | CP-Gateway hat einen unerwarteten 5xx oder Schema-Fehler geliefert, der nicht in eine spezifische `auth_lost`/`pacing`-Kategorie passt. | optional `{upstream_status, upstream_code}` |
+| 503 | `auth_lost` | CP-Gateway-Session ist verloren oder gar nicht erreichbar (`AUTH_LOST` / `CP_DOWN`). Browser-2FA-Re-Login noetig. **Immer mit `Retry-After`-Header und `retry_after_s` im Body.** | `{auth_status: "auth_lost"}` |
+| 504 | `cp_timeout` | CP-Gateway-Call lief in den Service-Timeout. | — |
+| 500 | `internal_error` | Unbekannter Server-Bug. Sollte nie regelmaessig auftauchen. | — |
+
+#### Verhaltens-Regeln
+
+1. **`Retry-After`-Header und `retry_after_s` sind synchron.** Wenn der Server beides setzt, sind sie identisch. Consumer dürfen entweder den Header oder das Body-Feld lesen.
+2. **`request_id` ist die Korrelations-ID** der `ObservabilityMiddleware`. Sie taucht in den strukturierten Server-Logs auf — bei Support-Anfragen mitsenden.
+3. **CP-Gateway-Bodies werden NIE 1:1 durchgereicht.** Wenn IBKR z.B. einen HTML-Error-Body liefert, übersetzt der Service ihn in `cp_upstream_error` mit gefilterten Feldern in `extra`.
+4. **`extra` ist niemals Pflicht.** Consumer dürfen es ignorieren. Server darf neue `extra`-Felder ohne Versions-Bump hinzufügen — aber bestehende nicht silent umbenennen.
+5. **IBKR liefert haeufig HTTP 500/503 fuer Anwendungs-Fehler** (Live-Beobachtung in AP-02 #05: `qty=0` → 500, unknown order → 503, unknown conid → 500). Der Service-Code mappt diese auf semantische `code`-Werte basierend auf dem Body-Inhalt — der Status-Code allein ist nicht aussagekraeftig.
 
 ### 1.7 Pagination
 

@@ -4,6 +4,45 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.5.0] — 2026-04-25
+
+### Hinzugefuegt
+- Vereinheitlichtes Error-Modell `{error: {code, message, request_id,
+  retry_after_s, extra}}` fuer **alle** v1-Endpunkte (Section 1.6 final).
+  Single Source of Truth: `src/broker_gateway/api/v1/errors.py`.
+  Globale Exception-Handler in `main.py` uebersetzen `HTTPException`,
+  `RequestValidationError` und die neue `CPGatewayError` ins Schema.
+- `scripts/recording_session.py error-path` provoziert IBKR-Fehler:
+  Pacing-Violation, ungueltige conid, ungueltige Order-Quantity,
+  nicht-existente Order-ID, optional Reauth-Fail (`--with-reauth-fail`).
+- 4 Live-Error-Recordings unter `tests/fixtures/recorded/live/errors/`
+  + Manifest. Wertvollster Fund: IBKR liefert generisches HTTP 500/503
+  statt 4xx — Service-Code-Mapping muss aus dem Body-Inhalt schliessen.
+- `tests/test_error_model.py` mit 14 Tests (5 Pflicht-Cases plus
+  Default-Code-Mapping-Parametrisierung).
+- `docs/runbooks/recording-session-error-path.md` mit Reset-Anleitung
+  nach Reauth-Fail und Diff-Bewertung des ersten Live-Laufs.
+
+### Geaendert
+- `cp/quotes.py::_call_snapshot` differenziert HTTP 429 jetzt explizit
+  als `cp_pacing_violation` mit `Retry-After`-Header statt allgemeines
+  `cp_upstream_error`.
+- `cp/lifecycle.py::require_session_ok` setzt `code: "auth_lost"` und
+  `retry_after_s: 30` im Detail.
+- `auth/middleware.py` setzt explizit `missing_token`, `invalid_token`,
+  `missing_scope` mit `required_scope` im `extra`.
+- 3 Tests strukturell angepasst: `body["detail"]` -> `body["error"]["message"]`
+  (test_auth, test_quotes_snapshot, test_events_stream) — kein Test-Intent
+  geaendert, nur das Lese-Schema.
+
+### Bekannt — fuer Folgekarte 813fed62
+- IBKR liefert HTTP 500/503 fuer Anwendungs-Fehler. Der Service-Code
+  sollte CP-Gateway-Bodies inspizieren und in semantische `code`-Werte
+  uebersetzen (z.B. Body enthaelt "is not found" -> `not_found`,
+  Body enthaelt "is not valid" -> `invalid_input`).
+- IBKR-Pacing griff im ersten Live-Lauf nicht (60 Calls/s = alle 200 OK).
+  Re-Test sobald IBKR-Wartung vorbei ist.
+
 ## [1.3.0] — 2026-04-25
 
 ### Hinzugefuegt

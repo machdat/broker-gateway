@@ -306,5 +306,5 @@ async def test_stream_endpoint_with_correct_scope_returns_403_when_missing(
                 headers={"Authorization": f"Bearer {good}"},
             )
     assert response.status_code == 400
-    detail = response.json().get("detail", "")
+    detail = response.json().get("error", {}).get("message", "")
     assert "Unbekannte Event-Typen" in detail

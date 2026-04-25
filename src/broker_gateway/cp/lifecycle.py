@@ -247,7 +247,12 @@ def require_session_ok(
     if snapshot.auth_status in (AuthStatus.AUTH_LOST, AuthStatus.CP_DOWN):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"IBKR-Session nicht verfügbar (status={snapshot.auth_status.value})",
+            detail={
+                "code": "auth_lost",
+                "message": f"IBKR-Session nicht verfuegbar (status={snapshot.auth_status.value})",
+                "retry_after_s": _RETRY_AFTER_S,
+                "auth_status": snapshot.auth_status.value,
+            },
             headers={"Retry-After": str(_RETRY_AFTER_S)},
         )
     return lifecycle

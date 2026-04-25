@@ -192,7 +192,7 @@ async def test_snapshot_endpoint_too_many_conids_returns_422(client: TestClient)
         headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
     )
     assert response.status_code == 422
-    assert "Maximal 5" in response.json()["detail"]
+    assert "Maximal 5" in response.json()["error"]["message"]
 
 
 async def test_snapshot_endpoint_unknown_field_returns_422(client: TestClient) -> None:
