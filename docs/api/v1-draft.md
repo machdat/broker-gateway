@@ -1,11 +1,11 @@
 # broker-gateway API v1 — Working Draft
 
 **Status:** Draft. Wird im Rahmen von AP-01 (KanPrompt-Projekt `broker-gateway`) iterativ konsolidiert. Jede Implementierungs-Karte aktualisiert die zugehörigen Abschnitte.
-**Stand:** 2026-04-25 (Service-Version 0.6.0)
+**Stand:** 2026-04-25 (Service-Version 0.7.0)
 
 > ⚠ **Hinweis für Consumer:** Bis v1.0.0 freigegeben ist, ist diese Spezifikation nicht stabil. Consumer-Implementierungen sollten erst nach formaler v1.0.0-Markierung beginnen.
 
-### Implementation Status (Service-Version 0.6.0)
+### Implementation Status (Service-Version 0.7.0)
 
 | Section | Implementiert |
 |---|---|
@@ -19,10 +19,11 @@
 | 4.2 Detail (`GET /v1/instruments/{conid}`) | ✅ in v0.5.0 (vereinfachter Body, siehe Section 4.2) |
 | 5.1 Quotes-Snapshot (`GET /v1/quotes/snapshot`) | ✅ in v0.6.0 (vereinfachter Body, siehe Section 5.1) |
 | Availability-Normalisierung 6509 → realtime/delayed/frozen | ✅ in v0.6.0 |
+| 5.2 Quotes-Stream (`GET /v1/quotes/stream`) | ✅ in v0.7.0 (Refcount + Fan-Out + 5-s-Cool-Down) |
 | 1.6 Error-Modell (Schema mit `error.code`/`error.message`) | ⏳ aktuell FastAPI-Default `{"detail": "..."}` |
 | Alle anderen | ⏳ Folgekarten in AP-01 |
 
-Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.6.0 ist `version` die Service-Version `0.6.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
+Die Beispiel-Response in Section 3.1 zeigt die geplante v1.0-Form. In der aktuell ausgelieferten v0.7.0 ist `version` die Service-Version `0.7.0` (Single Source of Truth: `pyproject.toml` + `broker_gateway.__version__`).
 
 ---
 
@@ -410,28 +411,53 @@ Der Service absorbiert das nach aussen: jeder `/v1/quotes/snapshot`-Aufruf macht
 ### 5.2 Stream (SSE)
 
 ```
-GET /v1/quotes/stream?conids=265598,14204&fields=last,bid,ask
+GET /v1/quotes/stream?conids=265598,272093[&fields=last,bid,ask]
 Authorization: Bearer <token (quotes:read)>
 Accept: text/event-stream
+[Last-Event-ID: <last-seen-event-id>]
 ```
 
-Response: `text/event-stream` mit Frames pro Update:
+`fields` und Default-Verhalten identisch zu Section 5.1 (Snapshot). `availability` wird intern immer angefordert.
+
+Response `200 OK` mit `Content-Type: text/event-stream` und Frames im SSE-Format:
 
 ```
+id: 0
 event: quote
-id: 1776972009330-265598
-data: {"conid":265598,"symbol":"AAPL","last":{"value":"274.06","currency":"USD"},"updated_at":"2026-04-24T17:30:00.123Z"}
+data: {"conid":265598,"last":"150.50","bid":"150.45","ask":"150.55","availability":"delayed","availability_raw":"DPB","updated_at":"2026-04-25T11:30:14.481Z"}
 
+id: 1
 event: quote
-id: 1776972011022-14204
-data: {"conid":14204,"symbol":"SAP","bid":{"value":"140.56","currency":"EUR"},"updated_at":"2026-04-24T17:30:01.022Z"}
-
-event: keepalive
-data: {}
+data: {"conid":272093,"last":"320.10","bid":"320.05","ask":"320.15","availability":"delayed","availability_raw":"DPB","updated_at":"2026-04-25T11:30:14.498Z"}
 ```
 
-- **Reconnect:** Client sendet `Last-Event-ID` Header, Server resumes.
-- **Subscription-Lifecycle:** Subscription bleibt aktiv solange die HTTP-Verbindung steht. Disconnect → Server dekrementiert Refcount, ggf. unsubscribe bei IBKR.
+`event` ist immer `quote`, `data` enthält dasselbe Schema wie ein Snapshot-Eintrag. `id` ist eine vom Server vergebene, **monoton steigende** Event-ID (Single Source of Truth: `broker_gateway.streams.manager._ConidSubscription._next_event_id`).
+
+#### Subscription-Refcount + Fan-Out
+
+Anders als das CP-Gateway, das Subscriptions session-global hält, bietet `broker-gateway` Refcount + Fan-Out:
+
+- Pro `conid` läuft genau **eine** interne Subscription (Polling gegen `/iserver/marketdata/snapshot`, kein nativer CP-Stream-Endpunkt in v1).
+- Mehrere parallele HTTP-Consumer auf denselben `conid` teilen sich diese eine Subscription. Jeder Consumer bekommt jede Quote-Aktualisierung.
+- Disconnect eines Consumers (TCP-Close, Browser-Reload, Process-Exit) dekrementiert den Refcount. Bei `refcount=0` startet ein **5-Sekunden-Cool-Down**; verbindet binnen dieser Zeit ein neuer Consumer, wird der Cool-Down gecancelt und die Subscription bleibt warm. Andernfalls wird `/iserver/marketdata/{conid}/unsubscribe` gerufen.
+
+#### Reconnect via Last-Event-ID
+
+Sendet der Client beim Reconnect den `Last-Event-ID`-Header, liefert der Server zunächst alle gepufferten Events mit `id > Last-Event-ID` und schaltet dann auf den Live-Stream um. Buffergröße ist 200 Events pro `conid`. Wenn der Reconnect zu spät kommt, fehlen Events - Consumer sollte in dem Fall einen `/v1/quotes/snapshot` als Cold-Start ergänzen.
+
+#### Limits + Fehlercodes
+
+| Status | Bedingung |
+|---|---|
+| `429 Too Many Requests` mit `Retry-After: 30` | Manager hat das CP-Gateway-Limit von **250 parallel aktiven conids** erreicht |
+| `503 Service Unavailable` mit `Retry-After: 30` | `auth_status in {auth_lost, cp_down}` (siehe Section 3.2) |
+| `403 Forbidden` | Token hat nicht `quotes:read` |
+| `401 Unauthorized` | Token fehlt / ungültig / abgelaufen |
+| `422 Unprocessable Content` | leere/ungültige `conids` oder unbekannte `fields` |
+
+#### Verhältnis Snapshot ↔ Stream
+
+Beide Endpunkte nutzen dasselbe Field-Alias-Mapping und denselben Quote-Body. Wer einmalig Daten will, ruft Snapshot. Wer kontinuierlich Updates braucht, hängt sich an Stream. Mischbetrieb (Snapshot warm-start + Stream danach) wird vom Server gut vertragen, da Subscription-Refcount global ist.
 
 ---
 

@@ -17,6 +17,10 @@ from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
 from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
 from broker_gateway.cp.quotes import QuotesService
+from broker_gateway.streams.manager import (
+    SubscriptionManager,
+    get_subscription_manager,
+)
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -44,6 +48,7 @@ def create_app(
     lifecycle: AuthLifecycle | None = None,
     instruments_service: InstrumentsService | None = None,
     quotes_service: QuotesService | None = None,
+    subscription_manager: SubscriptionManager | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -58,16 +63,18 @@ def create_app(
         app.state.cp_lifecycle = cp_lifecycle
         app.dependency_overrides[get_cp_lifecycle] = lambda: cast(AuthLifecycle, app.state.cp_lifecycle)
 
-        # Default-Client für Services, die keinen eigenen mitbringen.
         services_client: CPGatewayClient | None = client
-        if instruments_service is None or quotes_service is None:
+        services_owned = False
+        if (
+            instruments_service is None
+            or quotes_service is None
+            or subscription_manager is None
+        ):
             if services_client is None:
                 services_client = CPGatewayClient()
-                app.state._owns_services_client = True
-            else:
-                app.state._owns_services_client = False
-        else:
-            app.state._owns_services_client = False
+                services_owned = True
+
+        app.state._owns_services_client = services_owned
         app.state._services_client = services_client
 
         inst_service = (
@@ -80,20 +87,30 @@ def create_app(
             if quotes_service is not None
             else QuotesService(cast(CPGatewayClient, services_client))
         )
+        sub_manager = (
+            subscription_manager
+            if subscription_manager is not None
+            else SubscriptionManager(cast(CPGatewayClient, services_client))
+        )
 
         app.state.instruments_service = inst_service
         app.state.quotes_service = qts_service
+        app.state.subscription_manager = sub_manager
         app.dependency_overrides[get_instruments_service] = (
             lambda: cast(InstrumentsService, app.state.instruments_service)
         )
         app.dependency_overrides[get_quotes_service] = (
             lambda: cast(QuotesService, app.state.quotes_service)
         )
+        app.dependency_overrides[get_subscription_manager] = (
+            lambda: cast(SubscriptionManager, app.state.subscription_manager)
+        )
 
         await cp_lifecycle.start()
         try:
             yield
         finally:
+            await sub_manager.shutdown()
             await cp_lifecycle.stop()
             if client is not None:
                 await client.aclose()
