@@ -1,0 +1,53 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/secdef/info",
+    "query": {
+      "conid": "3804335"
+    },
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "0ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:58 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:58 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=38, origin; dur=16, ak_p; desc=\"1777120378409_388397449_2946584721_5403_14238_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": {
+      "conid": 3804335,
+      "ticker": "SAP",
+      "secType": "STK",
+      "listingExchange": "NYSE",
+      "exchange": "SMART",
+      "companyName": "SAP SE-SPONSORED ADR",
+      "currency": "USD",
+      "validExchanges": "SMART,AMEX,NYSE,CBOE,PHLX,ISE,CHX,ARCA,NASDAQ,DRCTEDGE,BEX,BATS,EDGEA,BYX,IEX,EDGX,FOXRIVER,PEARL,NYSENAT,LTSE,MEMX,IBEOS,OVERNIGHT,TPLUS0,PSX,T24X",
+      "priceRendering": null,
+      "maturityDate": null,
+      "right": "?",
+      "strike": 0.0
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:32:58.311884+00:00",
+  "normalized": true
+}

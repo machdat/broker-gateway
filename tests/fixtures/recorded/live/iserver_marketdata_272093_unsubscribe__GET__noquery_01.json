@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/marketdata/272093/unsubscribe",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 404,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "text/html; charset=utf-8",
+      "x-response-time": "0ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=37, origin; dur=12, ak_p; desc=\"1777120379003_388397449_2946585635_4845_15584_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": null,
+    "body_text": "<html><body><h1>Resource not found</h1></body></html>"
+  },
+  "recorded_at": "2026-04-25T12:32:58.871086+00:00",
+  "normalized": true
+}

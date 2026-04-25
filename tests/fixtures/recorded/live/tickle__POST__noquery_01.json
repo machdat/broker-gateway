@@ -1,0 +1,62 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/tickle",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "content-length": "0",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "0ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=18, origin; dur=14, ak_p; desc=\"1777120377634_388397449_2946583489_3362_9278_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": {
+      "session": "<SESSION_ID>",
+      "ssoExpires": "<TIMESTAMP>",
+      "collission": false,
+      "userId": 181382082,
+      "hmds": {
+        "error": "no bridge"
+      },
+      "iserver": {
+        "authStatus": {
+          "authenticated": true,
+          "established": true,
+          "competing": false,
+          "connected": true,
+          "message": "",
+          "MAC": "06:59:AE:5B:4F:D1",
+          "serverInfo": {
+            "serverName": "JifZ28031",
+            "serverVersion": "Build 10.44.1h, Apr 20, 2026 11:22:51 AM"
+          },
+          "hardware_info": "30df22d8|06:59:AE:5B:4F:D1"
+        }
+      }
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:32:57.466584+00:00",
+  "normalized": true
+}

@@ -73,6 +73,14 @@ def load_recording(
                 raise RuntimeError(
                     f"Recording {candidate} hat kein 'response'-Dict."
                 )
+            # live-Recordings mit 4xx/5xx-Status sind dokumentarische
+            # Beweise fuer Service-Code-Bugs (z.B. /iserver/account/.../portfolio
+            # liefert 404, weil IBKR /portfolio/.../summary erwartet) - nicht
+            # der Body, gegen den die Mock-Fixture sprechen soll. Solange der
+            # Service-Code-Pfad noch nicht umgestellt ist, bleibt das seed-
+            # Recording die "happy path"-Quelle.
+            if subdir == "live" and response.get("status_code", 0) >= 400:
+                continue
             return response
 
     raise RecordingNotFoundError(

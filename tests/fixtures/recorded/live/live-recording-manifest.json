@@ -1,0 +1,36 @@
+{
+  "scenario": "happy-path",
+  "account_id": "U25235077",
+  "base_url": "http://localhost:5000/v1/api",
+  "broker_gateway_version": "1.2.0",
+  "recorded_at": "2026-04-25T12:33:01.294211+00:00",
+  "symbols": [
+    "AAPL",
+    "MSFT",
+    "SAP"
+  ],
+  "files": [
+    "iserver_account_U25235077_ledger__GET__noquery_01.json",
+    "iserver_account_U25235077_orders_whatif__POST__noquery_01.json",
+    "iserver_account_U25235077_portfolio__GET__noquery_01.json",
+    "iserver_account_U25235077_positions__GET__noquery_01.json",
+    "iserver_account_trades__GET__c22352b6_01.json",
+    "iserver_accounts__GET__noquery_01.json",
+    "iserver_auth_status__GET__noquery_01.json",
+    "iserver_marketdata_104747_unsubscribe__GET__noquery_01.json",
+    "iserver_marketdata_265598_unsubscribe__GET__noquery_01.json",
+    "iserver_marketdata_272093_unsubscribe__GET__noquery_01.json",
+    "iserver_marketdata_snapshot__GET__c26648ca_01.json",
+    "iserver_marketdata_snapshot__GET__c26648ca_02.json",
+    "iserver_secdef_info__GET__014302de_01.json",
+    "iserver_secdef_info__GET__77161c0b_01.json",
+    "iserver_secdef_info__GET__95891acb_01.json",
+    "iserver_secdef_search__GET__0d764ae6_01.json",
+    "iserver_secdef_search__GET__1414e9e2_01.json",
+    "iserver_secdef_search__GET__7e0c1d60_01.json",
+    "portfolio_U25235077_ledger__GET__noquery_01.json",
+    "portfolio_U25235077_positions_0__GET__noquery_01.json",
+    "portfolio_U25235077_summary__GET__noquery_01.json",
+    "tickle__POST__noquery_01.json"
+  ]
+}

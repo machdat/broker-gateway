@@ -1,0 +1,143 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/secdef/search",
+    "query": {
+      "symbol": "AAPL"
+    },
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "8ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=14, origin; dur=25, ak_p; desc=\"1777120377743_388397449_2946583657_4935_14018_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": [
+      {
+        "conid": "265598",
+        "companyHeader": "APPLE INC - NASDAQ",
+        "companyName": "APPLE INC",
+        "symbol": "AAPL",
+        "description": "NASDAQ",
+        "restricted": "CFD",
+        "sections": [
+          {
+            "secType": "STK"
+          },
+          {
+            "secType": "OPT",
+            "months": "APR26;MAY26;JUN26;JUL26;AUG26;SEP26;OCT26;NOV26;DEC26;JAN27;MAR27;JUN27;DEC27;JAN28;MAR28;DEC28",
+            "exchange": "SMART;AMEX;BATS;BOX;CBOE;CBOE2;EDGX;EMERALD;GEMINI;IBUSOPT;ISE;MEMX;MERCURY;MIAX;NASDAQBX;NASDAQOM;PEARL;PHLX;PSE;SAPPHIRE"
+          },
+          {
+            "secType": "WAR",
+            "months": "MAR26;APR26;MAY26;JUN26;JUL26;AUG26;SEP26;OCT26;NOV26;DEC26;JAN27;MAR27;JUN27;SEP27;DEC27;JAN28;MAR28;JUN28;SEP28;DEC28;JAN29;JUN29;DEC29;JAN30",
+            "exchange": "BVME;EBS;FWB;GETTEX;SBF;SEHK;SWB"
+          },
+          {
+            "secType": "IOPT"
+          },
+          {
+            "secType": "CFD",
+            "exchange": "SMART",
+            "conid": "120549942"
+          },
+          {
+            "secType": "BAG"
+          }
+        ]
+      },
+      {
+        "conid": "532640894",
+        "companyHeader": "APPLE INC-CDR - TSE",
+        "companyName": "APPLE INC-CDR",
+        "symbol": "AAPL",
+        "description": "TSE",
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "STK"
+          },
+          {
+            "secType": "OPT",
+            "months": "MAY26;JUN26;JUL26;AUG26;SEP26;OCT26;DEC26;MAR27",
+            "exchange": "CDE"
+          },
+          {
+            "secType": "BAG"
+          }
+        ]
+      },
+      {
+        "conid": "38708077",
+        "companyHeader": "APPLE INC - MEXI",
+        "companyName": "APPLE INC",
+        "symbol": "AAPL",
+        "description": "MEXI",
+        "restricted": "STK",
+        "sections": [
+          {
+            "secType": "STK",
+            "exchange": "MEXI;"
+          }
+        ]
+      },
+      {
+        "conid": "273982664",
+        "companyHeader": "APPLE INC - EBS",
+        "companyName": "APPLE INC",
+        "symbol": "AAPL",
+        "description": "EBS",
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "STK"
+          }
+        ]
+      },
+      {
+        "issuers": [
+          {
+            "id": "e1432232",
+            "name": "Apple Inc"
+          }
+        ],
+        "bondid": 4,
+        "conid": "2147483647",
+        "companyHeader": "Corporate Fixed Income",
+        "companyName": null,
+        "symbol": null,
+        "description": null,
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "BOND"
+          }
+        ]
+      }
+    ],
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:32:57.586592+00:00",
+  "normalized": true
+}

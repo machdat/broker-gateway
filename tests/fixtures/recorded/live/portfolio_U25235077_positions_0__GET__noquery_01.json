@@ -1,0 +1,1092 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/portfolio/U25235077/positions/0",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "0ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=39, origin; dur=14, ak_p; desc=\"1777120379709_388397449_2946586903_5312_16149_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": [
+      {
+        "acctId": "U25235077",
+        "conid": 762549331,
+        "contractDesc": "RHLD",
+        "position": 9.9788,
+        "mktPrice": 138.3770752,
+        "mktValue": 1380.84,
+        "currency": "USD",
+        "avgCost": 149.0375997,
+        "avgPrice": 149.0375997,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -106.38,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 26,
+        "chineseName": "Resolute&#x63A7;&#x80A1;&#x7BA1;&#x7406;&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "RESOLUTE HOLDINGS MANAG",
+        "lastTradingDay": null,
+        "group": "Diversified Finan Serv",
+        "sector": "Financial",
+        "sectorGroup": "Invest Mgmnt/Advis Serv",
+        "ticker": "RHLD",
+        "type": "COMMON",
+        "hasOptions": false,
+        "fullName": "RHLD",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 316490716,
+        "contractDesc": "AMRX",
+        "position": 150.0,
+        "mktPrice": 12.5,
+        "mktValue": 1875.0,
+        "currency": "USD",
+        "avgCost": 12.71636665,
+        "avgPrice": 12.71636665,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -32.45,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 28,
+        "chineseName": "Amneal&#x5236;&#x836F;&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "AMNEAL PHARMACEUTICALS INC",
+        "lastTradingDay": null,
+        "group": "Pharmaceuticals",
+        "sector": "Consumer, Non-cyclical",
+        "sectorGroup": "Medical-Generic Drugs",
+        "ticker": "AMRX",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "AMRX",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 849557888,
+        "contractDesc": "YSS",
+        "position": 20.0,
+        "mktPrice": 30.95000075,
+        "mktValue": 619.0,
+        "currency": "USD",
+        "avgCost": 38.51265,
+        "avgPrice": 38.51265,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -151.25,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 39,
+        "chineseName": "&#x7F8E;&#x5143;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "YORK SPACE SYSTEMS INC",
+        "lastTradingDay": null,
+        "group": "Aerospace/Defense",
+        "sector": "Industrial",
+        "sectorGroup": "Aerospace/Defense",
+        "ticker": "YSS",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "YSS",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 10182,
+        "contractDesc": "NRT",
+        "position": 53.7282,
+        "mktPrice": 8.3415613,
+        "mktValue": 448.18,
+        "currency": "USD",
+        "avgCost": 8.3940873,
+        "avgPrice": 8.3940873,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -2.82,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 39,
+        "chineseName": "&#x5317;&#x6B27;&#x77F3;&#x6CB9;&#x6743;&#x5229;&#x91D1;&#x4FE1;&#x6258;",
+        "allExchanges": "AMEX,NYSE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "NORTH EUROPEAN OIL RTY TRUST",
+        "lastTradingDay": null,
+        "group": "Oil&amp;Gas",
+        "sector": "Energy",
+        "sectorGroup": "Oil-US Royalty Trusts",
+        "ticker": "NRT",
+        "type": "ROYALTY TRST",
+        "hasOptions": true,
+        "fullName": "NRT",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 37018770,
+        "contractDesc": "T",
+        "position": 32.0,
+        "mktPrice": 26.2099991,
+        "mktValue": 838.72,
+        "currency": "USD",
+        "avgCost": 25.6697375,
+        "avgPrice": 25.6697375,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": 17.29,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "&#x7F8E;&#x56FD;&#x7535;&#x8BDD;&#x7535;&#x62A5;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,GSDARK,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "AT&T INC",
+        "lastTradingDay": null,
+        "group": "Telecommunications",
+        "sector": "Communications",
+        "sectorGroup": "Telephone-Integrated",
+        "ticker": "T",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "T",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 361181057,
+        "contractDesc": "ZM",
+        "position": 4.9974,
+        "mktPrice": 92.30000305,
+        "mktValue": 461.26,
+        "currency": "USD",
+        "avgCost": 90.24604795,
+        "avgPrice": 90.24604795,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": 10.26,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "Zoom&#x901A;&#x4FE1;&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,GSDARK,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "ZOOM COMMUNICATIONS INC",
+        "lastTradingDay": null,
+        "group": "Software",
+        "sector": "Technology",
+        "sectorGroup": "Communications Software",
+        "ticker": "ZM",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "ZM",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 100825898,
+        "contractDesc": "GWRE",
+        "position": 3.0,
+        "mktPrice": 139.7799988,
+        "mktValue": 419.34,
+        "currency": "USD",
+        "avgCost": 135.72333335,
+        "avgPrice": 135.72333335,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": 12.17,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "Guidewire &#x8F6F;&#x4EF6;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,GSDARK,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "GUIDEWIRE SOFTWARE INC",
+        "lastTradingDay": null,
+        "group": "Software",
+        "sector": "Technology",
+        "sectorGroup": "Enterprise Software/Serv",
+        "ticker": "GWRE",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "GWRE",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 346369068,
+        "contractDesc": "KOS",
+        "position": 60.0,
+        "mktPrice": 2.80999995,
+        "mktValue": 168.6,
+        "currency": "USD",
+        "avgCost": 2.59969335,
+        "avgPrice": 2.59969335,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": 12.62,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.0001
+          },
+          {
+            "lowerEdge": 1.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 4,
+              "lowerEdge": 0.0,
+              "wholeDigits": 1
+            },
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 1.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "&#x79D1;&#x65AF;&#x83AB;&#x65AF;&#x80FD;&#x6E90;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "KOSMOS ENERGY LTD",
+        "lastTradingDay": null,
+        "group": "Oil&amp;Gas",
+        "sector": "Energy",
+        "sectorGroup": "Oil Comp-Explor&amp;Prodtn",
+        "ticker": "KOS",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "KOS",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 270760,
+        "contractDesc": "ITRI",
+        "position": 19.5499,
+        "mktPrice": 88.2900009,
+        "mktValue": 1726.06,
+        "currency": "USD",
+        "avgCost": 94.2023898,
+        "avgPrice": 94.2023898,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -115.59,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "&#x7231;&#x62D3;&#x5229;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "ITRON INC",
+        "lastTradingDay": null,
+        "group": "Electronics",
+        "sector": "Industrial",
+        "sectorGroup": "Electronic Measur Instr",
+        "ticker": "ITRI",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "ITRI",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 44061838,
+        "contractDesc": "PODD",
+        "position": 4.6964,
+        "mktPrice": 189.5223694,
+        "mktValue": 890.07,
+        "currency": "USD",
+        "avgCost": 200.4285197,
+        "avgPrice": 200.4285197,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -51.22,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "Insulet&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,GSDARK,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "INSULET CORP",
+        "lastTradingDay": null,
+        "group": "Healthcare-Products",
+        "sector": "Consumer, Non-cyclical",
+        "sectorGroup": "Patient Monitoring Equip",
+        "ticker": "PODD",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "PODD",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 774786526,
+        "contractDesc": "SATL",
+        "position": 20.0,
+        "mktPrice": 6.1999998,
+        "mktValue": 124.0,
+        "currency": "USD",
+        "avgCost": 7.135,
+        "avgPrice": 7.135,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -18.7,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.0001
+          },
+          {
+            "lowerEdge": 1.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 4,
+              "lowerEdge": 0.0,
+              "wholeDigits": 1
+            },
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 1.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "Satellogic&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "SATELLOGIC INC-A",
+        "lastTradingDay": null,
+        "group": "Telecommunications",
+        "sector": "Communications",
+        "sectorGroup": "Satellite Telecom",
+        "ticker": "SATL",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "SATL",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 209048388,
+        "contractDesc": "CTMX",
+        "position": 200.0,
+        "mktPrice": 4.4000001,
+        "mktValue": 880.0,
+        "currency": "USD",
+        "avgCost": 4.393,
+        "avgPrice": 4.393,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": 1.4,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.0001
+          },
+          {
+            "lowerEdge": 1.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 4,
+              "lowerEdge": 0.0,
+              "wholeDigits": 1
+            },
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 1.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 40,
+        "chineseName": "CytomX&#x533B;&#x7597;&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "CYTOMX THERAPEUTICS INC",
+        "lastTradingDay": null,
+        "group": "Biotechnology",
+        "sector": "Consumer, Non-cyclical",
+        "sectorGroup": "Medical-Biomedical/Gene",
+        "ticker": "CTMX",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "CTMX",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 589828153,
+        "contractDesc": "TWO",
+        "position": 50.0,
+        "mktPrice": 10.99085905,
+        "mktValue": 549.54,
+        "currency": "USD",
+        "avgCost": 11.005,
+        "avgPrice": 11.005,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -0.71,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 26,
+        "chineseName": "Two Harbors&#x6295;&#x8D44;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "TWO HARBORS INVESTMENT CORP",
+        "lastTradingDay": null,
+        "group": "REITS",
+        "sector": "Financial",
+        "sectorGroup": "REITS-Mortgage",
+        "ticker": "TWO",
+        "type": "REIT",
+        "hasOptions": true,
+        "fullName": "TWO",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 374627687,
+        "contractDesc": "BW",
+        "position": 70.0,
+        "mktPrice": 14.6199999,
+        "mktValue": 1023.4,
+        "currency": "USD",
+        "avgCost": 17.27594285,
+        "avgPrice": 17.27594285,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -185.92,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.0001
+          },
+          {
+            "lowerEdge": 1.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 4,
+              "lowerEdge": 0.0,
+              "wholeDigits": 1
+            },
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 1.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "Babcock &amp; Wilcox&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,PSX,BYX,ITG,PDQ,IBKRATS,NYSEFLOOR,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NYSE",
+        "countryCode": "US",
+        "name": "BABCOCK & WILCOX ENTERPR",
+        "lastTradingDay": null,
+        "group": "Machinery-Constr&amp;Mining",
+        "sector": "Industrial",
+        "sectorGroup": "Machinery-Electric Util",
+        "ticker": "BW",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "BW",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 571221112,
+        "contractDesc": "ABEO",
+        "position": 40.0,
+        "mktPrice": 5.4000001,
+        "mktValue": 216.0,
+        "currency": "USD",
+        "avgCost": 5.42,
+        "avgPrice": 5.42,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -0.8,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 28,
+        "chineseName": "PlasmaTech&#x5236;&#x836F;&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "ABEONA THERAPEUTICS INC",
+        "lastTradingDay": null,
+        "group": "Biotechnology",
+        "sector": "Consumer, Non-cyclical",
+        "sectorGroup": "Medical-Biomedical/Gene",
+        "ticker": "ABEO",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "ABEO",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 201942684,
+        "contractDesc": "Z",
+        "position": 6.0,
+        "mktPrice": 45.40397265,
+        "mktValue": 272.42,
+        "currency": "USD",
+        "avgCost": 45.02666665,
+        "avgPrice": 45.02666665,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": 2.26,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "Zillow&#x96C6;&#x56E2;&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQQ,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,GSDARK,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "ZILLOW GROUP INC - C",
+        "lastTradingDay": null,
+        "group": "Internet",
+        "sector": "Communications",
+        "sectorGroup": "E-Commerce/Services",
+        "ticker": "Z",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "Z",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 313130367,
+        "contractDesc": "AVGO",
+        "position": 2.0,
+        "mktPrice": 419.980011,
+        "mktValue": 839.96,
+        "currency": "USD",
+        "avgCost": 415.44,
+        "avgPrice": 415.44,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": 9.08,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 0.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 27,
+        "chineseName": "&#x535A;&#x901A;&#x80A1;&#x4EFD;&#x6709;&#x9650;&#x516C;&#x53F8;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,GSDARK,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "BROADCOM INC",
+        "lastTradingDay": null,
+        "group": "Semiconductors",
+        "sector": "Technology",
+        "sectorGroup": "Electronic Compo-Semicon",
+        "ticker": "AVGO",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "AVGO",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      },
+      {
+        "acctId": "U25235077",
+        "conid": 712984808,
+        "contractDesc": "ABVE",
+        "position": 1200.0,
+        "mktPrice": 0.585,
+        "mktValue": 702.0,
+        "currency": "USD",
+        "avgCost": 0.7627534,
+        "avgPrice": 0.7627534,
+        "realizedPnl": 0.0,
+        "unrealizedPnl": -213.3,
+        "exchs": null,
+        "expiry": null,
+        "putOrCall": null,
+        "multiplier": 0.0,
+        "strike": "0",
+        "exerciseStyle": null,
+        "conExchMap": [],
+        "assetClass": "STK",
+        "undConid": 0,
+        "model": "",
+        "incrementRules": [
+          {
+            "lowerEdge": 0.0,
+            "increment": 0.0001
+          },
+          {
+            "lowerEdge": 1.0,
+            "increment": 0.01
+          }
+        ],
+        "displayRule": {
+          "magnification": 0,
+          "displayRuleStep": [
+            {
+              "decimalDigits": 4,
+              "lowerEdge": 0.0,
+              "wholeDigits": 1
+            },
+            {
+              "decimalDigits": 2,
+              "lowerEdge": 1.0,
+              "wholeDigits": 4
+            }
+          ]
+        },
+        "time": 28,
+        "chineseName": "&#x7F8E;&#x5143;",
+        "allExchanges": "AMEX,NYSE,CBOE,PHLX,CHX,ARCA,ISLAND,ISE,IDEAL,NASDAQ,DRCTEDGE,BEX,BATS,NITEECN,EDGEA,CSFBALGO,NYSENASD,PSX,BYX,ITG,PDQ,IBKRATS,CITADEL,NYSEDARK,MIAX,IBDARK,CITADELDP,NASDDARK,IEX,SUMMER,FINRA,LIQITG,UBSDARK,BTIG,VIRTU,JEFF,OPCO,DBK,JPMC,EDGX,JANE,FRACSHARE,RBCALGO,VIRTUDP,FOXRIVER,NITEEXST,PEARL,NITERTL,NYSENAT,IEXMID,HRT,FLOWTRADE,HRTDP,JANELP,PEAK6,CTDLZERO,HRTMID,JANEZERO,HRTEXST,IMCLP,LTSE,SOCGENDP,MEMX,INTELCROS,VIRTUBYIN,JUMPTRADE,NITEZERO,XTXEXST,XTXDP,XTXMID,COWENLP,BARCDP,JUMPLP,OLDMCLP,RBCCMALP,WALLBETH,IBEOS,JONES,GSLP,BLUEOCEAN,USIBSILP,OVERNIGHT,JANEMID,IBATSEOS,HRTZERO,VIRTUALGO,G1XLP,VIRTUMID,GLOBALXLP,CTDLMID,TPLUS0,JUMPMID,CLOSEOUT,T24X,OMCDP,OMCMID",
+        "listingExchange": "NASDAQ",
+        "countryCode": "US",
+        "name": "ABOVE FOOD INGREDIENTS INC",
+        "lastTradingDay": null,
+        "group": "Food",
+        "sector": "Consumer, Non-cyclical",
+        "sectorGroup": "Food-Misc/Diversified",
+        "ticker": "ABVE",
+        "type": "COMMON",
+        "hasOptions": true,
+        "fullName": "ABVE",
+        "isUS": true,
+        "isEventContract": false,
+        "pageSize": 100
+      }
+    ],
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:32:59.583827+00:00",
+  "normalized": true
+}

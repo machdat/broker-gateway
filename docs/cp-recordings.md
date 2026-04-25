@@ -23,24 +23,24 @@ Beispiele werden schrittweise abgeloest.
 
 1. CP-Gateway live im Compose-Stack hochfahren (siehe
    `docs/runbooks/cpgateway-login.md` fuer den Browser-2FA-Login).
-2. ENV setzen: `export BG_CP_RECORD_DIR=tests/fixtures/recorded` -
-   damit aktiviert sich der Recorder im naechsten `CPGatewayClient`-
-   Konstruktor.
-3. Recording-Session-Skript aufrufen:
+2. Recording-Session-Skript aufrufen (Subkommando `happy-path` ist seit
+   v1.3.0 voll implementiert):
 
    ```bash
-   python scripts/recording_session.py \
-       --record-dir tests/fixtures/recorded \
+   python scripts/recording_session.py happy-path \
+       --record-dir tests/fixtures/recorded/live \
        --base-url http://localhost:5000/v1/api \
        --account-id U25235077 \
-       --scenario happy
+       --symbols AAPL MSFT SAP
    ```
 
-   Aktuell druckt das Skript nur die Konfiguration. Die eigentliche
-   Endpunkt-Sequenz wird in AP-02 #04 (happy-path) und #05 (error-path)
-   eingebaut.
-4. `git status tests/fixtures/recorded/` zeigt die neuen Dateien. Vor dem
-   Commit prufen, dass kein Geheimnis durchgerutscht ist (siehe unten).
+   Das Skript prueft zuerst `/iserver/auth/status`, dann ruft es alle
+   v1-Endpunkte sequenziell ab. Order-Schritt ist standardmaessig die
+   Preview-Variante (`/orders/whatif`); mit `--with-place-cancel` zusaetzlich
+   eine echte Limit-Order weit ausserhalb des Marktes, die sofort wieder
+   gecancelt wird (siehe `docs/runbooks/recording-session-happy-path.md`).
+3. `git status tests/fixtures/recorded/live/` zeigt die neuen Dateien. Vor
+   dem Commit pruefen, dass kein Geheimnis durchgerutscht ist (siehe unten).
 
 ## Was wird gespeichert
 

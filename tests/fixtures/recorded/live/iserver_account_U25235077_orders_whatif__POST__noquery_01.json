@@ -1,0 +1,114 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/iserver/account/U25235077/orders/whatif",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1",
+      "content-length": "85",
+      "content-type": "application/json"
+    },
+    "body_json": {
+      "orders": [
+        {
+          "conid": 265598,
+          "orderType": "MKT",
+          "side": "BUY",
+          "quantity": 1,
+          "tif": "DAY"
+        }
+      ]
+    },
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "1145ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:33:01 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:33:01 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=21, origin; dur=1161, ak_p; desc=\"1777120380097_388397449_2946587399_118137_11096_8_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": {
+      "amount": {
+        "amount": "270.94 USD (1 Shares)",
+        "commission": "NA",
+        "total": "NA"
+      },
+      "equity": null,
+      "initial": null,
+      "maintenance": null,
+      "position": null,
+      "warn": "23/<h4>Market Order Confirmation</h4>&nbsp;&nbsp;&nbsp;A Market Order is an instruction to trade your order at any available price and presents significant risk of trading at an undesirable price. Large market orders may also be split into smaller orders and traded over time to minimize impacting and disrupting prices. Please <a href='https://api.ibkr.com/lib/cstools/faq/ios1/ios.html#/tag/market_order_confirmation_warning'>read our FAQ</a> for more information regarding how IB handles market orders.",
+      "error": "Available converted to base: 66.73 EUR Cash needed for this order and other pending orders: 246.06 EUR",
+      "warns": [
+        "23/<h4>Market Order Confirmation</h4>&nbsp;&nbsp;&nbsp;A Market Order is an instruction to trade your order at any available price and presents significant risk of trading at an undesirable price. Large market orders may also be split into smaller orders and traded over time to minimize impacting and disrupting prices. Please <a href='https://api.ibkr.com/lib/cstools/faq/ios1/ios.html#/tag/market_order_confirmation_warning'>read our FAQ</a> for more information regarding how IB handles market orders.",
+        "26/<h4>Confirm Mandatory Cap Price</h4>To avoid trading at a price that is not consistent with a fair and orderly market, IB may set a cap (for a buy order) or floor (for a sell order). THIS MAY CAUSE AN ORDER THAT WOULD OTHERWISE BE MARKETABLE NOT TO BE TRADED."
+      ],
+      "errors": [
+        "Available converted to base: 66.73 EUR Cash needed for this order and other pending orders: 246.06 EUR"
+      ],
+      "accruedInterest": null,
+      "action": "convert_from_base_currency",
+      "order_id": "<ORDER_ID_001>",
+      "cqe": {
+        "query": {
+          "account_id": "U25235077",
+          "sec_type": "STK",
+          "order_currency": "USD",
+          "exchange": "SMART",
+          "conid": "265598",
+          "order_total": "270.94000244140625",
+          "order_id": "<ORDER_ID_001>"
+        },
+        "request_method": "GET"
+      },
+      "data": [
+        {
+          "V": [
+            "0"
+          ],
+          "L": "Current Position",
+          "N": "CURRENT_POS"
+        },
+        {
+          "V": [
+            "1"
+          ],
+          "L": "Post-Trade Position*",
+          "N": "AFTER_POS"
+        },
+        {
+          "V": [
+            "67"
+          ],
+          "L": "Available Funds",
+          "N": "CURRENT_FUNDS"
+        },
+        {
+          "V": [
+            "-179"
+          ],
+          "L": "Post Trade Available Funds*",
+          "N": "AFTER_FUNDS"
+        }
+      ]
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:33:01.069419+00:00",
+  "normalized": true
+}

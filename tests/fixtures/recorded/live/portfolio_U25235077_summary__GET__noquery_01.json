@@ -1,0 +1,447 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/portfolio/U25235077/summary",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "22ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=13, origin; dur=51, ak_p; desc=\"1777120379492_388397449_2946586346_6417_12551_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": {
+      "accountcode": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "U25235077",
+        "severity": 0
+      },
+      "accountready": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "true",
+        "severity": 0
+      },
+      "accounttype": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "INDIVIDUAL",
+        "severity": 0
+      },
+      "accruedcash": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "accrueddividend": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "availablefunds": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "availablefunds-s": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "billable": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "buyingpower": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "columnprio-s": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "1",
+        "severity": 0
+      },
+      "cushion": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "1",
+        "severity": 0
+      },
+      "depositoncredithold": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "null",
+        "severity": 0
+      },
+      "equitywithloanvalue": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "equitywithloanvalue-s": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "excessliquidity": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "excessliquidity-s": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "fullavailablefunds": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "fullexcessliquidity": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "fullinitmarginreq": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "fullmaintmarginreq": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "grosspositionvalue": {
+        "amount": 11460.8798828125,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "grosspositionvalue-s": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "guarantee": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "highestseverity": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "null",
+        "severity": 0
+      },
+      "incentivecoupons": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "indianstockhaircut": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "initmarginreq": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "initmarginreq-s": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "leverage-s": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "0.99",
+        "severity": 0
+      },
+      "lookaheadavailablefunds": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "lookaheadexcessliquidity": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "lookaheadinitmarginreq": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "lookaheadmaintmarginreq": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "lookaheadnextchange": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "0",
+        "severity": 0
+      },
+      "maintmarginreq": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "maintmarginreq-s": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "netliquidation": {
+        "amount": 11527.6103515625,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "netliquidation-s": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "netliquidationuncertainty": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "nlvandmargininreview": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "false",
+        "severity": 0
+      },
+      "pasharesvalue": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "physicalcertificatevalue": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "postexpirationexcess": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "postexpirationmargin": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "segmenttitle-s": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "CFD",
+        "severity": 0
+      },
+      "settledcashbydate": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "20260425:2170.27;20260427:66.73",
+        "severity": 0
+      },
+      "settledcashbydate-s": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "20260425:2170.27;20260427:66.73",
+        "severity": 0
+      },
+      "totalcashvalue": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "totalcashvalue-s": {
+        "amount": 66.7300033569336,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "totaldebitcardpendingcharges": {
+        "amount": 0.0,
+        "currency": "EUR",
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": null,
+        "severity": 0
+      },
+      "tradingtype-s": {
+        "amount": 0.0,
+        "currency": null,
+        "isNull": false,
+        "timestamp": 1777120379000,
+        "value": "STKCASH",
+        "severity": 0
+      }
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:32:59.357847+00:00",
+  "normalized": true
+}

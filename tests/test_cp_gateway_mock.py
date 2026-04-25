@@ -34,7 +34,10 @@ def test_tickle_returns_session(cp_gateway_mock) -> None:
         response = client.post("/tickle")
     assert response.status_code == 200
     body = response.json()
-    assert body["session"] == "mock-session-id"
+    # session-ID-Wert ist normalisiert (live: "<SESSION_ID>") oder seed-konkret
+    # ("mock-session-id"), abhaengig von der aktiven Recording-Quelle.
+    assert isinstance(body["session"], str) and body["session"]
+    assert body["userId"]
     assert body["iserver"]["authStatus"]["authenticated"] is True
 
 
@@ -43,9 +46,13 @@ def test_secdef_search_returns_known_symbols(cp_gateway_mock) -> None:
         response = client.get("/iserver/secdef/search", params={"symbol": "AAPL"})
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 1
-    assert body[0]["symbol"] == "AAPL"
-    assert body[0]["conid"] == 265598
+    # CP-Gateway liefert in Realitaet mehrere Listings pro Symbol
+    # (NASDAQ, TSE, MEXI, EBS, BOND); seed liefert nur 1. Test akzeptiert
+    # beides und prueft, dass das primary listing AAPL/conid=265598 ist.
+    assert len(body) >= 1
+    primary = body[0]
+    assert primary["symbol"] == "AAPL"
+    assert int(primary["conid"]) == 265598
 
 
 def test_secdef_search_unknown_symbol_returns_empty(cp_gateway_mock) -> None:
@@ -167,13 +174,16 @@ def _write_recording(path: Path, body: dict, status_code: int = 200) -> None:
     path.write_text(json.dumps(envelope), encoding="utf-8")
 
 
-def test_replay_loader_picks_correct_recording_from_seed() -> None:
-    """Default-Loader liefert das mitgelieferte seed-Recording fuer
-    /iserver/auth/status."""
+def test_replay_loader_picks_correct_recording() -> None:
+    """Default-Loader liefert das passende Recording fuer
+    /iserver/auth/status (live > seed)."""
     response = load_recording("/iserver/auth/status", method="GET")
     assert response["status_code"] == 200
-    assert response["body_json"]["authenticated"] is True
-    assert response["body_json"]["MAC"] == "MOCKED"
+    body = response["body_json"]
+    assert body["authenticated"] is True
+    # MAC ist im seed "MOCKED", in live die echte Hardware-MAC. Pruefen,
+    # dass das Feld vorhanden und nicht leer ist.
+    assert isinstance(body.get("MAC"), str) and body["MAC"]
 
 
 def test_replay_loader_first_call_prime(tmp_path: Path) -> None:

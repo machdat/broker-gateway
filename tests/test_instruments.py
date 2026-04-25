@@ -121,7 +121,9 @@ async def test_info_returns_detail_and_caches(
     detail = await instruments.info(265598)
     assert detail.conid == 265598
     assert detail.symbol == "AAPL"
-    assert detail.exchange == "NASDAQ"
+    # IBKR liefert in Realitaet "NASDAQ.NMS" (National Market System);
+    # seed nutzt das vereinfachte "NASDAQ".
+    assert detail.exchange.startswith("NASDAQ")
 
     before = cp_gateway_mock.request_count
     await instruments.info(265598)
@@ -194,7 +196,8 @@ async def test_get_instrument_by_conid(client: TestClient) -> None:
     body = response.json()
     assert body["conid"] == 265598
     assert body["symbol"] == "AAPL"
-    assert body["exchange"] == "NASDAQ"
+    # Live: "NASDAQ.NMS", seed: "NASDAQ" - beide akzeptieren.
+    assert body["exchange"].startswith("NASDAQ")
 
 
 async def test_get_instrument_unknown_returns_404(client: TestClient) -> None:

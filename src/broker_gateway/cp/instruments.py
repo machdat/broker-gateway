@@ -31,23 +31,37 @@ class InstrumentDetail(Instrument):
 
 
 def _map_search_entry(entry: dict[str, Any]) -> Instrument:
+    # Live-Schema (AP-02 #04): secType liegt in sections[0].secType, nicht
+    # direkt am Top-Level. seed-Schema hatte secType am Top-Level.
+    sec_type = entry.get("secType")
+    if sec_type is None:
+        sections = entry.get("sections")
+        if isinstance(sections, list) and sections:
+            first = sections[0]
+            if isinstance(first, dict):
+                sec_type = first.get("secType")
     return Instrument(
         conid=int(entry["conid"]),
         symbol=str(entry.get("symbol") or "").upper(),
         company_name=entry.get("companyName"),
         currency=entry.get("description"),  # CP-Gateway packt currency in description
-        sec_type=entry.get("secType"),
+        sec_type=sec_type,
     )
 
 
 def _map_info(payload: dict[str, Any]) -> InstrumentDetail:
+    # Live-Schema (AP-02 #04): Symbol heisst "ticker", nicht "symbol".
+    # exchange-Default in Live ist "listingExchange", "exchange" listet nur
+    # validExchanges-Komma-Liste.
+    symbol = payload.get("symbol") or payload.get("ticker") or ""
+    exchange = payload.get("listingExchange") or payload.get("exchange")
     return InstrumentDetail(
         conid=int(payload["conid"]),
-        symbol=str(payload.get("symbol") or "").upper(),
+        symbol=str(symbol).upper(),
         company_name=payload.get("companyName"),
         currency=payload.get("currency"),
         sec_type=payload.get("secType"),
-        exchange=payload.get("exchange"),
+        exchange=exchange,
     )
 
 
@@ -95,6 +109,13 @@ class InstrumentsService:
                 detail="CP-Gateway lieferte unerwartetes Schema bei secdef/search",
             )
         instruments = [_map_search_entry(entry) for entry in payload if "conid" in entry]
+        # IBKR liefert pro Symbol mehrere Listings (verschiedene Exchanges:
+        # NASDAQ, TSE, MEXI, EBS, Bond, ...). v1-API gibt nur das primaere
+        # STK-Listing zurueck - Mehrfach-Listings sind ein
+        # Implementations-Detail des CP-Gateways, kein Vertrag.
+        primary_stk = next((i for i in instruments if i.sec_type == "STK"), None)
+        if primary_stk is not None:
+            instruments = [primary_stk]
         self._search_cache.set(key, instruments)
         return instruments
 

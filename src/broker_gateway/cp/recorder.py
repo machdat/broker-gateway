@@ -38,10 +38,21 @@ _REDACTED_HEADERS_LOWER: frozenset[str] = frozenset({
 class CPRecorder:
     """Persistiert HTTP-Verkehr eines httpx.AsyncClient als JSON-Fixtures."""
 
-    def __init__(self, record_dir: Path | str, *, normalize_prices: bool = False) -> None:
+    def __init__(
+        self,
+        record_dir: Path | str,
+        *,
+        normalize_prices: bool = False,
+        base_path: str | None = None,
+    ) -> None:
         self.record_dir = Path(record_dir)
         self.record_dir.mkdir(parents=True, exist_ok=True)
         self.normalize_prices = normalize_prices
+        # Pfad-Prefix, der beim Schreiben abgeschnitten wird. None = beim
+        # ersten install_into() automatisch aus client.base_url uebernehmen.
+        self.base_path: str | None = (
+            base_path.rstrip("/") if base_path is not None else None
+        )
         self._call_counter: dict[tuple[str, str, str], int] = {}
         self._active: bool = True
 
@@ -58,6 +69,9 @@ class CPRecorder:
         self._active = False
 
     def install_into(self, client: httpx.AsyncClient) -> None:
+        if self.base_path is None:
+            client_path = (client.base_url.path or "").rstrip("/")
+            self.base_path = client_path
         request_hooks = list(client.event_hooks.get("request", []))
         response_hooks = list(client.event_hooks.get("response", []))
         response_hooks.append(self._on_response)
@@ -79,6 +93,9 @@ class CPRecorder:
 
     def _write(self, request: httpx.Request, response: httpx.Response) -> None:
         path = request.url.path
+        if self.base_path and path.startswith(self.base_path):
+            stripped = path[len(self.base_path):]
+            path = stripped if stripped.startswith("/") else "/" + stripped
         method = request.method.upper()
         query = _query_dict(request.url)
         qhash = _query_hash(query)

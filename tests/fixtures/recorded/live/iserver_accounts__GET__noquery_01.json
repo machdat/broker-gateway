@@ -1,0 +1,144 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/accounts",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "0ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=16, origin; dur=11, ak_p; desc=\"1777120377511_388397449_2946583217_2665_13201_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": {
+      "accounts": [
+        "U25235077"
+      ],
+      "acctProps": {
+        "U25235077": {
+          "hasChildAccounts": false,
+          "supportsCashQty": true,
+          "liteUnderPro": false,
+          "noFXConv": false,
+          "isProp": false,
+          "supportsFractions": true,
+          "allowCustomerTime": false,
+          "autoFx": false
+        }
+      },
+      "aliases": {
+        "U25235077": "U25235077"
+      },
+      "allowFeatures": {
+        "showGFIS": true,
+        "showEUCostReport": false,
+        "allowEventContract": true,
+        "allowFXConv": true,
+        "allowFinancialLens": false,
+        "allowMTA": true,
+        "allowTypeAhead": true,
+        "allowEventTrading": true,
+        "snapshotRefreshTimeout": 30,
+        "liteUser": false,
+        "showWebNews": true,
+        "research": true,
+        "debugPnl": true,
+        "showTaxOpt": true,
+        "showImpactDashboard": true,
+        "allowDynAccount": false,
+        "allowCrypto": false,
+        "allowFA": false,
+        "allowLiteUnderPro": false,
+        "allowedAssetTypes": "STK,CFD,OPT,FOP,WAR,FUT,BAG,PDC,CASH,IND,BOND,BILL,FUND,SLB,News,CMDTY,IOPT,ICU,ICS,PHYSS,CRYPTO",
+        "restrictTradeSubscription": false,
+        "showUkUserLabels": false,
+        "sideBySide": true
+      },
+      "chartPeriods": {
+        "STK": [
+          "*"
+        ],
+        "CFD": [
+          "*"
+        ],
+        "OPT": [
+          "2h",
+          "1d",
+          "2d",
+          "1w",
+          "1m"
+        ],
+        "FOP": [
+          "2h",
+          "1d",
+          "2d",
+          "1w",
+          "1m"
+        ],
+        "WAR": [
+          "*"
+        ],
+        "IOPT": [
+          "*"
+        ],
+        "FUT": [
+          "*"
+        ],
+        "CASH": [
+          "*"
+        ],
+        "IND": [
+          "*"
+        ],
+        "BOND": [
+          "*"
+        ],
+        "FUND": [
+          "*"
+        ],
+        "CMDTY": [
+          "*"
+        ],
+        "PHYSS": [
+          "*"
+        ],
+        "CRYPTO": [
+          "*"
+        ]
+      },
+      "groups": [],
+      "profiles": [],
+      "selectedAccount": "U25235077",
+      "serverInfo": {
+        "serverName": "JifZ28031",
+        "serverVersion": "Build 10.44.1h, Apr 20, 2026 11:22:51 AM"
+      },
+      "sessionId": "<SESSION_ID>",
+      "isFT": false,
+      "isPaper": false
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:32:57.350701+00:00",
+  "normalized": true
+}

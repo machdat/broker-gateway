@@ -1,0 +1,186 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/secdef/search",
+    "query": {
+      "symbol": "SAP"
+    },
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "49ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Sat, 25 Apr 2026 12:32:58 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Sat, 25 Apr 2026 12:32:58 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=14, origin; dur=67, ak_p; desc=\"1777120378004_388397449_2946584031_8082_13654_9_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": [
+      {
+        "conid": "3804335",
+        "companyHeader": "SAP SE-SPONSORED ADR - NYSE",
+        "companyName": "SAP SE-SPONSORED ADR",
+        "symbol": "SAP",
+        "description": "NYSE",
+        "restricted": "CFD",
+        "sections": [
+          {
+            "secType": "STK"
+          },
+          {
+            "secType": "OPT",
+            "months": "MAY26;JUN26;SEP26;DEC26;JAN27;MAR27;JAN28",
+            "exchange": "SMART;AMEX;BATS;BOX;CBOE;CBOE2;EDGX;EMERALD;GEMINI;IBUSOPT;ISE;MEMX;MERCURY;MIAX;NASDAQBX;NASDAQOM;PEARL;PHLX;PSE;SAPPHIRE"
+          },
+          {
+            "secType": "CFD",
+            "exchange": "SMART",
+            "conid": "150045547"
+          },
+          {
+            "secType": "BAG"
+          }
+        ]
+      },
+      {
+        "conid": "14893739",
+        "companyHeader": "SAPUTO INC - TSE",
+        "companyName": "SAPUTO INC",
+        "symbol": "SAP",
+        "description": "TSE",
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "STK"
+          },
+          {
+            "secType": "OPT",
+            "months": "MAY26;JUN26;JUL26;AUG26;SEP26;OCT26;DEC26;MAR27",
+            "exchange": "CDE"
+          },
+          {
+            "secType": "BAG"
+          }
+        ]
+      },
+      {
+        "conid": "14204",
+        "companyHeader": "SAP SE - IBIS",
+        "companyName": "SAP SE",
+        "symbol": "SAP",
+        "description": "IBIS",
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "STK"
+          },
+          {
+            "secType": "OPT",
+            "months": "APR26;MAY26;JUN26;JUL26;SEP26;DEC26;MAR27;JUN27;DEC27;JUN28;DEC28;DEC29;DEC30",
+            "exchange": "EUREX;FTA"
+          },
+          {
+            "secType": "WAR",
+            "months": "MAR26;APR26;MAY26;JUN26;JUL26;SEP26;DEC26;MAR27;JUN27;SEP27;DEC27;MAR28;JUN28;DEC28;DEC29;DEC30;DEC31",
+            "exchange": "EBS;FWB;GETTEX;SBF;SWB"
+          },
+          {
+            "secType": "IOPT"
+          },
+          {
+            "secType": "CFD",
+            "exchange": "SMART",
+            "conid": "102283976"
+          },
+          {
+            "secType": "BAG"
+          }
+        ]
+      },
+      {
+        "conid": "11979285",
+        "companyHeader": "SAP SE - EBS",
+        "companyName": "SAP SE",
+        "symbol": "SAP",
+        "description": "EBS",
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "STK"
+          }
+        ]
+      },
+      {
+        "conid": "290088120",
+        "companyHeader": "SAPPI LIMITED - JSE",
+        "companyName": "SAPPI LIMITED",
+        "symbol": "SAP",
+        "description": "JSE",
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "STK",
+            "exchange": "JSE;"
+          },
+          {
+            "secType": "CFD",
+            "exchange": "SMART",
+            "conid": "304818488"
+          }
+        ]
+      },
+      {
+        "issuers": [
+          {
+            "id": "e1400682",
+            "name": "SAP SE"
+          },
+          {
+            "id": "e1360034",
+            "name": "SAPPI PAPIER HOLDING AG"
+          },
+          {
+            "id": "e3312970",
+            "name": "Sappi Southern Africa Pty Ltd"
+          },
+          {
+            "id": "e1398371",
+            "name": "Saputo Inc"
+          }
+        ],
+        "bondid": 5,
+        "conid": "2147483647",
+        "companyHeader": "Corporate Fixed Income",
+        "companyName": null,
+        "symbol": null,
+        "description": null,
+        "restricted": null,
+        "sections": [
+          {
+            "secType": "BOND"
+          }
+        ]
+      }
+    ],
+    "body_text": null
+  },
+  "recorded_at": "2026-04-25T12:32:57.881439+00:00",
+  "normalized": true
+}
