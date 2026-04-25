@@ -50,7 +50,7 @@ class MockCPGateway:
 
     def __init__(
         self,
-        base_url: str = "http://cpgateway:5000",
+        base_url: str = "http://cpgateway:5000/v1/api",
         *,
         auth_lost: bool = False,
         slow_response_ms: int = 0,
@@ -469,12 +469,13 @@ class MockCPGateway:
 def cp_gateway_mock():
     """Liefert ein konfigurierbares MockCPGateway, hängt sich an httpx.
 
-    Standardwert für die Base-URL ist `http://cpgateway:5000` - das passt
-    zum geplanten Compose-Service-Namen. Tests, die eine andere Base-URL
+    Standardwert für die Base-URL ist `http://cpgateway:5000/v1/api` -
+    das ist der Live-Pfad des IBKR Client Portal Gateway (alle REST-
+    Endpunkte liegen unter /v1/api/...). Tests, die eine andere Base-URL
     benötigen, instanziieren MockCPGateway selbst und registrieren es im
     aktiven respx-Router.
     """
-    mock = MockCPGateway("http://cpgateway:5000")
+    mock = MockCPGateway("http://cpgateway:5000/v1/api")
     with respx.mock(assert_all_called=False) as router:
         mock.register(router)
         yield mock

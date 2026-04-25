@@ -67,7 +67,7 @@ Konfigurierbar über ENV:
 
 | Variable | Default | Wirkung |
 |---|---|---|
-| `BG_CP_BASE_URL` | `http://cpgateway:5000` | Base-URL des internen CP Gateways |
+| `BG_CP_BASE_URL` | `http://cpgateway:5000/v1/api` | Base-URL des internen CP Gateways inkl. `/v1/api`-Prefix — der Override **muss** den Suffix enthalten, sonst landen alle Calls in der CP-Gateway-Default-Proxy-Route nach `https://api.ibkr.com` (HTTP 302). |
 | `BG_CP_TICKLE_INTERVAL_S` | `60` | Tickle-Intervall in Sekunden |
 
 Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
@@ -217,4 +217,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.0.1*
+*Version 1.0.2*

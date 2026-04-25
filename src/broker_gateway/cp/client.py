@@ -15,7 +15,7 @@ import httpx
 from broker_gateway.throttle.manager import ThrottleManager
 
 
-_DEFAULT_BASE_URL = "http://cpgateway:5000"
+_DEFAULT_BASE_URL = "http://cpgateway:5000/v1/api"
 _DEFAULT_TIMEOUT_S = 10.0
 
 

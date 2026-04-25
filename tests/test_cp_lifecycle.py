@@ -66,7 +66,7 @@ async def lifecycle(cp_client: CPGatewayClient) -> AuthLifecycle:
 async def test_client_uses_env_base_url_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BG_CP_BASE_URL", raising=False)
     client = CPGatewayClient()
-    assert client.base_url == "http://cpgateway:5000"
+    assert client.base_url == "http://cpgateway:5000/v1/api"
     await client.aclose()
 
 
