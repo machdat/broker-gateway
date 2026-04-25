@@ -12,6 +12,11 @@ services:
     # Port 8000 ist auf cma-pi-1 von KanPrompt belegt.
     ports:
       - "4000:8000"
+    # .env liegt nur lokal und ist gitignored - enthaelt mindestens
+    # BG_BOOTSTRAP_ADMIN_TOKEN. Vorlage in .env.example.
+    env_file:
+      - path: .env
+        required: false
     depends_on:
       cpgateway:
         condition: service_healthy
