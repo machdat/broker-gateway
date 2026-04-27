@@ -148,9 +148,10 @@ def test_classify_orders_paths() -> None:
 
 
 def test_classify_portfolio_paths() -> None:
-    assert classify_path("GET", "/iserver/account/U25/portfolio") == "portfolio"
-    assert classify_path("GET", "/iserver/account/U25/positions") == "portfolio"
-    assert classify_path("GET", "/iserver/account/U25/ledger") == "portfolio"
+    assert classify_path("GET", "/portfolio/U25/summary") == "portfolio"
+    assert classify_path("GET", "/portfolio/U25/positions/0") == "portfolio"
+    assert classify_path("GET", "/portfolio/U25/positions/3") == "portfolio"
+    assert classify_path("GET", "/portfolio/U25/ledger") == "portfolio"
 
 
 def test_classify_trades_path() -> None:

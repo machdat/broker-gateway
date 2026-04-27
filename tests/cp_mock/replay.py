@@ -1,7 +1,7 @@
 """ReplayCPGatewayMock: ersetzt die fruehere hartcodierte MockCPGateway.
 
 Statische Endpoints (auth/status, tickle, reauthenticate, secdef-search,
-secdef-info, account/U25235077/{portfolio,positions,ledger}) werden aus
+secdef-info, portfolio/U25235077/{summary,positions/pageId,ledger}) werden aus
 ``tests/fixtures/recorded/`` (live > seed) geladen - ein Recording ist
 die einzige Wahrheitsquelle ihrer Bodies. Stateful Endpoints (snapshot
 mit Subscription-Refcount + First-Call-Prime, orders mit
@@ -164,35 +164,41 @@ class ReplayCPGatewayMock:
         )
         return httpx.Response(status, json=body)
 
-    # ---- Account (Recording-backed) ----
+    # ---- Portfolio (Recording-backed, IBKR /portfolio/{aid}/...) ----
 
-    def _h_portfolio(self, request: httpx.Request) -> httpx.Response:
+    def _h_portfolio_summary(self, request: httpx.Request) -> httpx.Response:
         if (resp := self._pre()) is not None:
             return resp
-        match = re.search(r"/iserver/account/([^/]+)/portfolio", request.url.path)
+        match = re.search(r"/portfolio/([^/]+)/summary$", request.url.path)
         account_id = match.group(1) if match else "UNKNOWN"
         status, body = self._recorded(
-            f"/iserver/account/{account_id}/portfolio", method="GET"
+            f"/portfolio/{account_id}/summary", method="GET"
         )
         return httpx.Response(status, json=body)
 
-    def _h_positions(self, request: httpx.Request) -> httpx.Response:
+    def _h_portfolio_positions(self, request: httpx.Request) -> httpx.Response:
         if (resp := self._pre()) is not None:
             return resp
-        match = re.search(r"/iserver/account/([^/]+)/positions", request.url.path)
-        account_id = match.group(1) if match else "UNKNOWN"
-        status, body = self._recorded(
-            f"/iserver/account/{account_id}/positions", method="GET"
-        )
-        return httpx.Response(status, json=body)
+        match = re.search(r"/portfolio/([^/]+)/positions/([^/?]+)", request.url.path)
+        if match is None:
+            return httpx.Response(400, json={"error": "invalid path"})
+        account_id, page_id = match.group(1), match.group(2)
+        try:
+            status, body = self._recorded(
+                f"/portfolio/{account_id}/positions/{page_id}", method="GET"
+            )
+            return httpx.Response(status, json=body)
+        except LookupError:
+            # Pagination-Konvention: nicht aufgezeichnete pageId -> leere Seite.
+            return httpx.Response(200, json=[])
 
-    def _h_ledger(self, request: httpx.Request) -> httpx.Response:
+    def _h_portfolio_ledger(self, request: httpx.Request) -> httpx.Response:
         if (resp := self._pre()) is not None:
             return resp
-        match = re.search(r"/iserver/account/([^/]+)/ledger", request.url.path)
+        match = re.search(r"/portfolio/([^/]+)/ledger$", request.url.path)
         account_id = match.group(1) if match else "UNKNOWN"
         status, body = self._recorded(
-            f"/iserver/account/{account_id}/ledger", method="GET"
+            f"/portfolio/{account_id}/ledger", method="GET"
         )
         return httpx.Response(status, json=body)
 
@@ -426,9 +432,9 @@ class ReplayCPGatewayMock:
         router.get(url__regex=rf"^{b}/iserver/secdef/info(\?.*)?$").mock(side_effect=self._h_secdef_info)
         router.get(url__regex=rf"^{b}/iserver/marketdata/snapshot(\?.*)?$").mock(side_effect=self._h_snapshot)
         router.get(url__regex=rf"^{b}/iserver/marketdata/\d+/unsubscribe$").mock(side_effect=self._h_unsubscribe)
-        router.get(url__regex=rf"^{b}/iserver/account/[^/]+/portfolio$").mock(side_effect=self._h_portfolio)
-        router.get(url__regex=rf"^{b}/iserver/account/[^/]+/positions$").mock(side_effect=self._h_positions)
-        router.get(url__regex=rf"^{b}/iserver/account/[^/]+/ledger$").mock(side_effect=self._h_ledger)
+        router.get(url__regex=rf"^{b}/portfolio/[^/]+/summary$").mock(side_effect=self._h_portfolio_summary)
+        router.get(url__regex=rf"^{b}/portfolio/[^/]+/positions/[^/]+$").mock(side_effect=self._h_portfolio_positions)
+        router.get(url__regex=rf"^{b}/portfolio/[^/]+/ledger$").mock(side_effect=self._h_portfolio_ledger)
         router.post(url__regex=rf"^{b}/iserver/account/[^/]+/orders$").mock(side_effect=self._h_orders_post)
         router.post(url__regex=rf"^{b}/iserver/reply/[^/]+$").mock(side_effect=self._h_order_reply)
         router.get(url__regex=rf"^{b}/iserver/account/orders/[^/]+$").mock(side_effect=self._h_order_status)

@@ -4,6 +4,28 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.6.1] — 2026-04-27
+
+### Geaendert
+- Portfolio-Adapter (`cp/portfolio.py`) auf die laut IBKR-Doku korrekten
+  REST-Pfade umgestellt: `GET /portfolio/{accountId}/summary` (nativ
+  statt aggregiert), `GET /portfolio/{accountId}/positions/{pageId}` mit
+  Pagination (Default-Pagesize 30) und `GET /portfolio/{accountId}/ledger`.
+  Vorher: nicht-existente `/iserver/account/{aid}/portfolio` und
+  Singular-Varianten ohne `/portfolio`-Prefix - Live-Recording in
+  AP-02 #04 lieferte HTTP 404. Erste von vier Sub-Karten in AP-02 #07.
+- `normalize_summary_money` in `broker_gateway.money`: konvertiert das
+  IBKR-Summary-Feld-Schema `{amount, currency, value, isNull, timestamp}`
+  in `Money` und respektiert `isNull=True`.
+- `tests/cp_mock/replay.py` und seed-Recordings (`tests/fixtures/recorded/seed/`)
+  auf die neuen Pfade umgestellt; alte `iserver_account_U25235077_*`-Seeds
+  geloescht. Throttle-Klassifizierung (`throttle/manager.py`) zieht mit.
+
+### Hinweis
+- v1-API-Vertrag unveraendert. Reine Adapter-Korrektur. Live-Recordings
+  fuer die korrigierten Pfade existieren bereits aus AP-02 #04 (v1.3.0)
+  und werden vom Replay-Loader vorrangig gegenueber den Seeds verwendet.
+
 ## [1.6.0] — 2026-04-26
 
 ### Hinzugefuegt

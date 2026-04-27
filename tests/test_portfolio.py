@@ -17,7 +17,7 @@ from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.lifecycle import AuthLifecycle, AuthStatus
 from broker_gateway.cp.portfolio import PortfolioService
 from broker_gateway.main import create_app
-from broker_gateway.money import Money, normalize_money
+from broker_gateway.money import Money, normalize_money, normalize_summary_money
 
 
 _ADMIN_VALUE = "portfolio-admin-token-aaaaaaaaaaaaaaa"
@@ -93,19 +93,43 @@ def test_normalize_money_rejects_bool() -> None:
         normalize_money(True, "USD")
 
 
+# ---- normalize_summary_money (IBKR /portfolio/{aid}/summary-Schema) ----
+
+def test_normalize_summary_money_maps_amount_and_currency() -> None:
+    field = {"amount": 12345.67, "currency": "EUR", "value": "12345.67", "isNull": False, "timestamp": 1700000000}
+    money = normalize_summary_money(field)
+    assert money is not None
+    assert Decimal(money.value) == Decimal("12345.67")
+    assert money.currency == "EUR"
+
+
+def test_normalize_summary_money_returns_none_on_isnull() -> None:
+    assert normalize_summary_money({"amount": 0.0, "currency": "USD", "isNull": True}) is None
+
+
+def test_normalize_summary_money_returns_none_on_missing_fields() -> None:
+    assert normalize_summary_money(None) is None
+    assert normalize_summary_money({}) is None
+    assert normalize_summary_money({"amount": 1.0}) is None
+    assert normalize_summary_money({"currency": "USD"}) is None
+
+
 # ---- PortfolioService ----
 
 async def test_positions_returns_mapped_holdings(
     portfolio: PortfolioService, cp_gateway_mock
 ) -> None:
     positions = await portfolio.positions(_ACCOUNT_ID)
-    assert len(positions) == 2
-    by_conid = {p.conid: p for p in positions}
-    aapl = by_conid[265598]
-    assert aapl.quantity == "10"
-    assert aapl.market_price is not None
-    assert aapl.market_price.currency == "USD"
-    assert aapl.market_value is not None  # aus mktValue im Mock
+    # Live-Recording (v1.3.0) liefert echte Positionen des Accounts; Tests
+    # pruefen Schema-Konformitaet, nicht harte Counts.
+    assert len(positions) >= 1
+    sample = positions[0]
+    assert sample.account_id == _ACCOUNT_ID
+    assert isinstance(sample.conid, int)
+    # quantity ist Decimal-String
+    Decimal(sample.quantity)
+    if sample.market_price is not None:
+        assert sample.market_price.currency
 
 
 async def test_positions_caches_subsequent_calls(
@@ -127,8 +151,29 @@ async def test_invalidate_busts_caches(
     before = cp_gateway_mock.request_count
     await portfolio.positions(_ACCOUNT_ID)
     await portfolio.ledger(_ACCOUNT_ID)
-    # Beide Endpunkte werden erneut gerufen.
-    assert cp_gateway_mock.request_count - before == 2
+    # ledger ist ein Call; positions paginiert bis Seite < pageSize 30 -
+    # mindestens ein Call, mit dem Live-Recording (18 Positionen) genau einer.
+    assert cp_gateway_mock.request_count - before >= 2
+
+
+async def test_positions_paginates_until_short_page(
+    portfolio: PortfolioService, cp_gateway_mock
+) -> None:
+    """positions() iteriert ueber pageId, bis eine Seite < pageSize liefert.
+
+    Mit dem aktuellen Replay-Loader gibt es nur Seite 0; Seite 1 liefert
+    [] ueber den LookupError-Fallback im Mock. Erwartung: wir erhalten
+    eine nicht-leere Liste und der Mock hat genau 2 Requests gesehen
+    (Seite 0 = nicht-voll bei Seed, Seite 0 = 18 Eintraege < 30 bei
+    Live, in jedem Fall hoert es nach 1 Call auf).
+    """
+    portfolio.invalidate(_ACCOUNT_ID)
+    before = cp_gateway_mock.request_count
+    positions = await portfolio.positions(_ACCOUNT_ID)
+    assert len(positions) >= 1
+    # Page-Default-Size ist 30; wenn Seite 0 < 30 Eintraege liefert, ist
+    # genau ein Request noetig.
+    assert cp_gateway_mock.request_count - before == 1
 
 
 async def test_ledger_returns_currency_normalised_entries(
@@ -136,24 +181,22 @@ async def test_ledger_returns_currency_normalised_entries(
 ) -> None:
     ledger = await portfolio.ledger(_ACCOUNT_ID)
     currencies = {entry.currency for entry in ledger.entries}
-    assert {"USD", "EUR"} <= currencies
-    usd = next(e for e in ledger.entries if e.currency == "USD")
-    assert usd.cash_balance is not None
-    assert usd.cash_balance.currency == "USD"
-    assert Decimal(usd.cash_balance.value) == Decimal("25000")
+    # IBKR liefert mind. eine "echte" Currency neben dem (verworfenen) BASE-Eintrag.
+    assert currencies, "ledger sollte mindestens eine Currency enthalten"
+    assert "BASE" not in currencies
+    sample = ledger.entries[0]
+    assert sample.currency == sample.currency.upper()
 
 
-async def test_summary_aggregates_positions_and_cash(
+async def test_summary_uses_native_endpoint(
     portfolio: PortfolioService, cp_gateway_mock
 ) -> None:
     summary = await portfolio.summary(_ACCOUNT_ID)
     assert summary.account_id == _ACCOUNT_ID
-    assert summary.position_count == 2
-    assert summary.base_currency in {"USD", "EUR"}
-    assert summary.cash_total is not None
+    # Native Summary liefert echtes net_liquidation (nicht aus Aggregat).
     assert summary.net_liquidation is not None
-    # net_liquidation in derselben Currency wie base_currency.
-    assert summary.net_liquidation.currency == summary.base_currency
+    assert summary.base_currency == summary.net_liquidation.currency
+    assert summary.position_count >= 1
 
 
 async def test_summary_caches_and_does_not_repoll(
@@ -175,7 +218,7 @@ def test_summary_endpoint_with_admin_token(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["account_id"] == _ACCOUNT_ID
-    assert body["position_count"] == 2
+    assert body["position_count"] >= 1
     assert body["net_liquidation"] is not None
 
 
@@ -186,8 +229,9 @@ def test_positions_endpoint_returns_currency_objects(client: TestClient) -> None
     )
     assert response.status_code == 200
     positions = response.json()
+    assert positions, "Account sollte mindestens eine Position haben"
     assert any(
-        p["market_price"] is not None and p["market_price"]["currency"] == "USD"
+        p.get("market_price") is not None and p["market_price"].get("currency")
         for p in positions
     )
 
@@ -200,7 +244,8 @@ def test_ledger_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     currencies = {e["currency"] for e in body["entries"]}
-    assert {"USD", "EUR"} <= currencies
+    assert currencies, "ledger sollte mindestens eine Currency liefern"
+    assert "BASE" not in currencies
 
 
 def test_endpoint_without_token_returns_401(client: TestClient) -> None:

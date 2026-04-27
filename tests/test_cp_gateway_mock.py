@@ -124,10 +124,19 @@ def test_order_cancel_marks_cancelled(cp_gateway_mock) -> None:
 def test_portfolio_and_ledger_return_account_data(cp_gateway_mock) -> None:
     account_id = "U25235077"
     with httpx.Client(base_url=cp_gateway_mock.base_url) as client:
-        portfolio = client.get(f"/iserver/account/{account_id}/portfolio").json()
-        ledger = client.get(f"/iserver/account/{account_id}/ledger").json()
-    assert any(p["conid"] == 265598 for p in portfolio)
-    assert ledger["USD"]["cashbalance"] == 25_000.0
+        positions = client.get(f"/portfolio/{account_id}/positions/0").json()
+        ledger = client.get(f"/portfolio/{account_id}/ledger").json()
+        summary = client.get(f"/portfolio/{account_id}/summary").json()
+    assert isinstance(positions, list) and len(positions) >= 1
+    assert any("conid" in p for p in positions)
+    # Ledger hat mindestens eine Currency neben dem (verworfenen) BASE-Aggregat.
+    real_currencies = [k for k in ledger if k.upper() != "BASE"]
+    assert real_currencies, "ledger sollte mindestens eine Currency liefern"
+    sample = ledger[real_currencies[0]]
+    assert "cashbalance" in sample
+    # Summary liefert das IBKR-Schema mit netliquidation als amount-currency-Objekt.
+    assert "netliquidation" in summary
+    assert "amount" in summary["netliquidation"] and "currency" in summary["netliquidation"]
 
 
 def test_trades_returns_deterministic_list(cp_gateway_mock) -> None:

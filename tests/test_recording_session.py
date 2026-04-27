@@ -94,13 +94,20 @@ def _make_handler(state: dict[str, Any]):
         if re.match(r"^/iserver/marketdata/\d+/unsubscribe$", path):
             return httpx.Response(200, json={"success": True})
 
-        if re.match(r"^/iserver/account/[^/]+/portfolio$", path):
+        if re.match(r"^/portfolio/[^/]+/summary$", path):
+            return httpx.Response(
+                200,
+                json={
+                    "netliquidation": {"amount": 0.0, "currency": "USD", "isNull": False},
+                    "totalcashvalue": {"amount": 0.0, "currency": "USD", "isNull": False},
+                    "grosspositionvalue": {"amount": 0.0, "currency": "USD", "isNull": False},
+                },
+            )
+
+        if re.match(r"^/portfolio/[^/]+/positions/[^/]+$", path):
             return httpx.Response(200, json=[])
 
-        if re.match(r"^/iserver/account/[^/]+/positions$", path):
-            return httpx.Response(200, json=[])
-
-        if re.match(r"^/iserver/account/[^/]+/ledger$", path):
+        if re.match(r"^/portfolio/[^/]+/ledger$", path):
             return httpx.Response(200, json={"USD": {"cashbalance": 0}})
 
         if re.match(r"^/iserver/account/[^/]+/orders/whatif$", path) and method == "POST":

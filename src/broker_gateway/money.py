@@ -41,6 +41,27 @@ def normalize_money(value: Any, currency: str | None) -> Money | None:
     return Money(value=str(decimal_value), currency=currency.strip().upper())
 
 
+def normalize_summary_money(field: Any) -> Money | None:
+    """Konvertiert ein IBKR-Summary-Feld in ein `Money`-Objekt.
+
+    IBKR `/portfolio/{accountId}/summary` liefert pro Kennzahl ein Objekt
+    der Form ``{"amount": <num>, "currency": <iso>, "value": <str>,
+    "isNull": <bool>, "timestamp": <int>}``. Hier zaehlt nur amount und
+    currency; value ist eine vorformatierte Stringdarstellung von amount
+    und wird ignoriert. ``isNull=True`` oder fehlendes ``amount``/
+    ``currency`` -> None.
+    """
+    if not isinstance(field, dict):
+        return None
+    if field.get("isNull") is True:
+        return None
+    amount = field.get("amount")
+    currency = field.get("currency")
+    if amount is None or currency is None:
+        return None
+    return normalize_money(amount, currency)
+
+
 def _to_decimal(value: Any) -> Decimal:
     if isinstance(value, Decimal):
         return value

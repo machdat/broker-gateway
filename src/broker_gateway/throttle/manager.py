@@ -78,11 +78,11 @@ def classify_path(method: str, path: str) -> ThrottleClass:
         return "quotes_snapshot"
     if re.match(r"^/iserver/marketdata/\d+/unsubscribe$", p):
         return "quotes_stream"
-    if re.match(r"^/iserver/account/[^/]+/portfolio$", p):
+    if re.match(r"^/portfolio/[^/]+/summary$", p):
         return "portfolio"
-    if re.match(r"^/iserver/account/[^/]+/positions$", p):
+    if re.match(r"^/portfolio/[^/]+/positions/[^/]+$", p):
         return "portfolio"
-    if re.match(r"^/iserver/account/[^/]+/ledger$", p):
+    if re.match(r"^/portfolio/[^/]+/ledger$", p):
         return "portfolio"
     if re.match(r"^/iserver/account/[^/]+/orders$", p):
         return "orders"

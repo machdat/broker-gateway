@@ -6,7 +6,6 @@ TTL-Cache pro account_id. Invalidate-Hook wird von Order-Lifecycle
 from __future__ import annotations
 
 import os
-from collections import defaultdict
 from decimal import Decimal
 from typing import Any
 
@@ -15,10 +14,12 @@ from pydantic import BaseModel, Field
 
 from broker_gateway.cache import TTLCache
 from broker_gateway.cp.client import CPGatewayClient
-from broker_gateway.money import Money, normalize_money
+from broker_gateway.money import Money, normalize_money, normalize_summary_money
 
 
 _DEFAULT_TTL_S = 30.0
+_POSITIONS_PAGE_SIZE = 30
+_POSITIONS_MAX_PAGES = 50
 
 
 def _ttl_from_env() -> float:
@@ -89,19 +90,26 @@ class PortfolioService:
         cached, hit = self._positions_cache.get(account_id)
         if hit:
             return cached or []
-        response = await self._client.get(f"/iserver/account/{account_id}/positions")
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"CP-Gateway-Fehler bei positions: HTTP {response.status_code}",
+        positions: list[Position] = []
+        for page_id in range(_POSITIONS_MAX_PAGES):
+            response = await self._client.get(
+                f"/portfolio/{account_id}/positions/{page_id}"
             )
-        payload = response.json()
-        if not isinstance(payload, list):
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="CP-Gateway lieferte unerwartetes Schema bei positions",
-            )
-        positions = [_map_position(account_id, entry) for entry in payload if "conid" in entry]
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"CP-Gateway-Fehler bei positions: HTTP {response.status_code}",
+                )
+            payload = response.json()
+            if not isinstance(payload, list):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="CP-Gateway lieferte unerwartetes Schema bei positions",
+                )
+            page = [_map_position(account_id, entry) for entry in payload if "conid" in entry]
+            positions.extend(page)
+            if len(payload) < _POSITIONS_PAGE_SIZE:
+                break
         self._positions_cache.set(account_id, positions)
         return positions
 
@@ -109,7 +117,7 @@ class PortfolioService:
         cached, hit = self._ledger_cache.get(account_id)
         if hit and cached is not None:
             return cached
-        response = await self._client.get(f"/iserver/account/{account_id}/ledger")
+        response = await self._client.get(f"/portfolio/{account_id}/ledger")
         if response.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -124,6 +132,11 @@ class PortfolioService:
         entries: list[LedgerEntry] = []
         for ccy_key, entry in payload.items():
             if not isinstance(entry, dict):
+                continue
+            # IBKR liefert neben den Currency-Keys (USD, EUR, ...) auch
+            # einen "BASE"-Aggregat-Eintrag. Der wird nicht als separate
+            # Currency aufgenommen - die echte Currency steht im Body.
+            if ccy_key.upper() == "BASE":
                 continue
             currency = (entry.get("currency") or ccy_key).upper()
             entries.append(
@@ -142,25 +155,31 @@ class PortfolioService:
         if hit and cached is not None:
             return cached
 
-        positions = await self.positions(account_id)
-        ledger = await self.ledger(account_id)
+        response = await self._client.get(f"/portfolio/{account_id}/summary")
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"CP-Gateway-Fehler bei summary: HTTP {response.status_code}",
+            )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="CP-Gateway lieferte unerwartetes Schema bei summary",
+            )
 
-        # Aggregat-Bildung. Heuristik fuer base_currency: erste Ledger-Entry,
-        # falls vorhanden. Net-Liquidation = cash_total + positions_value,
-        # alles in derselben Currency. Liegen Positionen in mehreren Waehrungen
-        # vor, wird positions_value pro Currency aggregiert und nur die
-        # Position-Summe in der base_currency in net_liquidation einberechnet
-        # - andere Currencies muessen vom Caller separat gewuerdigt werden.
-        base_currency = ledger.entries[0].currency if ledger.entries else None
-        cash_total = _sum_money_for_currency(
-            (entry.cash_balance for entry in ledger.entries),
-            base_currency,
+        net_liquidation = normalize_summary_money(payload.get("netliquidation"))
+        cash_total = normalize_summary_money(payload.get("totalcashvalue"))
+        positions_value = normalize_summary_money(payload.get("grosspositionvalue"))
+        base_currency = (
+            net_liquidation.currency
+            if net_liquidation is not None
+            else (cash_total.currency if cash_total is not None else None)
         )
-        positions_value = _sum_money_for_currency(
-            (pos.market_value for pos in positions),
-            base_currency,
-        )
-        net_liquidation = _add_money(cash_total, positions_value)
+
+        # position_count kommt nicht aus dem nativen Summary - aus positions
+        # ableiten, mit Fallback 0, falls positions selbst fehlschlaegt.
+        positions = await self.positions(account_id)
 
         summary = PortfolioSummary(
             account_id=account_id,
@@ -201,29 +220,3 @@ def _map_position(account_id: str, entry: dict[str, Any]) -> Position:
     )
 
 
-def _sum_money_for_currency(values, currency: str | None) -> Money | None:
-    if currency is None:
-        return None
-    total = Decimal("0")
-    seen = False
-    for money in values:
-        if money is None or money.currency != currency:
-            continue
-        total += Decimal(money.value)
-        seen = True
-    if not seen:
-        return None
-    return Money(value=str(total), currency=currency)
-
-
-def _add_money(a: Money | None, b: Money | None) -> Money | None:
-    if a is None and b is None:
-        return None
-    if a is None:
-        return b
-    if b is None:
-        return a
-    if a.currency != b.currency:
-        return None
-    total = Decimal(a.value) + Decimal(b.value)
-    return Money(value=str(total), currency=a.currency)
