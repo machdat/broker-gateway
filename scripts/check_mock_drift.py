@@ -33,12 +33,13 @@ from datetime import date as _date
 from pathlib import Path
 from typing import Any
 
-# Repo-Root in sys.path, damit ``tests.cp_mock.diff`` erreichbar ist, wenn
-# das Skript ueber ``python scripts/check_mock_drift.py`` aufgerufen wird
-# (tests ist absichtlich kein installiertes Paket).
+# Repo-Root + src/ in sys.path, damit ``tests.cp_mock.diff`` und
+# ``broker_gateway`` ohne ``pip install -e .`` erreichbar sind (z.B. im
+# schlanken venv auf cma-pi-1).
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+for _path in (_REPO_ROOT, _REPO_ROOT / "src"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 import httpx  # noqa: E402
 

@@ -35,10 +35,13 @@ from datetime import date as _date
 from pathlib import Path
 from typing import Any
 
-# Repo-Root in sys.path, damit ``tests.cp_doc.diff`` erreichbar ist.
+# Repo-Root + src/ in sys.path, damit ``tests.cp_doc.diff`` und
+# ``broker_gateway`` ohne ``pip install -e .`` erreichbar sind. Das
+# systemd-Setup auf cma-pi-1 nutzt ein schlankes venv mit nur httpx.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+for _path in (_REPO_ROOT, _REPO_ROOT / "src"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 import httpx  # noqa: E402
 
