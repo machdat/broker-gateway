@@ -1,0 +1,25 @@
+[Unit]
+Description=broker-gateway: IBKR-OpenAPI-Doku-Drift-Check (AP-03)
+Documentation=file:///mnt/ssd/broker-gateway/docs/runbooks/doc-drift-check.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/ssd/broker-gateway
+# Sensible Daten (KANPROMPT_API_KEY, optional KANPROMPT_BASE_URL,
+# DOC_DRIFT_SOURCE_URL) liegen in /etc/default/doc-drift.
+EnvironmentFile=-/etc/default/doc-drift
+StandardOutput=append:/var/log/doc-drift.log
+StandardError=append:/var/log/doc-drift.log
+# python3 = System-Interpreter; Repo nutzt nur stdlib + httpx aus dem
+# venv/Container. Im einfachsten Setup haben wir ein Repo-venv unter
+# /mnt/ssd/broker-gateway/.venv.
+ExecStart=/mnt/ssd/broker-gateway/.venv/bin/python scripts/check_doc_drift.py --auto-card
+# 0 = no/value drift, 2 = minor (additive), 1 = breaking, 3 = unreachable.
+# Exit 1/2 bedeutet Cron-Failure und damit eine sichtbare systemd-
+# Statusaenderung - genau was wir wollen, damit der Mensch reagiert.
+SuccessExitStatus=0
+
+[Install]
+WantedBy=multi-user.target

@@ -189,7 +189,44 @@ assert response["body_json"]["authenticated"] is True
 Szenarien). Bei fehlendem Recording wird ``RecordingNotFoundError``
 geworfen - Tests duerfen das fangen, der Mock-Code soll es nicht.
 
-## Drift Detection (AP-02 #06, ab v1.6.0)
+## Drift-Strategie (AP-02 #06 + AP-03)
+
+Drift wird auf zwei Ebenen erkannt - die beiden Mechanismen sind
+**komplementaer**, kein "entweder/oder":
+
+| Mechanismus | Wann | Erkennt | Ohne Auth? |
+|-------------|------|---------|------------|
+| **Doku-Drift** (AP-03) | taeglich 06:00 | angekuendigte Schema-Aenderungen, Tage vor Live-Rollout | **ja** |
+| **Live-Drift** (AP-02 #06, AP-03) | bei jedem Container-Rebuild | undokumentierte Aenderungen am Live-Verhalten, veraltete Mock-Snapshots | nein |
+
+```
++---------------+               +-------------------+
+|  Doku-Drift   |               |  Live-Drift       |
+|  taeglich     |               |  Build-Acceptance |
+|  Cron         |               |  ops/build-       |
+|               |               |  gateway.sh       |
++-------+-------+               +-------+-----------+
+        |                               |
+        v                               v
+   KanPrompt-Karte                Build bricht ab
+   (Frueh-Warner)                 (Mock-Snapshot
+                                   waere veraltet)
+```
+
+- **Doku-Drift** liest die IBKR-OpenAPI-Spec von der oeffentlichen URL
+  und vergleicht gegen `docs/research/ibkr-cpapi-doc.json`. Ohne
+  Browser-Login. Bei Drift wird eine KanPrompt-Karte mit dem Drift-
+  Bericht angelegt - der Mensch entscheidet, ob die Baseline aktuali-
+  siert wird. Runbook: [`doc-drift-check.md`](runbooks/doc-drift-check.md).
+- **Live-Drift** spielt eingecheckte Recordings gegen die laufende CP-
+  Gateway-Session ab. Erfordert warmen Browser-Login. Beim Container-
+  Rebuild ist das Build-Acceptance: schon ein einziger value drift in
+  einem nicht-ignorierten Feld bricht den Build ab. Runbook:
+  [`mock-drift-check.md`](runbooks/mock-drift-check.md).
+
+Im Folgenden Detail-Beschreibung des Live-Drifts (AP-02 #06).
+
+### Live-Drift im Detail
 
 Der Replay-Mock sieht nur die heutigen Fixtures - er merkt nicht, wenn
 IBKR ein Feld ergaenzt oder umbenennt. Dafuer gibt es das Skript

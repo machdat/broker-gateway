@@ -301,3 +301,72 @@ def test_skip_logic_blocks_orders_and_logout() -> None:
     # GET auf normale Endpunkte natuerlich erlaubt.
     assert not check_mock_drift._should_skip("/iserver/auth/status", "GET")
     assert not check_mock_drift._should_skip("/portfolio/U1/summary", "GET")
+
+
+def test_build_acceptance_report_path_uses_commit_sha(tmp_path: Path) -> None:
+    """AP-03: Build-Acceptance-Bericht heisst build-<sha>.md statt Datums-Datei."""
+    from tests.cp_mock.diff import diff_recording
+
+    results = [
+        check_mock_drift.DriftResult(
+            fixture=Path("a"), path="/a", method="GET",
+            report=diff_recording({"a": 1}, {"a": 1}), skip_reason=None,
+        ),
+    ]
+    target = check_mock_drift._write_report(
+        tmp_path, date(2026, 4, 28), results,
+        build_acceptance=True,
+        commit_sha="abcdef0123456789beef",
+    )
+    assert target.name == "build-abcdef012345.md"
+    assert target.exists()
+
+
+def test_build_acceptance_report_path_unknown_sha(tmp_path: Path) -> None:
+    from tests.cp_mock.diff import diff_recording
+
+    results = [
+        check_mock_drift.DriftResult(
+            fixture=Path("a"), path="/a", method="GET",
+            report=diff_recording({"a": 1}, {"a": 1}), skip_reason=None,
+        ),
+    ]
+    target = check_mock_drift._write_report(
+        tmp_path, date(2026, 4, 28), results,
+        build_acceptance=True,
+        commit_sha=None,
+    )
+    assert target.name == "build-unknown.md"
+
+
+def test_resolve_warmup_defaults() -> None:
+    """Warmup-Logik: ohne Flag = 0; mit --build-acceptance = 90; explizit = wins."""
+    parser = check_mock_drift._build_parser()
+
+    args = parser.parse_args([])
+    assert check_mock_drift._resolve_warmup(args) == 0
+
+    args = parser.parse_args(["--build-acceptance"])
+    assert check_mock_drift._resolve_warmup(args) == 90
+
+    args = parser.parse_args(["--build-acceptance", "--warmup-seconds", "10"])
+    assert check_mock_drift._resolve_warmup(args) == 10
+
+    args = parser.parse_args(["--build-acceptance", "--warmup-seconds", "0"])
+    assert check_mock_drift._resolve_warmup(args) == 0
+
+
+def test_resolve_commit_sha_from_args(monkeypatch) -> None:
+    parser = check_mock_drift._build_parser()
+    monkeypatch.delenv("GIT_COMMIT", raising=False)
+    monkeypatch.delenv("CI_COMMIT_SHA", raising=False)
+
+    args = parser.parse_args(["--build-acceptance", "--commit-sha", "abc123"])
+    assert check_mock_drift._resolve_commit_sha(args) == "abc123"
+
+    args = parser.parse_args(["--build-acceptance"])
+    assert check_mock_drift._resolve_commit_sha(args) == "unknown"
+
+    monkeypatch.setenv("GIT_COMMIT", "from-env")
+    args = parser.parse_args(["--build-acceptance"])
+    assert check_mock_drift._resolve_commit_sha(args) == "from-env"

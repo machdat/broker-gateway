@@ -7,12 +7,18 @@ Berichte sind eingecheckt und bilden den Drift-Verlauf des Repos ab.
 
 ## Wann laufen wir das
 
-- **Empfohlen woechentlich** (z.B. Montagvormittag), gerne als
-  manueller Lauf vor dem Wochen-Standup.
-- **Sofort** vor jedem Release, sobald sich am Mock oder an
-  Konsumenten (PSM, trading-robot) Order-relevante Pfade aendern.
-- **Sofort** wenn der Mock mit `tests/test_*` gruen ist, in
+- **Bei jedem Container-Rebuild** als Build-Acceptance-Test (siehe
+  Section [Build-Acceptance-Modus](#build-acceptance-modus) unten).
+  Das ist die Hauptverwendung seit AP-03.
+- **Manuell ad-hoc**, wenn der Mock mit `tests/test_*` gruen ist, in
   Integration-Sandboxes aber unerklaerliche Schemafehler auftauchen.
+- **Sofort** wenn ein Doku-Drift-Lauf eine Aenderung meldet, die wir
+  gegen den Live-Endpunkt verifizieren wollen.
+
+Routine-mae Wochenlaeufe sind **nicht** mehr noetig - die Build-
+Acceptance fuengt Drift im Moment des Container-Rebuilds. Die
+**taegliche** Frueh-Warnung uebernimmt der
+[Doku-Drift-Check](doc-drift-check.md).
 
 Das Skript ist explizit **nicht** Teil der Standard-Test-Suite -
 ein normaler `pytest`-Lauf zieht keine Live-Verbindung zum CP-Gateway.
@@ -119,11 +125,63 @@ reports/drift/2026-05-02.md   <- naechster woechentlicher Lauf
 Reports sind eingecheckt - `.gitignore` filtert `reports/` nicht.
 Damit ist der Drift-Verlauf des Repos nachvollziehbar.
 
+## Build-Acceptance-Modus
+
+Seit AP-03 ist der Mock-Drift-Check **Pflicht-Teil** des Container-Builds.
+`ops/build-gateway.sh` ruft das Skript zwischen `docker compose build`
+und `docker compose up -d` auf - wenn der Drift breaking oder value ist,
+bricht der Build ab und der neue Container wird nicht gestartet.
+
+```bash
+./ops/build-gateway.sh
+# 1/3 docker compose build gateway
+# 2/3 check_mock_drift --build-acceptance (commit abc123)
+# 3/3 docker compose up -d gateway
+```
+
+Aufruf direkt:
+
+```bash
+GIT_COMMIT="$(git rev-parse HEAD)" \
+python scripts/check_mock_drift.py --base-url http://localhost:5000/v1/api \
+    --build-acceptance
+```
+
+Was der Modus aendert:
+
+- **90s Warmup** vor dem ersten Replay. IBKR braucht nach Container-Start
+  ungefaehr diese Zeit, bis Marktdaten/Portfolio-Endpunkte stabil
+  antworten (Quelle: `project_ibkr_session_resume`-Memory). Skip mit
+  `--warmup-seconds 0` nur fuer Tests.
+- **Strenger Exit-Code:** schon ein einziger `value drift` (nicht-
+  Timestamp-Feld) bricht den Build ab. Im manuellen Modus toleriert
+  das Skript value drift. Begruendung: ein Container-Rebuild ist genau
+  der Moment, wo ein veralteter Mock in Produktion gehen koennte -
+  also lieber falsch-positiv als zu spaet.
+- **Bericht-Pfad:** `reports/drift/build-<commit-sha>.md` statt
+  Datums-Datei. So lassen sich Drift-Befunde einem konkreten Commit
+  zuordnen.
+
+**Voraussetzung:** Browser-Login + Reauth muessen vorab laufen. Das
+Skript versucht **keinen** automatischen Login - Exit 3 bricht den
+Build mit klarer Fehlermeldung ab.
+
+**Notfall-Bypass** (sollte selten/nie gebraucht werden):
+
+```bash
+SKIP_ACCEPTANCE=1 ./ops/build-gateway.sh
+```
+
+Dieser Pfad existiert fuer Doku-only-Releases oder andere
+Aenderungen, bei denen die IBKR-Session nicht erreichbar ist (kalte
+Testumgebung, Wartungsfenster). Begruendung sollte im Commit stehen.
+
 ## Troubleshooting
 
 | Symptom | Pruefen |
 |---------|---------|
 | Exit 3 mit "Browser-Login fehlt" | `curl http://localhost:5000/v1/api/iserver/auth/status` -> `authenticated: false`? Login durchlaufen, dann Skript erneut. |
+| Build bricht in `[2/3] check_mock_drift --build-acceptance` ab | Bericht unter `reports/drift/build-<sha>.md` ansehen. Wenn der Drift gewollt ist (z.B. neues Schema gerade ausgerollt): `recording_session.py refresh` fuer betroffene Fixtures, Build erneut. |
 | Skript haengt | SSH-Tunnel pruefen (`channel 2: open failed: connect failed`?). socat-Helper auf der Pi laeuft? Container `broker-cpgateway` healthy? |
 | Sehr viele "value drift" auf Header-Werten | Header werden gar nicht geprueft - Diff arbeitet auf `body_json`. Falls eine Drift-Klasse unerwartet erscheint, in `tests/cp_mock/diff.py::DEFAULT_IGNORE_FIELDS` schauen. |
 | Recording mit 4xx/5xx wird uebersprungen, obwohl gewuenscht | `/errors/`-Recordings sind dokumentarisch und werden absichtlich ignoriert. Wenn ein Endpunkt von 4xx/5xx auf 200 wechselt, manuell mit `refresh` neu aufzeichnen. |

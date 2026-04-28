@@ -4,6 +4,64 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.8.0] — 2026-04-28
+
+Release-Karte AP-03 - duale Drift-Detection. Doku-Drift-Check als
+Frueh-Warner (taeglich, ohne Auth) plus Live-Drift als Build-Acceptance-
+Test. Karte forderte 1.7.0; tatsaechlich 1.8.0, weil 1.7.0 schon durch
+AP-02 #07-4 belegt war.
+
+### Hinzugefuegt
+- `tests/cp_doc/diff.py`: `diff_openapi(actual, expected) -> SpecDiffReport`.
+  Klassifiziert OpenAPI-/Swagger-Spec-Aenderungen in vier Stufen:
+  `no drift`, `minor (additive)`, `value (irrelevant)`, `breaking`. Behandelt
+  Pfad-/Operation-/Status-Code-/Schema-/Enum-/Required-Aenderungen,
+  unterscheidet Request- und Response-Mode (z.B. neues required Request-
+  Feld = breaking, neues Response-Feld = minor).
+- `scripts/check_doc_drift.py`: CLI-Skript, das die Live-IBKR-OpenAPI-Spec
+  laedt und gegen `docs/research/ibkr-cpapi-doc.json` vergleicht. Schreibt
+  Bericht nach `reports/doc-drift/<YYYY-MM-DD>.md`. Exit-Codes 0/1/2/3
+  (no/breaking/minor/unreachable). Mit `--auto-card` legt es eine
+  KanPrompt-Karte via REST an; Spam-Schutz: max. 1 Karte pro Tag pro
+  Drift-Klasse, Praefix-Check via `GET /api/v1/projects/.../cards`.
+- `ops/systemd/doc-drift.{service,timer}` plus `doc-drift.env.example` und
+  `ops/systemd/README.md`: taeglicher Lauf um 06:00 Europe/Berlin auf
+  cma-pi-1. KANPROMPT_API_KEY kommt aus `/etc/default/doc-drift`, niemals
+  aus dem Repo.
+- `ops/build-gateway.sh`: Build-Wrapper `docker compose build` ->
+  `check_mock_drift --build-acceptance` -> `docker compose up -d`. Bricht
+  ab, wenn der Drift-Check fehlschlaegt. `SKIP_ACCEPTANCE=1` als Notfall-
+  Bypass.
+- `scripts/check_mock_drift.py`: neuer `--build-acceptance`-Modus mit 90s
+  Warmup-Pause vor dem ersten Replay (project_ibkr_session_resume),
+  strengerem Exit-Code (auch value drift = exit 1) und Berichts-Pfad
+  `reports/drift/build-<commit-sha>.md`. Ohne den Flag: bestehendes
+  Verhalten unveraendert.
+- `tests/test_doc_drift.py`: 20 Unit-Tests fuer `diff_openapi` (alle 11
+  Pflichtfaelle aus der Karte plus defensive Zusatzfaelle wie
+  required-Aenderungen in Response, Enum-Removal in Request, gemischte
+  Severities, Markdown-Render).
+- `tests/test_check_doc_drift.py`: 11 Integrationstests mit
+  `httpx.MockTransport` (Exit-Codes, Berichts-Datei, Auto-Karten-Anlage
+  mit Spam-Schutz, Fehlerpfade).
+- `docs/runbooks/doc-drift-check.md`: vollstaendiges Runbook fuer den
+  Doku-Drift-Check inkl. Drift-Strategie-Schaubild, Reaktion pro
+  Klassifikation, Spam-Schutz-Erklaerung, Baseline-Update-Workflow,
+  Troubleshooting.
+- `reports/doc-drift/2026-04-28.md`: erster Doku-Drift-Bericht (analog
+  zur Karte AP-02 #06).
+
+### Geaendert
+- `docs/runbooks/mock-drift-check.md`: Section "Build-Acceptance-Modus"
+  ergaenzt; "Wann laufen wir das" auf "bei jedem Container-Rebuild + ad
+  hoc" angepasst (woechentliche Routine entfaellt).
+- `docs/cp-recordings.md`: Section "Drift-Strategie" voran gestellt mit
+  Schaubild Doku-Drift (Frueh-Warner) vs. Live-Drift (Build-Acceptance).
+
+### Version-Bump
+- `pyproject.toml`, `src/broker_gateway/__init__.py`, `compose.yaml`
+  Image-Tag, `tests/test_health.py`, README-Footer: 1.7.0 -> 1.8.0.
+
 ## [1.7.0] — 2026-04-28
 
 Release-Karte AP-02 #07-4 - Live-Recording-Lauf gegen die in

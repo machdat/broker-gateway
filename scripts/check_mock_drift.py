@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Iterable
 from datetime import date as _date
@@ -51,6 +52,10 @@ _DEFAULT_FIXTURES_DIR = Path("tests/fixtures/recorded/live")
 _DEFAULT_REPORT_DIR = Path("reports/drift")
 _REQUEST_TIMEOUT_S = 30.0
 _PRECONDITION_TIMEOUT_S = 10.0
+# Warmup im Build-Acceptance-Modus: IBKR braucht nach Container-Start ~90s,
+# bis Marktdaten/Portfolio-Endpunkte stabil antworten. Quelle: Auto-Memory
+# project_ibkr_session_resume.
+_BUILD_ACCEPTANCE_WARMUP_S = 90
 
 # Pfad-Substrings, deren Recordings nicht erneut aufgerufen werden:
 # Order-Endpunkte (Side Effects oder dokumentarisch, nicht drift-relevant)
@@ -100,6 +105,35 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="ISO-Datum fuer Berichtsdatei (default: heute).",
     )
+    p.add_argument(
+        "--build-acceptance",
+        action="store_true",
+        help=(
+            "Strenger Build-Acceptance-Modus (AP-03): 90s Warmup vor "
+            "dem ersten Replay, Exit 1 auch bei value drift, "
+            "Bericht reports/drift/build-<sha>.md statt Datums-Datei. "
+            "Voraussetzung: warmer Browser-Login (Skript versucht KEINEN "
+            "automatischen Login)."
+        ),
+    )
+    p.add_argument(
+        "--commit-sha",
+        default=None,
+        help=(
+            "Commit-SHA fuer den Build-Acceptance-Bericht (default: "
+            "Env GIT_COMMIT bzw. CI_COMMIT_SHA, sonst 'unknown')."
+        ),
+    )
+    p.add_argument(
+        "--warmup-seconds",
+        type=int,
+        default=None,
+        help=(
+            "Warmup-Wartezeit (Sekunden) vor dem ersten Replay. "
+            f"Default: 0 (manueller Modus), {_BUILD_ACCEPTANCE_WARMUP_S} "
+            "im Build-Acceptance-Modus. 0 deaktiviert."
+        ),
+    )
     return p
 
 
@@ -118,6 +152,7 @@ async def _run_cli(args: argparse.Namespace) -> int:
         return 2
 
     today = _date.fromisoformat(args.date) if args.date else _date.today()
+    warmup = _resolve_warmup(args)
     async with httpx.AsyncClient(
         base_url=args.base_url, timeout=_REQUEST_TIMEOUT_S
     ) as client:
@@ -125,11 +160,27 @@ async def _run_cli(args: argparse.Namespace) -> int:
             await _ensure_authenticated(client)
         except DriftCheckError as exc:
             print(f"VORAUSSETZUNG FEHLT: {exc}", file=sys.stderr)
+            if args.build_acceptance:
+                # Im Build-Acceptance-Modus deutlicher: Browser-Login fehlt
+                # heisst der Build muss explizit fehlschlagen.
+                print(
+                    "BUILD ABGEBROCHEN: Browser-Login + Reauth vorab durchfuehren "
+                    "(siehe docs/runbooks/cpgateway-login.md).",
+                    file=sys.stderr,
+                )
             return 3
+
+        if warmup > 0:
+            print(f"[wait] Warmup {warmup}s ...")
+            await asyncio.sleep(warmup)
 
         results = await run_drift_check(client, fixtures)
 
-    report_path = _write_report(args.report_dir, today, results)
+    report_path = _write_report(
+        args.report_dir, today, results,
+        build_acceptance=args.build_acceptance,
+        commit_sha=_resolve_commit_sha(args) if args.build_acceptance else None,
+    )
     print(f"[done] Drift-Bericht: {report_path}")
 
     summary = _summarize(results)
@@ -137,7 +188,34 @@ async def _run_cli(args: argparse.Namespace) -> int:
         "[done] no={no} minor={minor} value={value} breaking={breaking} skipped={skipped}"
         .format(**summary)
     )
+    if args.build_acceptance:
+        # Strenger: jeder breaking ODER value drift bricht den Build ab.
+        # Minor (additive) bleibt tolerierbar - der Server hat ein neues Feld,
+        # was Konsumenten nicht stoert. Timestamps werden ueber DEFAULT_IGNORE_FIELDS
+        # bereits aus dem Diff entfernt - "value drift" hier heisst echte
+        # Wertaenderung in einem nicht-ignorierten Feld.
+        if summary["breaking"] > 0 or summary["value"] > 0:
+            return 1
+        return 0
     return 1 if summary["breaking"] > 0 else 0
+
+
+def _resolve_warmup(args: argparse.Namespace) -> int:
+    if args.warmup_seconds is not None:
+        return max(0, args.warmup_seconds)
+    if args.build_acceptance:
+        return _BUILD_ACCEPTANCE_WARMUP_S
+    return 0
+
+
+def _resolve_commit_sha(args: argparse.Namespace) -> str:
+    if args.commit_sha:
+        return args.commit_sha
+    return (
+        os.environ.get("GIT_COMMIT")
+        or os.environ.get("CI_COMMIT_SHA")
+        or "unknown"
+    )
 
 
 # ---- Drift-Lauf ----
@@ -355,9 +433,19 @@ def _write_report(
     report_dir: Path,
     today: _date,
     results: list[DriftResult],
+    *,
+    build_acceptance: bool = False,
+    commit_sha: str | None = None,
 ) -> Path:
     report_dir.mkdir(parents=True, exist_ok=True)
-    target = report_dir / f"{today.isoformat()}.md"
+    if build_acceptance:
+        sha = commit_sha or "unknown"
+        # Kurzform fuer lange SHAs (Lesbarkeit + Datei-Namens-Limit auf
+        # einigen Filesystemen). Volle Form bleibt im Bericht-Body.
+        short_sha = sha[:12] if len(sha) > 12 else sha
+        target = report_dir / f"build-{short_sha}.md"
+    else:
+        target = report_dir / f"{today.isoformat()}.md"
     summary = _summarize(results)
 
     lines: list[str] = []

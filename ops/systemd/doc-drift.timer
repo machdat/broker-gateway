@@ -1,0 +1,17 @@
+[Unit]
+Description=broker-gateway: taeglicher Doku-Drift-Check 06:00 Berlin (AP-03)
+Documentation=file:///mnt/ssd/broker-gateway/docs/runbooks/doc-drift-check.md
+
+[Timer]
+# Taeglich um 06:00 Europe/Berlin. systemd respektiert die System-
+# Timezone, der Pi laeuft auf Europe/Berlin (timedatectl set-timezone).
+OnCalendar=*-*-* 06:00:00
+# Falls der Pi zur Schaltzeit aus war: Lauf nachholen, sobald online.
+Persistent=true
+# Ohne Splay laufen alle systemd-Timer auf einer Maschine exakt zeitgleich;
+# ein paar Minuten Streuung verteilt die Last (irrelevant beim Pi, aber
+# guter Standard).
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
