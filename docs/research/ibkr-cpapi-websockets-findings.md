@@ -132,6 +132,61 @@ Das heisst: **eine ungenutzte WS-Verbindung zieht ~6 push-Frames/min**
    - ``act``-Frame ist quasi ``/iserver/accounts``-Push - das kann den
      existierenden Init-Pfad in ``cp/lifecycle.py`` ergaenzen.
 
+## Recording-Format (kanonisch fuer Replay)
+
+Festgelegt in K2 (siehe ``tests/cp_mock/ws_replay.py`` +
+``tests/fixtures/recorded/ws/spike-baseline.jsonl``). Strikt getrennt
+vom REST-Recording-Format - WS hat eine andere Semantik (bidirektional,
+frame-basiert, Inter-Frame-Timing relevant), darum ein eigener Pfad
+und eine eigene Loader-Klasse.
+
+### Datei-Layout
+
+- Verzeichnis: ``tests/fixtures/recorded/ws/``
+- Datei pro Spike-/Recording-Lauf: ``spike-YYYY-MM-DD.jsonl`` plus
+  optional eine kanonische Baseline-Fixture ``spike-baseline.jsonl``.
+- Eine Zeile = ein Frame (JSON Lines, UTF-8, LF). Keine Wrapper-Hierarchie.
+
+### Frame-Schema
+
+```json
+{
+  "ts":     "2026-04-28T22:33:29.729+00:00",
+  "dir":    "in",
+  "topic":  "system",
+  "raw":    "{\"topic\":\"system\",\"hb\":1700000000000}",
+  "parsed": {"topic": "system", "hb": 1700000000000}
+}
+```
+
+| Feld | Pflicht | Typ | Bedeutung |
+|------|---------|-----|-----------|
+| ``ts`` | ja | ISO-8601 mit ms+Timezone | Wallclock-Zeit beim Frame-Empfang/-Send. UTC bevorzugt. |
+| ``dir`` | ja | ``"in"`` / ``"out"`` / ``"meta"`` | Server -> Client / Client -> Server / Skript-Marker (z.B. Connect-Event) |
+| ``topic`` | ja | String | Aus dem JSON-Body (``parsed.topic``) oder aus dem ``TOPIC+{...}``-Praefix. ``"?"``, wenn der Parser nichts ableiten kann. |
+| ``raw`` | ja | String | Wire-Format, unveraendert. Auch leer/``"tic"`` zulaessig. |
+| ``parsed`` | nein | object/null | Bereits dekodiertes JSON, falls der Frame parsbar war. Nicht-JSON-Frames lassen ``parsed=null``. |
+
+**Backwards-Compat-Regel:** Zusaetzliche Felder in einer Frame-Zeile
+(z.B. spaeter ``session_id``, ``correlation_id``) werden im Loader
+in ``WSFrame.extras`` durchgereicht. Aeltere Tests bleiben gruen,
+weil sie nur die fuenf Pflichtfelder lesen. Pflichtfelder werden
+**nie** entfernt oder umbenannt - solche Aenderungen sind ein
+neues Schema unter neuem Verzeichnis.
+
+### Replay-Modi
+
+- ``iter_server_frames(frames)`` - filtert auf ``dir=="in"``. Tests
+  fuer den WS-Client (K3) replayen damit, was der Echt-Server gepusht
+  hat, ohne dass ein WS-Server-Socket aufgemacht werden muss.
+- ``iter_client_frames(frames)`` - filtert auf ``dir=="out"``. Nuetzlich
+  fuer Tests, die einen Server-Stub gegen die echten Client-Frames
+  laufen lassen (Auth-Format, Subscribe-Format, ``tic``-Takt).
+
+Inter-Frame-Delay ist standardmaessig 0 (synchroner Test-Pfad). Mit
+``timing="compressed"`` und ``compression_factor`` kann ein Test
+realistische Pausen zwischen Frames einplanen, ohne 75 s zu blockieren.
+
 ## Offene Fragen fuer spaeter
 
 - Bei ``smd``-Subscribe: kommt das Format dann ``smd+{...}`` oder JSON?
