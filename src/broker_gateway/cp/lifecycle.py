@@ -60,8 +60,11 @@ class LifecycleSnapshot:
     cp_reachable: bool
     last_tickle_at: datetime | None
     last_reauth_at: datetime | None
+    last_sso_validate_at: datetime | None
+    last_login_at: datetime | None
     session_age_s: float | None
     consecutive_reauth_failures: int
+    accounts_initialized: bool
 
 
 class AuthLifecycle:
@@ -98,8 +101,11 @@ class AuthLifecycle:
         self._cp_reachable = True
         self._last_tickle_at: datetime | None = None
         self._last_reauth_at: datetime | None = None
+        self._last_sso_validate_at: datetime | None = None
+        self._last_login_at: datetime | None = None
         self._session_started_at: float | None = None
         self._reauth_failures = 0
+        self._accounts_initialized = False
 
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
@@ -121,8 +127,11 @@ class AuthLifecycle:
             cp_reachable=self._cp_reachable,
             last_tickle_at=self._last_tickle_at,
             last_reauth_at=self._last_reauth_at,
+            last_sso_validate_at=self._last_sso_validate_at,
+            last_login_at=self._last_login_at,
             session_age_s=age,
             consecutive_reauth_failures=self._reauth_failures,
+            accounts_initialized=self._accounts_initialized,
         )
 
     # ---- Lifecycle-Steuerung ----
@@ -164,23 +173,63 @@ class AuthLifecycle:
     # ---- ein Tickle-Zyklus ----
 
     async def tick_once(self) -> AuthStatus:
+        # Primaerer Heartbeat: GET /sso/validate (laut IBKR-OpenAPI-Spec
+        # der vorgesehene Keep-Alive). Tickle bleibt als sekundaerer
+        # CP-Health-Indicator und Backward-Compat-Pfad erhalten.
+        sso_authenticated = await self._heartbeat_sso()
+
         try:
             payload = await self._client.tickle()
         except httpx.HTTPError as exc:
             logger.warning("Tickle-Call fehlgeschlagen: %s", exc)
-            self._cp_reachable = False
-            self._status = AuthStatus.CP_DOWN
+            # Wenn auch sso/validate nicht authenticated antwortete, ist
+            # das CP-Gateway insgesamt nicht erreichbar.
+            if not sso_authenticated:
+                self._cp_reachable = False
+                self._status = AuthStatus.CP_DOWN
+                return self._status
+            # sso/validate hat geantwortet, also CP erreichbar - aber
+            # ohne Tickle koennen wir den authenticated-Wert nicht aus
+            # dem Tickle-Body cross-checken. Wir vertrauen sso/validate.
+            self._cp_reachable = True
+            self._mark_session_ok()
+            await self._maybe_init_accounts()
             return self._status
 
         self._cp_reachable = True
         self._last_tickle_at = _utcnow()
-        if _is_authenticated(payload):
+        if sso_authenticated or _is_authenticated(payload):
             self._mark_session_ok()
+            await self._maybe_init_accounts()
             return self._status
 
         # Auth-Verlust: Reauth-Loop bis Erfolg oder max-retries.
         await self._handle_auth_loss()
         return self._status
+
+    async def _heartbeat_sso(self) -> bool:
+        """GET /sso/validate als primaerer Keep-Alive. Returnt True,
+        wenn `RESULT=true` zurueckkommt (Session valide)."""
+        try:
+            payload = await self._client.sso_validate()
+        except httpx.HTTPError as exc:
+            logger.debug("sso/validate-Call fehlgeschlagen: %s", exc)
+            return False
+        self._last_sso_validate_at = _utcnow()
+        return _is_sso_validated(payload)
+
+    async def _maybe_init_accounts(self) -> None:
+        """Beim ersten erfolgreichen Tickle nach Login GET
+        /iserver/accounts ausloesen. IBKR erwartet diesen Call vor dem
+        ersten Order- oder Portfolio-Aufruf."""
+        if self._accounts_initialized:
+            return
+        try:
+            await self._client.iserver_accounts()
+        except httpx.HTTPError as exc:
+            logger.warning("iserver/accounts-Init fehlgeschlagen: %s", exc)
+            return
+        self._accounts_initialized = True
 
     async def _handle_auth_loss(self) -> None:
         self._status = AuthStatus.REAUTH_PENDING
@@ -207,10 +256,51 @@ class AuthLifecycle:
         self._status = AuthStatus.AUTH_LOST
 
     def _mark_session_ok(self) -> None:
-        if self._status is not AuthStatus.OK:
+        # Wir wechseln in OK, wenn entweder der Status vorher nicht OK
+        # war ODER es noch keinen Session-Start gibt - der initial-State
+        # `AuthStatus.OK` ist nur ein Default vor dem ersten Tickle und
+        # gibt keine echte authentifizierte Session her.
+        if self._status is not AuthStatus.OK or self._session_started_at is None:
             self._session_started_at = time.monotonic()
+            self._last_login_at = _utcnow()
         self._status = AuthStatus.OK
         self._reauth_failures = 0
+
+    async def reauthenticate(self, *, force: bool = False) -> AuthStatus:
+        """Manuell ausgeloester Reauth. Default verhaelt sich wie der
+        bisherige Pfad: nur bei REAUTH_PENDING / AUTH_LOST wird der
+        Reauth-Loop gestartet. Mit ``force=True`` triggert die Methode
+        unconditional ``POST /iserver/reauthenticate`` und prueft den
+        Auth-Status danach - das hilft in Edge-Cases wie der in
+        ``project_ibkr_session_resume`` dokumentierten
+        cold-tunnel-Situation, in der ``auth/status`` faelschlich
+        ``authenticated=false`` meldet, der Reauth aber sofort durchgeht.
+        """
+        if not force:
+            if self._status not in (AuthStatus.REAUTH_PENDING, AuthStatus.AUTH_LOST):
+                return self._status
+            await self._handle_auth_loss()
+            return self._status
+
+        self._last_reauth_at = _utcnow()
+        try:
+            await self._client.reauthenticate()
+        except httpx.HTTPError as exc:
+            logger.warning("Force-Reauth-Call fehlgeschlagen: %s", exc)
+            self._reauth_failures += 1
+            return self._status
+        await self._sleep(self.reauth_backoff_s)
+        try:
+            check = await self._client.auth_status()
+        except httpx.HTTPError as exc:
+            logger.warning("auth_status nach Force-Reauth fehlgeschlagen: %s", exc)
+            self._reauth_failures += 1
+            return self._status
+        if _is_authenticated(check):
+            self._mark_session_ok()
+        else:
+            self._reauth_failures += 1
+        return self._status
 
     async def _sleep(self, seconds: float) -> None:
         if seconds <= 0:
@@ -227,6 +317,13 @@ def _is_authenticated(payload: dict[str, object]) -> bool:
         if isinstance(auth_status, dict) and "authenticated" in auth_status:
             return bool(auth_status["authenticated"])
     return False
+
+
+def _is_sso_validated(payload: dict[str, object]) -> bool:
+    """sso/validate liefert ``{RESULT: bool, ...}``. RESULT=true heisst
+    Session valide; alles andere wird als ``not authenticated``
+    behandelt."""
+    return bool(payload.get("RESULT"))
 
 
 # ---- FastAPI-Dependencies ----

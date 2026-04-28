@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/iserver/accounts",
+    "query": {},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": {
+      "accounts": ["U25235077"],
+      "aliases": {"U25235077": "U25235077"},
+      "selectedAccount": "U25235077"
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-28T00:00:00+00:00",
+  "normalized": false,
+  "source": "seed"
+}

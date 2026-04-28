@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/sso/validate",
+    "query": {},
+    "headers": {},
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {"content-type": "application/json"},
+    "body_json": {
+      "LOGIN_TYPE": 1,
+      "USER_NAME": "mockuser",
+      "USER_ID": 123456,
+      "expire": 600000,
+      "RESULT": true,
+      "AUTH_TIME": 0
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-28T00:00:00+00:00",
+  "normalized": false,
+  "source": "seed"
+}

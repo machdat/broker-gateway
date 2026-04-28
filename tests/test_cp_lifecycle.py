@@ -147,6 +147,106 @@ async def test_cp_unreachable_marks_cp_down() -> None:
         await client.aclose()
 
 
+# ---- AuthLifecycle - sso/validate, accounts-Init, force-reauth ----
+
+
+async def test_first_tick_calls_iserver_accounts_init(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Karte AP-02 #07-3: erster Tickle nach Login muss GET
+    /iserver/accounts ausloesen."""
+    calls: list[tuple[str, str]] = []
+
+    async def hook(method: str, path: str) -> None:
+        calls.append((method, path))
+
+    lifecycle._client._pacing = hook  # type: ignore[attr-defined]
+    await lifecycle.tick_once()
+    assert ("GET", "/iserver/accounts") in calls
+    assert lifecycle.snapshot().accounts_initialized is True
+
+
+async def test_accounts_init_only_once(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Folge-Tickles wiederholen den /iserver/accounts-Call nicht."""
+    calls: list[tuple[str, str]] = []
+
+    async def hook(method: str, path: str) -> None:
+        calls.append((method, path))
+
+    lifecycle._client._pacing = hook  # type: ignore[attr-defined]
+    await lifecycle.tick_once()
+    await lifecycle.tick_once()
+    accounts_calls = [c for c in calls if c == ("GET", "/iserver/accounts")]
+    assert len(accounts_calls) == 1
+
+
+async def test_tick_calls_sso_validate_as_primary_keepalive(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Karte AP-02 #07-3: Keep-Alive geht primaer ueber GET /sso/validate."""
+    calls: list[tuple[str, str]] = []
+
+    async def hook(method: str, path: str) -> None:
+        calls.append((method, path))
+
+    lifecycle._client._pacing = hook  # type: ignore[attr-defined]
+    await lifecycle.tick_once()
+    assert ("GET", "/sso/validate") in calls
+    snap = lifecycle.snapshot()
+    assert snap.last_sso_validate_at is not None
+
+
+async def test_first_tick_sets_last_login_at(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Erster Uebergang in OK setzt last_login_at."""
+    before = datetime.now(timezone.utc)
+    await lifecycle.tick_once()
+    snap = lifecycle.snapshot()
+    assert snap.last_login_at is not None
+    assert snap.last_login_at >= before
+
+
+async def test_force_reauth_triggers_reauthenticate(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """reauthenticate(force=True) ruft POST /iserver/reauthenticate
+    auch wenn der lokale Status OK ist."""
+    await lifecycle.tick_once()
+    assert lifecycle.status is AuthStatus.OK
+
+    calls: list[tuple[str, str]] = []
+
+    async def hook(method: str, path: str) -> None:
+        calls.append((method, path))
+
+    lifecycle._client._pacing = hook  # type: ignore[attr-defined]
+    result = await lifecycle.reauthenticate(force=True)
+    assert ("POST", "/reauthenticate") in calls
+    assert result is AuthStatus.OK
+    assert lifecycle.snapshot().last_reauth_at is not None
+
+
+async def test_default_reauthenticate_no_op_when_status_ok(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """reauthenticate() ohne force tut nichts, wenn der Status OK ist."""
+    await lifecycle.tick_once()
+    assert lifecycle.status is AuthStatus.OK
+
+    calls: list[tuple[str, str]] = []
+
+    async def hook(method: str, path: str) -> None:
+        calls.append((method, path))
+
+    lifecycle._client._pacing = hook  # type: ignore[attr-defined]
+    result = await lifecycle.reauthenticate()
+    assert result is AuthStatus.OK
+    assert ("POST", "/reauthenticate") not in calls
+
+
 # ---- AuthLifecycle - background loop ----
 
 async def test_background_loop_increments_tickle_counter(
@@ -183,6 +283,9 @@ async def test_internal_health_requires_admin(
     assert body["cp_reachable"] is True
     assert body["consecutive_reauth_failures"] == 0
     assert body["last_tickle_at"] is not None
+    assert body["last_sso_validate_at"] is not None
+    assert body["last_login_at"] is not None
+    assert body["accounts_initialized"] is True
 
 
 async def test_internal_health_reports_auth_lost(

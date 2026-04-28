@@ -4,6 +4,41 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.6.3] — 2026-04-28
+
+### Hinzugefuegt
+- `CPGatewayClient.sso_validate()` und `CPGatewayClient.iserver_accounts()`
+  als neue Lifecycle-Endpunkte (GET /sso/validate, GET /iserver/accounts).
+- `AuthLifecycle._maybe_init_accounts()` ruft `GET /iserver/accounts`
+  beim ersten erfolgreichen Tickle nach Login auf und persistiert das
+  Ergebnis als `accounts_initialized=True`. IBKR setzt diesen Call vor
+  dem ersten Order- oder Portfolio-Aufruf voraus.
+- `AuthLifecycle._heartbeat_sso()`: primaerer Keep-Alive geht jetzt
+  ueber `GET /sso/validate` (Spec-Empfehlung). Tickle bleibt als
+  sekundaerer CP-Health-Indicator und Backward-Compat-Pfad erhalten -
+  ein Tickle-Fehler bei gueltigem sso/validate landet nicht mehr in
+  CP_DOWN.
+- `AuthLifecycle.reauthenticate(force=False)`: oeffentliche Methode
+  fuer manuelle Reauth-Triggers. Mit `force=True` wird
+  `POST /iserver/reauthenticate` unconditional ausgeloest und der
+  Auth-Status danach geprueft - hilft im cold-tunnel-Fall (siehe
+  Auto-Memory `project_ibkr_session_resume`), in dem `auth/status`
+  faelschlich `authenticated=false` meldet, der Reauth aber sofort
+  durchgeht.
+- `LifecycleSnapshot` und `/v1/internal/health` exponieren neu
+  `last_sso_validate_at`, `last_login_at`, `accounts_initialized`.
+
+### Geaendert
+- `tests/cp_mock/replay.py`: neue Mock-Routen fuer GET /sso/validate
+  und GET /iserver/accounts. Bei `auth_lost=True` liefert sso/validate
+  `RESULT=false`. Seed-Recordings fuer beide Endpunkte unter
+  `tests/fixtures/recorded/seed/`; Live-Recording fuer
+  `iserver/accounts` existiert bereits aus AP-02 #04.
+
+### Hinweis
+- v1-API-Vertrag unveraendert. `force` ist interner Lifecycle-Schalter,
+  kein Vertragsfeld. Dritte von vier Sub-Karten in AP-02 #07.
+
 ## [1.6.2] — 2026-04-28
 
 ### Geaendert

@@ -26,8 +26,22 @@ class InternalHealthResponse(BaseModel):
     cp_reachable: bool = Field(description="Letzter HTTP-Call zum CP-Gateway hat geantwortet")
     last_tickle_at: datetime | None
     last_reauth_at: datetime | None
+    last_sso_validate_at: datetime | None = Field(
+        default=None,
+        description="Zeitpunkt des letzten GET /sso/validate (primaerer Keep-Alive)",
+    )
+    last_login_at: datetime | None = Field(
+        default=None,
+        description="Zeitpunkt des letzten Uebergangs in den OK-Zustand "
+        "(Initial-Login oder erfolgreicher Reauth)",
+    )
     session_age_s: float | None = Field(description="Sekunden seit letztem OK-Tickle")
     consecutive_reauth_failures: int
+    accounts_initialized: bool = Field(
+        default=False,
+        description="True, sobald GET /iserver/accounts nach Login einmal "
+        "erfolgreich ausgeloest wurde",
+    )
 
 
 @router.get("/health", response_model=InternalHealthResponse, summary="Detail-Health (admin:*)")
@@ -41,6 +55,9 @@ def internal_health(
         cp_reachable=snap.cp_reachable,
         last_tickle_at=snap.last_tickle_at,
         last_reauth_at=snap.last_reauth_at,
+        last_sso_validate_at=snap.last_sso_validate_at,
+        last_login_at=snap.last_login_at,
         session_age_s=snap.session_age_s,
         consecutive_reauth_failures=snap.consecutive_reauth_failures,
+        accounts_initialized=snap.accounts_initialized,
     )

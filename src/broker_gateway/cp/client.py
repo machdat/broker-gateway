@@ -90,6 +90,21 @@ class CPGatewayClient:
     async def reauthenticate(self) -> dict[str, Any]:
         return await self._json("POST", "/reauthenticate")
 
+    async def sso_validate(self) -> dict[str, Any]:
+        """Primaerer Keep-Alive-Endpunkt laut IBKR-OpenAPI-Spec
+        (GET /sso/validate, Summary 'Validate SSO')."""
+        return await self._json("GET", "/sso/validate")
+
+    async def iserver_accounts(self) -> list[dict[str, Any]] | dict[str, Any]:
+        """GET /iserver/accounts - Brokerage-Accounts. IBKR erwartet
+        diesen Call beim Session-Start; ohne ihn bleiben einige
+        nachfolgende Endpoints ungueltig."""
+        await self._before("GET", "/iserver/accounts")
+        response = await self._client.get("/iserver/accounts")
+        self._after("GET", "/iserver/accounts", response)
+        response.raise_for_status()
+        return response.json()
+
     # ---- Generische Helfer (Folge-Karten benutzen sie für eigentliche Calls) ----
 
     async def get(self, path: str, *, params: dict[str, Any] | None = None) -> httpx.Response:

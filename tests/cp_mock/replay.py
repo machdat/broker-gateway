@@ -137,6 +137,21 @@ class ReplayCPGatewayMock:
         status, body = self._recorded("/reauthenticate", method="POST")
         return httpx.Response(status, json=body)
 
+    def _h_sso_validate(self, request: httpx.Request) -> httpx.Response:
+        if (resp := self._pre()) is not None:
+            return resp
+        status, body = self._recorded("/sso/validate", method="GET")
+        body = dict(body or {})
+        if self.auth_lost:
+            body["RESULT"] = False
+        return httpx.Response(status, json=body)
+
+    def _h_iserver_accounts(self, request: httpx.Request) -> httpx.Response:
+        if (resp := self._pre()) is not None:
+            return resp
+        status, body = self._recorded("/iserver/accounts", method="GET")
+        return httpx.Response(status, json=body)
+
     # ---- Sec-Def (Recording-backed) ----
 
     def _h_secdef_search(self, request: httpx.Request) -> httpx.Response:
@@ -437,6 +452,8 @@ class ReplayCPGatewayMock:
         router.get(url__regex=rf"^{b}/iserver/auth/status$").mock(side_effect=self._h_auth_status)
         router.post(url__regex=rf"^{b}/tickle$").mock(side_effect=self._h_tickle)
         router.post(url__regex=rf"^{b}/reauthenticate$").mock(side_effect=self._h_reauthenticate)
+        router.get(url__regex=rf"^{b}/sso/validate$").mock(side_effect=self._h_sso_validate)
+        router.get(url__regex=rf"^{b}/iserver/accounts$").mock(side_effect=self._h_iserver_accounts)
         router.get(url__regex=rf"^{b}/iserver/secdef/search(\?.*)?$").mock(side_effect=self._h_secdef_search)
         router.get(url__regex=rf"^{b}/iserver/secdef/info(\?.*)?$").mock(side_effect=self._h_secdef_info)
         router.get(url__regex=rf"^{b}/iserver/marketdata/snapshot(\?.*)?$").mock(side_effect=self._h_snapshot)
