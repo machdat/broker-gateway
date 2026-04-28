@@ -21,12 +21,12 @@
       "content-type": "application/json; charset=utf-8",
       "x-response-time": "0ms",
       "x-content-type-options": "nosniff",
-      "expires": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "expires": "Tue, 28 Apr 2026 07:48:20 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "date": "Tue, 28 Apr 2026 07:48:20 GMT",
       "connection": "keep-alive",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=18, origin; dur=14, ak_p; desc=\"1777120377634_388397449_2946583489_3362_9278_9_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=18, origin; dur=18, ak_p; desc=\"1777362500889_388397465_113386334_3591_7617_10_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Accept-Encoding,Origin",
       "transfer-encoding": "chunked"
@@ -35,7 +35,7 @@
       "session": "<SESSION_ID>",
       "ssoExpires": "<TIMESTAMP>",
       "collission": false,
-      "userId": 181382082,
+      "userId": "<REDACTED>",
       "hmds": {
         "error": "no bridge"
       },
@@ -46,17 +46,17 @@
           "competing": false,
           "connected": true,
           "message": "",
-          "MAC": "06:59:AE:5B:4F:D1",
+          "MAC": "<REDACTED>",
           "serverInfo": {
-            "serverName": "JifZ28031",
-            "serverVersion": "Build 10.44.1h, Apr 20, 2026 11:22:51 AM"
+            "serverName": "JifZ20074",
+            "serverVersion": "Build 10.45.1a, Apr 22, 2026 1:39:05 PM"
           },
-          "hardware_info": "30df22d8|06:59:AE:5B:4F:D1"
+          "hardware_info": "<REDACTED>"
         }
       }
     },
     "body_text": null
   },
-  "recorded_at": "2026-04-25T12:32:57.466584+00:00",
+  "recorded_at": "2026-04-28T07:48:18.694252+00:00",
   "normalized": true
 }

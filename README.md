@@ -241,4 +241,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.6.3*
+*Version 1.7.0*

@@ -23,53 +23,47 @@
       "content-type": "application/json; charset=utf-8",
       "x-response-time": "0ms",
       "x-content-type-options": "nosniff",
-      "expires": "Sat, 25 Apr 2026 12:32:58 GMT",
+      "expires": "Tue, 28 Apr 2026 07:48:21 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 12:32:58 GMT",
+      "date": "Tue, 28 Apr 2026 07:48:21 GMT",
       "connection": "keep-alive",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=76, origin; dur=15, ak_p; desc=\"1777120378577_388397449_2946584908_9114_16093_9_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=21, origin; dur=11, ak_p; desc=\"1777362501919_388397465_113388141_3231_12567_9_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Accept-Encoding,Origin",
       "transfer-encoding": "chunked"
     },
     "body_json": [
       {
-        "6509": "ZB",
+        "6509": "DPB",
         "conidEx": "265598",
         "conid": 265598,
         "_updated": "<TIMESTAMP>",
-        "6119": "q0",
-        "server_id": "q0",
-        "84": "270.94",
-        "31": "270.90",
-        "86": "270.99",
-        "6508": "&serviceID1=122&serviceID2=123&serviceID3=203&serviceID4=775&serviceID5=204&serviceID6=206&serviceID7=108&serviceID8=109"
+        "6119": "q3",
+        "server_id": "q3",
+        "31": "C267.61"
       },
       {
-        "6509": "ZB",
+        "6509": "DPB",
         "conidEx": "272093",
-        "_updated": "<TIMESTAMP>",
         "conid": 272093,
-        "6119": "q1",
-        "server_id": "q1",
-        "84": "423.83",
-        "31": "423.88",
-        "86": "423.88",
-        "6508": "&serviceID1=20773&serviceID2=341&serviceID3=122&serviceID4=342&serviceID5=123&serviceID6=344&serviceID7=520&serviceID8=773&serviceID9=213&serviceID10=521&serviceID11=774&serviceID12=203&serviceID13=214&serviceID14=775&serviceID15=1387&serviceID16=204&serviceID17=206&serviceID18=108&serviceID19=207&serviceID20=109&serviceID21=208&serviceID22=439&serviceID23=209"
+        "_updated": "<TIMESTAMP>",
+        "6119": "q4",
+        "server_id": "q4",
+        "31": "C424.82"
       },
       {
         "55": "-",
         "conidEx": "104747",
         "conid": 104747,
         "_updated": "<TIMESTAMP>",
-        "6119": "q2",
-        "server_id": "q2",
+        "6119": "q5",
+        "server_id": "q5",
         "31": "N/A"
       }
     ],
     "body_text": null
   },
-  "recorded_at": "2026-04-25T12:32:58.483588+00:00",
+  "recorded_at": "2026-04-28T07:48:19.728062+00:00",
   "normalized": true
 }

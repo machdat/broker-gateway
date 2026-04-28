@@ -22,12 +22,12 @@
       "content-type": "application/json; charset=utf-8",
       "x-response-time": "0ms",
       "x-content-type-options": "nosniff",
-      "expires": "Sat, 25 Apr 2026 12:33:01 GMT",
+      "expires": "Tue, 28 Apr 2026 07:48:23 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 12:33:01 GMT",
+      "date": "Tue, 28 Apr 2026 07:48:23 GMT",
       "connection": "keep-alive, Transfer-Encoding",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=14, origin; dur=20, ak_p; desc=\"1777120381366_388397449_2946587617_3409_15229_10_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=16, origin; dur=18, ak_p; desc=\"1777362503724_388397465_113390241_4269_13722_9_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Accept-Encoding,Origin",
       "transfer-encoding": "chunked"
@@ -207,62 +207,6 @@
       },
       {
         "execution_id": "<EXEC_ID_007>",
-        "symbol": "AMAT",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 3 @ 393.88 on IBKRATS",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776692955000,
-        "size": 3.0,
-        "price": "393.88",
-        "exchange": "IBKRATS",
-        "commission": "1.0",
-        "net_amount": 1181.64,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "APPLIED MATERIALS INC",
-        "contract_description_1": "AMAT",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 266093,
-        "conidEx": "266093@IBKRATS",
-        "position": "0",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_007>"
-      },
-      {
-        "execution_id": "<EXEC_ID_008>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 507.53 @ 1.17694 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776714825000,
-        "size": 507.53,
-        "price": "1.17694",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 597.3323582,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_008>"
-      },
-      {
-        "execution_id": "<EXEC_ID_009>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -286,10 +230,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_009>"
+        "order_id": "<ORDER_ID_007>"
       },
       {
-        "execution_id": "<EXEC_ID_010>",
+        "execution_id": "<EXEC_ID_008>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -313,10 +257,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_010>"
+        "order_id": "<ORDER_ID_008>"
       },
       {
-        "execution_id": "<EXEC_ID_011>",
+        "execution_id": "<EXEC_ID_009>",
         "symbol": "YSS",
         "supports_tax_opt": "1",
         "side": "B",
@@ -342,37 +286,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_011>"
+        "order_id": "<ORDER_ID_009>"
       },
       {
-        "execution_id": "<EXEC_ID_012>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 640.64 @ 1.17804 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776714843000,
-        "size": 640.64,
-        "price": "1.17804",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 754.6995456,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_012>"
-      },
-      {
-        "execution_id": "<EXEC_ID_013>",
+        "execution_id": "<EXEC_ID_010>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -396,10 +313,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_013>"
+        "order_id": "<ORDER_ID_010>"
       },
       {
-        "execution_id": "<EXEC_ID_014>",
+        "execution_id": "<EXEC_ID_011>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -423,39 +340,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_014>"
+        "order_id": "<ORDER_ID_011>"
       },
       {
-        "execution_id": "<EXEC_ID_015>",
-        "symbol": "PODD",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 3 @ 200.978 on DARK",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776714825000,
-        "size": 3.0,
-        "price": "200.978",
-        "exchange": "DARK",
-        "commission": "1.0",
-        "net_amount": 602.934,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "INSULET CORP",
-        "contract_description_1": "PODD",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 44061838,
-        "conidEx": "44061838",
-        "position": "4.6964",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_015>"
-      },
-      {
-        "execution_id": "<EXEC_ID_016>",
+        "execution_id": "<EXEC_ID_012>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -479,39 +367,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_016>"
+        "order_id": "<ORDER_ID_012>"
       },
       {
-        "execution_id": "<EXEC_ID_017>",
-        "symbol": "PODD",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 0.0008 @ 195.51 on IBKR",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776785898000,
-        "size": 0.0008,
-        "price": "195.51",
-        "exchange": "IBKR",
-        "commission": "0.0",
-        "net_amount": 0.156408,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "INSULET CORP",
-        "contract_description_1": "PODD",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 44061838,
-        "conidEx": "44061838",
-        "position": "4.6964",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_017>"
-      },
-      {
-        "execution_id": "<EXEC_ID_018>",
+        "execution_id": "<EXEC_ID_013>",
         "symbol": "ZM",
         "supports_tax_opt": "1",
         "side": "B",
@@ -540,7 +399,7 @@
         "order_id": "<ORDER_ID_003>"
       },
       {
-        "execution_id": "<EXEC_ID_019>",
+        "execution_id": "<EXEC_ID_014>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -564,10 +423,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_018>"
+        "order_id": "<ORDER_ID_013>"
       },
       {
-        "execution_id": "<EXEC_ID_020>",
+        "execution_id": "<EXEC_ID_015>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -591,10 +450,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_019>"
+        "order_id": "<ORDER_ID_014>"
       },
       {
-        "execution_id": "<EXEC_ID_021>",
+        "execution_id": "<EXEC_ID_016>",
         "symbol": "T",
         "supports_tax_opt": "1",
         "side": "B",
@@ -620,10 +479,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_020>"
+        "order_id": "<ORDER_ID_015>"
       },
       {
-        "execution_id": "<EXEC_ID_022>",
+        "execution_id": "<EXEC_ID_017>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -647,10 +506,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_021>"
+        "order_id": "<ORDER_ID_016>"
       },
       {
-        "execution_id": "<EXEC_ID_023>",
+        "execution_id": "<EXEC_ID_018>",
         "symbol": "YSS",
         "supports_tax_opt": "1",
         "side": "B",
@@ -676,10 +535,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_022>"
+        "order_id": "<ORDER_ID_017>"
       },
       {
-        "execution_id": "<EXEC_ID_024>",
+        "execution_id": "<EXEC_ID_019>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -703,10 +562,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_023>"
+        "order_id": "<ORDER_ID_018>"
       },
       {
-        "execution_id": "<EXEC_ID_025>",
+        "execution_id": "<EXEC_ID_020>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -730,39 +589,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_024>"
+        "order_id": "<ORDER_ID_019>"
       },
       {
-        "execution_id": "<EXEC_ID_026>",
-        "symbol": "ITRI",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 0.1946 @ 98.04 on IBKR",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776693478000,
-        "size": 0.1946,
-        "price": "98.04",
-        "exchange": "IBKR",
-        "commission": "0.0",
-        "net_amount": 19.078584,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "ITRON INC",
-        "contract_description_1": "ITRI",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 270760,
-        "conidEx": "270760",
-        "position": "19.5499",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_025>"
-      },
-      {
-        "execution_id": "<EXEC_ID_027>",
+        "execution_id": "<EXEC_ID_021>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -786,10 +616,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_026>"
+        "order_id": "<ORDER_ID_020>"
       },
       {
-        "execution_id": "<EXEC_ID_028>",
+        "execution_id": "<EXEC_ID_022>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -813,10 +643,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_027>"
+        "order_id": "<ORDER_ID_021>"
       },
       {
-        "execution_id": "<EXEC_ID_029>",
+        "execution_id": "<EXEC_ID_023>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -840,10 +670,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_028>"
+        "order_id": "<ORDER_ID_022>"
       },
       {
-        "execution_id": "<EXEC_ID_030>",
+        "execution_id": "<EXEC_ID_024>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -867,37 +697,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_029>"
+        "order_id": "<ORDER_ID_023>"
       },
       {
-        "execution_id": "<EXEC_ID_031>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.24 @ 1.17564 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776781930000,
-        "size": 0.24,
-        "price": "1.17564",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 0.2821536,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_030>"
-      },
-      {
-        "execution_id": "<EXEC_ID_032>",
+        "execution_id": "<EXEC_ID_025>",
         "symbol": "AMRX",
         "supports_tax_opt": "1",
         "side": "B",
@@ -923,10 +726,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_031>"
+        "order_id": "<ORDER_ID_024>"
       },
       {
-        "execution_id": "<EXEC_ID_033>",
+        "execution_id": "<EXEC_ID_026>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -950,10 +753,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_032>"
+        "order_id": "<ORDER_ID_025>"
       },
       {
-        "execution_id": "<EXEC_ID_034>",
+        "execution_id": "<EXEC_ID_027>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -977,10 +780,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_033>"
+        "order_id": "<ORDER_ID_026>"
       },
       {
-        "execution_id": "<EXEC_ID_035>",
+        "execution_id": "<EXEC_ID_028>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1004,10 +807,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_034>"
+        "order_id": "<ORDER_ID_027>"
       },
       {
-        "execution_id": "<EXEC_ID_036>",
+        "execution_id": "<EXEC_ID_029>",
         "symbol": "INTC",
         "supports_tax_opt": "1",
         "side": "S",
@@ -1032,10 +835,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_035>"
+        "order_id": "<ORDER_ID_028>"
       },
       {
-        "execution_id": "<EXEC_ID_037>",
+        "execution_id": "<EXEC_ID_030>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1059,10 +862,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_036>"
+        "order_id": "<ORDER_ID_029>"
       },
       {
-        "execution_id": "<EXEC_ID_038>",
+        "execution_id": "<EXEC_ID_031>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1086,10 +889,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_037>"
+        "order_id": "<ORDER_ID_030>"
       },
       {
-        "execution_id": "<EXEC_ID_039>",
+        "execution_id": "<EXEC_ID_032>",
         "symbol": "AMRX",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1115,10 +918,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_038>"
+        "order_id": "<ORDER_ID_031>"
       },
       {
-        "execution_id": "<EXEC_ID_040>",
+        "execution_id": "<EXEC_ID_033>",
         "symbol": "RHLD",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1147,34 +950,7 @@
         "order_id": "<ORDER_ID_002>"
       },
       {
-        "execution_id": "<EXEC_ID_041>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 115.83 @ 1.17409 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776785898000,
-        "size": 115.83,
-        "price": "1.17409",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 135.9948447,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_039>"
-      },
-      {
-        "execution_id": "<EXEC_ID_042>",
+        "execution_id": "<EXEC_ID_034>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1198,10 +974,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_040>"
+        "order_id": "<ORDER_ID_032>"
       },
       {
-        "execution_id": "<EXEC_ID_043>",
+        "execution_id": "<EXEC_ID_035>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1225,10 +1001,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_041>"
+        "order_id": "<ORDER_ID_033>"
       },
       {
-        "execution_id": "<EXEC_ID_044>",
+        "execution_id": "<EXEC_ID_036>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1252,37 +1028,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_042>"
+        "order_id": "<ORDER_ID_034>"
       },
       {
-        "execution_id": "<EXEC_ID_045>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 358.5 @ 1.17704 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776695490000,
-        "size": 358.5,
-        "price": "1.17704",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 421.96884,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_043>"
-      },
-      {
-        "execution_id": "<EXEC_ID_046>",
+        "execution_id": "<EXEC_ID_037>",
         "symbol": "NRT",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1308,39 +1057,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_044>"
+        "order_id": "<ORDER_ID_035>"
       },
       {
-        "execution_id": "<EXEC_ID_047>",
-        "symbol": "KOS",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 20 @ 2.508 on DARK",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776695420000,
-        "size": 20.0,
-        "price": "2.508",
-        "exchange": "DARK",
-        "commission": "0.5",
-        "net_amount": 50.16,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "KOSMOS ENERGY LTD",
-        "contract_description_1": "KOS",
-        "sec_type": "STK",
-        "listing_exchange": "NYSE",
-        "conid": 346369068,
-        "conidEx": "346369068",
-        "position": "60",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_045>"
-      },
-      {
-        "execution_id": "<EXEC_ID_048>",
+        "execution_id": "<EXEC_ID_038>",
         "symbol": "KLTR",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1361,15 +1081,14 @@
         "listing_exchange": "NASDAQ.NMS",
         "conid": 479630122,
         "conidEx": "479630122@DARK",
-        "position": "0",
         "clearing_id": "IB",
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_046>"
+        "order_id": "<ORDER_ID_036>"
       },
       {
-        "execution_id": "<EXEC_ID_049>",
+        "execution_id": "<EXEC_ID_039>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1393,10 +1112,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_047>"
+        "order_id": "<ORDER_ID_037>"
       },
       {
-        "execution_id": "<EXEC_ID_050>",
+        "execution_id": "<EXEC_ID_040>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1420,37 +1139,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_048>"
+        "order_id": "<ORDER_ID_038>"
       },
       {
-        "execution_id": "<EXEC_ID_051>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.08 @ 1.17619 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776781929000,
-        "size": 0.08,
-        "price": "1.17619",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 0.0940952,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_049>"
-      },
-      {
-        "execution_id": "<EXEC_ID_052>",
+        "execution_id": "<EXEC_ID_041>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1474,10 +1166,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_050>"
+        "order_id": "<ORDER_ID_039>"
       },
       {
-        "execution_id": "<EXEC_ID_053>",
+        "execution_id": "<EXEC_ID_042>",
         "symbol": "AMAT",
         "supports_tax_opt": "1",
         "side": "S",
@@ -1498,15 +1190,14 @@
         "listing_exchange": "NASDAQ.NMS",
         "conid": 266093,
         "conidEx": "266093@DARK",
-        "position": "0",
         "clearing_id": "IB",
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_051>"
+        "order_id": "<ORDER_ID_040>"
       },
       {
-        "execution_id": "<EXEC_ID_054>",
+        "execution_id": "<EXEC_ID_043>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1530,10 +1221,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_052>"
+        "order_id": "<ORDER_ID_041>"
       },
       {
-        "execution_id": "<EXEC_ID_055>",
+        "execution_id": "<EXEC_ID_044>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1557,10 +1248,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_053>"
+        "order_id": "<ORDER_ID_042>"
       },
       {
-        "execution_id": "<EXEC_ID_056>",
+        "execution_id": "<EXEC_ID_045>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1584,10 +1275,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_054>"
+        "order_id": "<ORDER_ID_043>"
       },
       {
-        "execution_id": "<EXEC_ID_057>",
+        "execution_id": "<EXEC_ID_046>",
         "symbol": "NRT",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1613,10 +1304,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_044>"
+        "order_id": "<ORDER_ID_035>"
       },
       {
-        "execution_id": "<EXEC_ID_058>",
+        "execution_id": "<EXEC_ID_047>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1640,10 +1331,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_055>"
+        "order_id": "<ORDER_ID_044>"
       },
       {
-        "execution_id": "<EXEC_ID_059>",
+        "execution_id": "<EXEC_ID_048>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1667,10 +1358,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_056>"
+        "order_id": "<ORDER_ID_045>"
       },
       {
-        "execution_id": "<EXEC_ID_060>",
+        "execution_id": "<EXEC_ID_049>",
         "symbol": "TWO",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1696,10 +1387,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_057>"
+        "order_id": "<ORDER_ID_046>"
       },
       {
-        "execution_id": "<EXEC_ID_061>",
+        "execution_id": "<EXEC_ID_050>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1723,10 +1414,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_058>"
+        "order_id": "<ORDER_ID_047>"
       },
       {
-        "execution_id": "<EXEC_ID_062>",
+        "execution_id": "<EXEC_ID_051>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1750,10 +1441,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_059>"
+        "order_id": "<ORDER_ID_048>"
       },
       {
-        "execution_id": "<EXEC_ID_063>",
+        "execution_id": "<EXEC_ID_052>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1777,39 +1468,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_060>"
+        "order_id": "<ORDER_ID_049>"
       },
       {
-        "execution_id": "<EXEC_ID_064>",
-        "symbol": "ITRI",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 9 @ 97.88 on IBKRATS",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776693478000,
-        "size": 9.0,
-        "price": "97.88",
-        "exchange": "IBKRATS",
-        "commission": "1.0",
-        "net_amount": 880.92,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "ITRON INC",
-        "contract_description_1": "ITRI",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 270760,
-        "conidEx": "270760",
-        "position": "19.5499",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_025>"
-      },
-      {
-        "execution_id": "<EXEC_ID_065>",
+        "execution_id": "<EXEC_ID_053>",
         "symbol": "ABEO",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1835,10 +1497,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_061>"
+        "order_id": "<ORDER_ID_050>"
       },
       {
-        "execution_id": "<EXEC_ID_066>",
+        "execution_id": "<EXEC_ID_054>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -1862,66 +1524,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_062>"
+        "order_id": "<ORDER_ID_051>"
       },
       {
-        "execution_id": "<EXEC_ID_067>",
-        "symbol": "ABVE",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 1000 @ 0.7498 on NASDAQ",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776714843000,
-        "size": 1000.0,
-        "price": "0.7498",
-        "exchange": "NASDAQ",
-        "commission": "5.0",
-        "net_amount": 749.8,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "ABOVE FOOD INGREDIENTS INC",
-        "contract_description_1": "ABVE",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 712984808,
-        "conidEx": "712984808",
-        "position": "1,200",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_063>"
-      },
-      {
-        "execution_id": "<EXEC_ID_068>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.04 @ 1.17709 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776695490000,
-        "size": 0.04,
-        "price": "1.17709",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 0.0470836,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_064>"
-      },
-      {
-        "execution_id": "<EXEC_ID_069>",
+        "execution_id": "<EXEC_ID_055>",
         "symbol": "ZM",
         "supports_tax_opt": "1",
         "side": "B",
@@ -1950,36 +1556,7 @@
         "order_id": "<ORDER_ID_003>"
       },
       {
-        "execution_id": "<EXEC_ID_070>",
-        "symbol": "ITRI",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 0.3553 @ 93.72 on IBKR",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776781929000,
-        "size": 0.3553,
-        "price": "93.72",
-        "exchange": "IBKR",
-        "commission": "0.0",
-        "net_amount": 33.298716,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "ITRON INC",
-        "contract_description_1": "ITRI",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 270760,
-        "conidEx": "270760",
-        "position": "19.5499",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_065>"
-      },
-      {
-        "execution_id": "<EXEC_ID_071>",
+        "execution_id": "<EXEC_ID_056>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2003,10 +1580,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_066>"
+        "order_id": "<ORDER_ID_052>"
       },
       {
-        "execution_id": "<EXEC_ID_072>",
+        "execution_id": "<EXEC_ID_057>",
         "symbol": "AVGO",
         "supports_tax_opt": "1",
         "side": "B",
@@ -2032,10 +1609,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_067>"
+        "order_id": "<ORDER_ID_053>"
       },
       {
-        "execution_id": "<EXEC_ID_073>",
+        "execution_id": "<EXEC_ID_058>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2059,10 +1636,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_068>"
+        "order_id": "<ORDER_ID_054>"
       },
       {
-        "execution_id": "<EXEC_ID_074>",
+        "execution_id": "<EXEC_ID_059>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2086,10 +1663,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_069>"
+        "order_id": "<ORDER_ID_055>"
       },
       {
-        "execution_id": "<EXEC_ID_075>",
+        "execution_id": "<EXEC_ID_060>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2113,10 +1690,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_070>"
+        "order_id": "<ORDER_ID_056>"
       },
       {
-        "execution_id": "<EXEC_ID_076>",
+        "execution_id": "<EXEC_ID_061>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2140,10 +1717,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_071>"
+        "order_id": "<ORDER_ID_057>"
       },
       {
-        "execution_id": "<EXEC_ID_077>",
+        "execution_id": "<EXEC_ID_062>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2167,50 +1744,21 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_072>"
+        "order_id": "<ORDER_ID_058>"
       },
       {
-        "execution_id": "<EXEC_ID_078>",
-        "symbol": "ITRI",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 5 @ 93.34 on IBKRATS",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776781929000,
-        "size": 5.0,
-        "price": "93.34",
-        "exchange": "IBKRATS",
-        "commission": "1.0",
-        "net_amount": 466.7,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "ITRON INC",
-        "contract_description_1": "ITRI",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 270760,
-        "conidEx": "270760",
-        "position": "19.5499",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_065>"
-      },
-      {
-        "execution_id": "<EXEC_ID_079>",
+        "execution_id": "<EXEC_ID_063>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
-        "order_description": "Sold 424.97 @ 1.17564 on IDEALPRO",
+        "order_description": "Sold 0.86 @ 1.16987 on IDEALPRO",
         "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776781929000,
-        "size": 424.97,
-        "price": "1.17564",
+        "trade_time_r": 1777044876000,
+        "size": 0.86,
+        "price": "1.16987",
         "exchange": "IDEALPRO",
         "commission": "0.0",
-        "net_amount": 499.6117308,
+        "net_amount": 1.0060882,
         "account": "U25235077",
         "accountCode": "U25235077",
         "account_allocation_name": "U25235077",
@@ -2223,37 +1771,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_049>"
+        "order_id": "<ORDER_ID_059>"
       },
       {
-        "execution_id": "<EXEC_ID_080>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.84 @ 1.17404 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776785898000,
-        "size": 0.84,
-        "price": "1.17404",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 0.9861936,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_073>"
-      },
-      {
-        "execution_id": "<EXEC_ID_081>",
+        "execution_id": "<EXEC_ID_064>",
         "symbol": "RHLD",
         "supports_tax_opt": "1",
         "side": "B",
@@ -2282,34 +1803,7 @@
         "order_id": "<ORDER_ID_002>"
       },
       {
-        "execution_id": "<EXEC_ID_082>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.86 @ 1.16987 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1777044876000,
-        "size": 0.86,
-        "price": "1.16987",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 1.0060882,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_074>"
-      },
-      {
-        "execution_id": "<EXEC_ID_083>",
+        "execution_id": "<EXEC_ID_065>",
         "symbol": "ITRI",
         "supports_tax_opt": "1",
         "side": "B",
@@ -2335,10 +1829,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_075>"
+        "order_id": "<ORDER_ID_060>"
       },
       {
-        "execution_id": "<EXEC_ID_084>",
+        "execution_id": "<EXEC_ID_066>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2362,10 +1856,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_076>"
+        "order_id": "<ORDER_ID_061>"
       },
       {
-        "execution_id": "<EXEC_ID_085>",
+        "execution_id": "<EXEC_ID_067>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2389,10 +1883,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_077>"
+        "order_id": "<ORDER_ID_062>"
       },
       {
-        "execution_id": "<EXEC_ID_086>",
+        "execution_id": "<EXEC_ID_068>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2416,10 +1910,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_078>"
+        "order_id": "<ORDER_ID_063>"
       },
       {
-        "execution_id": "<EXEC_ID_087>",
+        "execution_id": "<EXEC_ID_069>",
         "symbol": "BW",
         "supports_tax_opt": "1",
         "side": "B",
@@ -2445,10 +1939,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_079>"
+        "order_id": "<ORDER_ID_064>"
       },
       {
-        "execution_id": "<EXEC_ID_088>",
+        "execution_id": "<EXEC_ID_070>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2472,37 +1966,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_080>"
+        "order_id": "<ORDER_ID_065>"
       },
       {
-        "execution_id": "<EXEC_ID_089>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.6 @ 1.17694 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776714826000,
-        "size": 0.6,
-        "price": "1.17694",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 0.706164,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_081>"
-      },
-      {
-        "execution_id": "<EXEC_ID_090>",
+        "execution_id": "<EXEC_ID_071>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2526,10 +1993,37 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_082>"
+        "order_id": "<ORDER_ID_066>"
       },
       {
-        "execution_id": "<EXEC_ID_091>",
+        "execution_id": "<EXEC_ID_072>",
+        "symbol": "EUR",
+        "supports_tax_opt": "0",
+        "side": "S",
+        "order_description": "Sold 0.05 @ 1.16953 on IDEALPRO",
+        "trade_time": "<TIMESTAMP>",
+        "trade_time_r": 1776954047000,
+        "size": 0.05,
+        "price": "1.16953",
+        "exchange": "IDEALPRO",
+        "commission": "0.0",
+        "net_amount": 0.0584765,
+        "account": "U25235077",
+        "accountCode": "U25235077",
+        "account_allocation_name": "U25235077",
+        "company_name": "European Monetary Union Euro",
+        "contract_description_1": "EUR.USD",
+        "sec_type": "CASH",
+        "conid": 12087792,
+        "conidEx": "12087792",
+        "clearing_id": "IB",
+        "clearing_name": "IB",
+        "liquidation_trade": "1",
+        "is_event_trading": "0",
+        "order_id": "<ORDER_ID_067>"
+      },
+      {
+        "execution_id": "<EXEC_ID_073>",
         "symbol": "ZM",
         "supports_tax_opt": "1",
         "side": "B",
@@ -2558,117 +2052,7 @@
         "order_id": "<ORDER_ID_003>"
       },
       {
-        "execution_id": "<EXEC_ID_092>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.05 @ 1.16953 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776954047000,
-        "size": 0.05,
-        "price": "1.16953",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 0.0584765,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_083>"
-      },
-      {
-        "execution_id": "<EXEC_ID_093>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.08 @ 1.17804 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776714844000,
-        "size": 0.08,
-        "price": "1.17804",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 0.0942432,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_084>"
-      },
-      {
-        "execution_id": "<EXEC_ID_094>",
-        "symbol": "BW",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 30 @ 17.585 on IBKRATS",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776695490000,
-        "size": 30.0,
-        "price": "17.585",
-        "exchange": "IBKRATS",
-        "commission": "1.0",
-        "net_amount": 527.55,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "BABCOCK & WILCOX ENTERPR",
-        "contract_description_1": "BW",
-        "sec_type": "STK",
-        "listing_exchange": "NYSE",
-        "conid": 374627687,
-        "conidEx": "374627687",
-        "position": "70",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_085>"
-      },
-      {
-        "execution_id": "<EXEC_ID_095>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 0.86 @ 1.17614 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776781929000,
-        "size": 0.86,
-        "price": "1.17614",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 1.0114804,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_086>"
-      },
-      {
-        "execution_id": "<EXEC_ID_096>",
+        "execution_id": "<EXEC_ID_074>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2692,10 +2076,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_087>"
+        "order_id": "<ORDER_ID_068>"
       },
       {
-        "execution_id": "<EXEC_ID_097>",
+        "execution_id": "<EXEC_ID_075>",
         "symbol": "KLTR",
         "supports_tax_opt": "1",
         "side": "S",
@@ -2716,15 +2100,14 @@
         "listing_exchange": "NASDAQ.NMS",
         "conid": 479630122,
         "conidEx": "479630122@DARK",
-        "position": "0",
         "clearing_id": "IB",
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_088>"
+        "order_id": "<ORDER_ID_069>"
       },
       {
-        "execution_id": "<EXEC_ID_098>",
+        "execution_id": "<EXEC_ID_076>",
         "symbol": "EUR",
         "supports_tax_opt": "0",
         "side": "S",
@@ -2748,37 +2131,10 @@
         "clearing_name": "IB",
         "liquidation_trade": "1",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_089>"
+        "order_id": "<ORDER_ID_070>"
       },
       {
-        "execution_id": "<EXEC_ID_099>",
-        "symbol": "EUR",
-        "supports_tax_opt": "0",
-        "side": "S",
-        "order_description": "Sold 5 @ 1.17814 on IDEALPRO",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776714825000,
-        "size": 5.0,
-        "price": "1.17814",
-        "exchange": "IDEALPRO",
-        "commission": "0.0",
-        "net_amount": 5.8907,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "European Monetary Union Euro",
-        "contract_description_1": "EUR.USD",
-        "sec_type": "CASH",
-        "conid": 12087792,
-        "conidEx": "12087792",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "1",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_008>"
-      },
-      {
-        "execution_id": "<EXEC_ID_100>",
+        "execution_id": "<EXEC_ID_077>",
         "symbol": "GWRE",
         "supports_tax_opt": "1",
         "side": "B",
@@ -2804,40 +2160,11 @@
         "clearing_name": "IB",
         "liquidation_trade": "0",
         "is_event_trading": "0",
-        "order_id": "<ORDER_ID_090>"
-      },
-      {
-        "execution_id": "<EXEC_ID_101>",
-        "symbol": "PODD",
-        "supports_tax_opt": "1",
-        "side": "B",
-        "order_description": "Bot 0.6956 @ 195.2733 on IBKR",
-        "trade_time": "<TIMESTAMP>",
-        "trade_time_r": 1776785898000,
-        "size": 0.6956,
-        "price": "195.2733",
-        "exchange": "IBKR",
-        "commission": "1.0",
-        "net_amount": 135.83210748,
-        "account": "U25235077",
-        "accountCode": "U25235077",
-        "account_allocation_name": "U25235077",
-        "company_name": "INSULET CORP",
-        "contract_description_1": "PODD",
-        "sec_type": "STK",
-        "listing_exchange": "NASDAQ.NMS",
-        "conid": 44061838,
-        "conidEx": "44061838",
-        "position": "4.6964",
-        "clearing_id": "IB",
-        "clearing_name": "IB",
-        "liquidation_trade": "0",
-        "is_event_trading": "0",
-        "order_id": "<ORDER_ID_017>"
+        "order_id": "<ORDER_ID_071>"
       }
     ],
     "body_text": null
   },
-  "recorded_at": "2026-04-25T12:33:01.291381+00:00",
+  "recorded_at": "2026-04-28T07:48:21.556020+00:00",
   "normalized": true
 }

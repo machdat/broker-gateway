@@ -4,6 +4,50 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.7.0] — 2026-04-28
+
+Release-Karte AP-02 #07-4 - Live-Recording-Lauf gegen die in
+1.6.1/1.6.2/1.6.3 korrigierten Service-Pfade. Aggregiert die vier
+AP-02 #07-Sub-Karten in einen Minor-Release. Karte sprach urspruenglich
+von 1.4.0; tatsaechliche Versionsnummer ist 1.7.0, weil 1.6.x in den
+Sub-Karten 1-3 verbraucht wurde.
+
+### Hinzugefuegt
+- `scripts/recording_session.py happy-path` zeichnet zusaetzlich
+  `GET /sso/validate` (Schritt `a++)`) auf - Replay-Mock kann jetzt auf
+  reale Bodies fuer den primaeren Keep-Alive zurueckgreifen.
+- `src/broker_gateway/cp/normalize.py`: neues `_SECRET_FIELDS_LOWER`
+  redacts `TOKEN`, `CREDENTIAL`, `IP`, `USER_NAME`, `USER_ID`,
+  `UNIQUE_LOGIN_ID`, `MAC`, `hardware_info`, `userId` (tickle) und
+  weitere sensible Felder aus `sso/validate`/`auth/status`/`tickle` auf
+  `<REDACTED>`. Erstes 07-4-Recording hatte einen Auth-Token im
+  `sso/validate`-Body geleakt; geleakte Files wurden nicht commited
+  und durch redacted Live-Recordings ersetzt.
+
+### Geaendert
+- 23 Live-Recordings unter `tests/fixtures/recorded/live/` neu
+  aufgezeichnet (broker-gateway 1.6.3, IBKR Build 10.45.1a). Alle
+  v1-Service-Pfade liefern HTTP 200; die 7 dokumentarischen 404er sind
+  alte Probe-Calls (Service-Code ruft sie nicht mehr) plus
+  unsubscribe-Live-Artefakt.
+- 5 synthetische Seeds aus AP-02 #07-1/3 entfernt
+  (`portfolio/{summary,positions/0,ledger}`, `iserver/accounts`,
+  `sso/validate`); alle haben nun reale Live-Pendants.
+- `docs/runbooks/recording-session-happy-path.md`: Diff-Report
+  2026-04-28 ergaenzt mit Verification-Tabelle aller korrigierten
+  Pfade, geloeschte Seeds, Recorder-Filter-Erweiterung und
+  IBKR-Server-Build-Drift `JifZ28031/10.44.1h -> JifZ20074/10.45.1a`.
+
+### Hinweis
+- Drift-Detection-Smoke-Test (zweiter Lauf, warm): 0 breaking, 1 minor
+  (`sso/validate.isGw` additive), 4 value (Timestamps + FX-Bruchteile -
+  normale Live-Schwankung). Erster Lauf zeigte 1 breaking
+  (`marketdata/snapshot.6509: DPB -> ZB`), das war Cold-Session-Effekt
+  - im zweiten Lauf bestaetigt sich das nicht. Verhalten ist im
+  Auto-Memory `project_ibkr_session_resume` dokumentiert.
+- v1-API-Vertrag unveraendert. Schliesst AP-02 Karte 07
+  (Service-Code-an-reale-IBKR-Pfade) ab.
+
 ## [1.6.3] — 2026-04-28
 
 ### Hinzugefuegt

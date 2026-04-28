@@ -1,0 +1,70 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/sso/validate",
+    "query": {},
+    "headers": {
+      "host": "localhost:5000",
+      "accept": "*/*",
+      "accept-encoding": "gzip, deflate",
+      "connection": "keep-alive",
+      "user-agent": "python-httpx/0.28.1"
+    },
+    "body_json": null,
+    "body_text": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "referrer-policy": "Origin-when-cross-origin",
+      "content-type": "application/json; charset=utf-8",
+      "x-response-time": "0ms",
+      "x-content-type-options": "nosniff",
+      "expires": "Tue, 28 Apr 2026 07:48:20 GMT",
+      "cache-control": "max-age=0, no-cache, no-store",
+      "pragma": "no-cache",
+      "date": "Tue, 28 Apr 2026 07:48:20 GMT",
+      "connection": "keep-alive",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=24, origin; dur=16, ak_p; desc=\"1777362500775_388397465_113386003_3928_10622_10_0_-\";dur=1",
+      "strict-transport-security": "max-age=600 ; includeSubDomains",
+      "vary": "Accept-Encoding,Origin",
+      "transfer-encoding": "chunked"
+    },
+    "body_json": {
+      "SFT": "<REDACTED>",
+      "IS_PENDING_APPLICANT": false,
+      "SF_ENABLED": true,
+      "HARDWARE_INFO": "",
+      "UNIQUE_LOGIN_ID": "<REDACTED>",
+      "AUTH_TIME": "<REDACTED>",
+      "SF_CONFIG": "<REDACTED>",
+      "USER_NAME": "<REDACTED>",
+      "CREDENTIAL_TYPE": "<REDACTED>",
+      "IS_FREE_TRIAL": false,
+      "LOGIN_TYPE": 1,
+      "LANDING_APP": "PORTAL",
+      "CREDENTIAL": "<REDACTED>",
+      "ANOMALOUS_LOGIN": false,
+      "RESULT": true,
+      "IP": "<REDACTED>",
+      "USER_ID": "<REDACTED>",
+      "EXPIRES": "<REDACTED>",
+      "TOKEN": "<REDACTED>",
+      "took": "<REDACTED>",
+      "IS_MASTER": false,
+      "features": {
+        "env": "PROD",
+        "wlms": true,
+        "realtime": true,
+        "bond": true,
+        "optionChains": true,
+        "calendar": true,
+        "newMf": true
+      },
+      "region": "EU"
+    },
+    "body_text": null
+  },
+  "recorded_at": "2026-04-28T07:48:18.585027+00:00",
+  "normalized": true
+}

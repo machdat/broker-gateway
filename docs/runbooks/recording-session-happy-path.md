@@ -167,6 +167,55 @@ Empfohlene Cadence:
   mit dem Live-Verhalten zu wirken.
 - Vor einem groesseren Service-Release als Sanity-Check.
 
+## Diff-Report 2026-04-28 (AP-02 #07-4: korrigierte Pfade)
+
+Re-Recording nach Abschluss von AP-02 #07-1/2/3 (Service-Code an reale
+IBKR-Pfade angeglichen, Lifecycle-Hooks ergaenzt). 23 Recordings unter
+`tests/fixtures/recorded/live/`, davon 16 HTTP 200 fuer alle
+v1-Service-Pfade, 7 dokumentarische 404er.
+
+### A) Service-Code-Korrekturen verifiziert (alle HTTP 200)
+
+| Endpoint | Karte | Status |
+|----------|-------|--------|
+| `GET /portfolio/U25235077/summary` | 07-1 | 200 ✓ |
+| `GET /portfolio/U25235077/positions/0` | 07-1 | 200 ✓ |
+| `GET /portfolio/U25235077/ledger` | 07-1 | 200 ✓ |
+| `GET /iserver/account/trades?days=7` | 07-2 | 200 (Body mit `account`+`listing_exchange`) ✓ |
+| `GET /iserver/accounts` | 07-3 | 200 ✓ |
+| `GET /sso/validate` | 07-3 | 200 (`RESULT=true`) ✓ |
+| `POST /iserver/account/U25235077/orders/whatif` | (Folge) | 200 ✓ |
+
+Order-Status-Singular `GET /iserver/account/order/status/{orderId}` ist
+in der Happy-Path-Sequenz nicht enthalten (waere ein Live-Order ueber
+Variante B noetig); der Pfad ist im Error-Path-Recording (07-4-Vorlauf,
+existing) mit HTTP 503 "Order not found" verifiziert.
+
+### B) Synthetische Seeds aus 07-1/2/3 entfernt
+
+Folgende Seeds wurden geloescht, weil reale Live-Recordings existieren:
+
+- `portfolio_U25235077_summary__GET__noquery_01.json` (07-1)
+- `portfolio_U25235077_positions_0__GET__noquery_01.json` (07-1)
+- `portfolio_U25235077_ledger__GET__noquery_01.json` (07-1)
+- `iserver_accounts__GET__noquery_01.json` (07-3)
+- `sso_validate__GET__noquery_01.json` (07-3)
+
+### C) Recorder-Filter erweitert (Geheimnis-Schutz)
+
+Erstes 07-4-Recording hat einen Auth-Token im `sso/validate`-Body
+geleakt (`TOKEN`, `CREDENTIAL`, `IP`, `USER_NAME`, `USER_ID`,
+`UNIQUE_LOGIN_ID`, `MAC` aus `auth/status`, `userId` aus `tickle`). Der
+Body-Normalizer in `src/broker_gateway/cp/normalize.py` ist um
+`_SECRET_FIELDS_LOWER` erweitert; alle Werte werden auf `<REDACTED>`
+gesetzt, das Schema bleibt fuer Drift-Check / Replay sichtbar.
+
+### D) IBKR-Server-Build-Drift
+
+Live-Server: `JifZ20074` Build `10.45.1a` (vorher: `JifZ28031` Build
+`10.44.1h`). MAC- und Server-Felder sind redacted, Drift bleibt nur als
+additiver Schema-Indikator sichtbar.
+
 ## Diff-Report 2026-04-25 (erster Live-Lauf)
 
 Abgeglichen wurden 22 Recordings (16 HTTP 200, 5 HTTP 404, 1 mit reichem Body)

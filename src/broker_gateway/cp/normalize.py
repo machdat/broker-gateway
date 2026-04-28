@@ -39,6 +39,19 @@ _SESSION_FIELDS_LOWER: frozenset[str] = frozenset({
     "session", "sessionid", "session_id",
 })
 
+# sso/validate liefert auth-Tokens, User-IDs, Credentials und externe IP -
+# alles strikt sensibel. AP-02 #07-4 hat den Leak im ersten Live-Recording
+# entdeckt. Werte werden auf <REDACTED> gesetzt; das Feld bleibt im
+# Body, damit Replay-Loader/Drift-Check Schema-Aenderungen erkennen.
+_SECRET_FIELDS_LOWER: frozenset[str] = frozenset({
+    "token", "credential", "credentials", "user_name", "username",
+    "user_id", "userid", "unique_login_id", "uniqueloginid",
+    "ip", "ip_address", "ipaddress", "hardware_info", "hardwareinfo",
+    "auth_time", "authtime", "expires", "took",
+    "sft", "sf_config", "credential_type",
+    "mac",  # MAC-Adresse aus iserver/auth/status
+})
+
 # Preis- und Marktdaten-Felder bleiben default unberuehrt. Endpunkte, die
 # das umstellen wollen, setzen normalize_prices=True.
 _PRICE_FIELDS_LOWER: frozenset[str] = frozenset({
@@ -115,6 +128,13 @@ def _scalar(value: Any, state: _NormalizeState, *, parent_key: str | None) -> An
 
     if key_lower in _SESSION_FIELDS_LOWER and value not in (None, ""):
         return "<SESSION_ID>"
+
+    if (
+        key_lower in _SECRET_FIELDS_LOWER
+        and value not in (None, "")
+        and not isinstance(value, bool)
+    ):
+        return "<REDACTED>"
 
     if (kind := _ID_FIELDS_LOWER.get(key_lower)) and value not in (None, ""):
         return state.placeholder(kind, str(value))

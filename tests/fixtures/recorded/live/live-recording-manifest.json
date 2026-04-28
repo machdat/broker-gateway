@@ -2,8 +2,8 @@
   "scenario": "happy-path",
   "account_id": "U25235077",
   "base_url": "http://localhost:5000/v1/api",
-  "broker_gateway_version": "1.2.0",
-  "recorded_at": "2026-04-25T12:33:01.294211+00:00",
+  "broker_gateway_version": "1.6.3",
+  "recorded_at": "2026-04-28T07:48:21.559049+00:00",
   "symbols": [
     "AAPL",
     "MSFT",
@@ -31,6 +31,7 @@
     "portfolio_U25235077_ledger__GET__noquery_01.json",
     "portfolio_U25235077_positions_0__GET__noquery_01.json",
     "portfolio_U25235077_summary__GET__noquery_01.json",
+    "sso_validate__GET__noquery_01.json",
     "tickle__POST__noquery_01.json"
   ]
 }

@@ -20,14 +20,14 @@
     "headers": {
       "referrer-policy": "Origin-when-cross-origin",
       "content-type": "application/json; charset=utf-8",
-      "x-response-time": "8ms",
+      "x-response-time": "7ms",
       "x-content-type-options": "nosniff",
-      "expires": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "expires": "Tue, 28 Apr 2026 07:48:21 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 12:32:57 GMT",
+      "date": "Tue, 28 Apr 2026 07:48:21 GMT",
       "connection": "keep-alive",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=14, origin; dur=25, ak_p; desc=\"1777120377743_388397449_2946583657_4935_14018_9_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=48, origin; dur=21, ak_p; desc=\"1777362501065_388397465_113386619_13270_12695_10_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Accept-Encoding,Origin",
       "transfer-encoding": "chunked"
@@ -94,11 +94,22 @@
         "companyName": "APPLE INC",
         "symbol": "AAPL",
         "description": "MEXI",
-        "restricted": "STK",
+        "restricted": "FUT,STK",
         "sections": [
           {
             "secType": "STK",
             "exchange": "MEXI;"
+          },
+          {
+            "secType": "FUT",
+            "months": "JUN26;SEP26;DEC26;MAR27",
+            "exchange": "MEXDER",
+            "showPrips": true
+          },
+          {
+            "secType": "BAG",
+            "exchange": "MEXDER",
+            "legSecType": "FUT"
           }
         ]
       },
@@ -138,6 +149,6 @@
     ],
     "body_text": null
   },
-  "recorded_at": "2026-04-25T12:32:57.586592+00:00",
+  "recorded_at": "2026-04-28T07:48:18.953208+00:00",
   "normalized": true
 }

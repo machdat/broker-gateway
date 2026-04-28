@@ -280,6 +280,10 @@ def _build_happy_path_steps(
     # a+) /iserver/accounts - IBKR-Quirk: muss vor account-spezifischen Calls
     # einmal aufgerufen werden, sonst antworten /portfolio/{acct}/* mit 404.
     steps.append(("a+) GET /iserver/accounts (Server-side accounts init)", _step_accounts_init))
+    # a++) /sso/validate - laut IBKR-OpenAPI-Spec primaerer Keep-Alive
+    # (AP-02 #07-3). Wird hier mit aufgezeichnet, damit der Replay-Mock
+    # auf reale Bodies zurueckgreifen kann.
+    steps.append(("a++) GET /sso/validate", _step_sso_validate))
     # b) tickle
     steps.append(("b) POST /tickle", _step_tickle))
     # c) secdef-search pro Symbol - cached conid fuer step d.
@@ -341,6 +345,10 @@ async def _step_auth_status(client: httpx.AsyncClient) -> None:
 
 async def _step_accounts_init(client: httpx.AsyncClient) -> None:
     await client.get("/iserver/accounts")
+
+
+async def _step_sso_validate(client: httpx.AsyncClient) -> None:
+    await client.get("/sso/validate")
 
 
 async def _step_tickle(client: httpx.AsyncClient) -> None:

@@ -18,14 +18,14 @@
     "headers": {
       "referrer-policy": "Origin-when-cross-origin",
       "content-type": "application/json; charset=utf-8",
-      "x-response-time": "22ms",
+      "x-response-time": "24ms",
       "x-content-type-options": "nosniff",
-      "expires": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "expires": "Tue, 28 Apr 2026 07:48:22 GMT",
       "cache-control": "max-age=0, no-cache, no-store",
       "pragma": "no-cache",
-      "date": "Sat, 25 Apr 2026 12:32:59 GMT",
+      "date": "Tue, 28 Apr 2026 07:48:22 GMT",
       "connection": "keep-alive",
-      "server-timing": "cdn-cache; desc=MISS, edge; dur=13, origin; dur=51, ak_p; desc=\"1777120379492_388397449_2946586346_6417_12551_9_0_-\";dur=1",
+      "server-timing": "cdn-cache; desc=MISS, edge; dur=59, origin; dur=41, ak_p; desc=\"1777362502585_388397465_113389151_10999_11204_9_0_-\";dur=1",
       "strict-transport-security": "max-age=600 ; includeSubDomains",
       "vary": "Accept-Encoding,Origin",
       "transfer-encoding": "chunked"
@@ -35,7 +35,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "U25235077",
         "severity": 0
       },
@@ -43,7 +43,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "true",
         "severity": 0
       },
@@ -51,7 +51,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "INDIVIDUAL",
         "severity": 0
       },
@@ -59,7 +59,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -67,7 +67,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -75,7 +75,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -83,7 +83,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -91,7 +91,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -99,7 +99,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -107,7 +107,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "1",
         "severity": 0
       },
@@ -115,7 +115,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "1",
         "severity": 0
       },
@@ -123,7 +123,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "null",
         "severity": 0
       },
@@ -131,7 +131,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -139,7 +139,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -147,7 +147,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -155,7 +155,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -163,7 +163,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -171,7 +171,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -179,7 +179,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -187,15 +187,15 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
       "grosspositionvalue": {
-        "amount": 11460.8798828125,
+        "amount": 11416.0498046875,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -203,7 +203,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -211,7 +211,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -219,7 +219,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "null",
         "severity": 0
       },
@@ -227,7 +227,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -235,7 +235,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -243,7 +243,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -251,7 +251,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -259,7 +259,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "0.99",
         "severity": 0
       },
@@ -267,7 +267,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -275,7 +275,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -283,7 +283,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -291,7 +291,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -299,7 +299,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "0",
         "severity": 0
       },
@@ -307,7 +307,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -315,15 +315,15 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
       "netliquidation": {
-        "amount": 11527.6103515625,
+        "amount": 11482.7802734375,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -331,7 +331,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -339,7 +339,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -347,7 +347,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "false",
         "severity": 0
       },
@@ -355,7 +355,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -363,7 +363,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -371,7 +371,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -379,7 +379,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -387,7 +387,7 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "CFD",
         "severity": 0
       },
@@ -395,23 +395,23 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
-        "value": "20260425:2170.27;20260427:66.73",
+        "timestamp": 1777362502000,
+        "value": "20260428:66.73",
         "severity": 0
       },
       "settledcashbydate-s": {
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
-        "value": "20260425:2170.27;20260427:66.73",
+        "timestamp": 1777362502000,
+        "value": "20260428:66.73",
         "severity": 0
       },
       "totalcashvalue": {
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -419,7 +419,7 @@
         "amount": 66.7300033569336,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -427,7 +427,7 @@
         "amount": 0.0,
         "currency": "EUR",
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": null,
         "severity": 0
       },
@@ -435,13 +435,13 @@
         "amount": 0.0,
         "currency": null,
         "isNull": false,
-        "timestamp": 1777120379000,
+        "timestamp": 1777362502000,
         "value": "STKCASH",
         "severity": 0
       }
     },
     "body_text": null
   },
-  "recorded_at": "2026-04-25T12:32:59.357847+00:00",
+  "recorded_at": "2026-04-28T07:48:20.424686+00:00",
   "normalized": true
 }
