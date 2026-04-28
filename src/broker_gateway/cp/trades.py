@@ -29,6 +29,44 @@ _MIN_DAYS = 1
 _MAX_DAYS = 30
 _FALLBACK_CURRENCY = "USD"
 
+# IBKR-Trade-Bodies tragen keine direkte `currency` mehr (Live-Recording
+# AP-02 #04: Feld nur bei FX-Cash-Trades vorhanden). Stattdessen liefert
+# das CP-Gateway `listing_exchange` (z.B. NYSE, IBIS, LSE). Diese Tabelle
+# deckt die fuer U25235077 relevanten Boersen ab; alles Unbekannte
+# faellt auf _FALLBACK_CURRENCY zurueck und markiert den Trade als
+# currency_assumed=True, damit Konsumenten die Annahme erkennen.
+_EXCHANGE_CURRENCY: dict[str, str] = {
+    # USD
+    "NYSE": "USD", "NASDAQ": "USD", "ARCA": "USD", "AMEX": "USD",
+    "BATS": "USD", "IEX": "USD", "DARK": "USD", "ISLAND": "USD",
+    "PINK": "USD", "PSE": "USD", "PHLX": "USD", "BYX": "USD",
+    "EDGEA": "USD", "EDGEX": "USD", "MEMX": "USD",
+    # EUR
+    "IBIS": "EUR", "IBIS2": "EUR", "FWB": "EUR", "SWB": "EUR",
+    "TRADEGATE": "EUR", "GETTEX": "EUR", "AEB": "EUR", "ENEXT.BE": "EUR",
+    "SBF": "EUR", "BVME": "EUR", "BM": "EUR",
+    # GBP
+    "LSE": "GBP", "LSEETF": "GBP",
+    # CHF
+    "EBS": "CHF", "VIRTX": "CHF",
+    # CAD
+    "TSE": "CAD", "VENTURE": "CAD",
+    # JPY
+    "TSEJ": "JPY", "OSE.JPN": "JPY",
+    # HKD
+    "SEHK": "HKD", "SEHKNTL": "HKD",
+    # AUD
+    "ASX": "AUD",
+    # SEK
+    "SFB": "SEK",
+}
+
+
+def _currency_from_exchange(listing_exchange: str | None) -> str | None:
+    if not listing_exchange:
+        return None
+    return _EXCHANGE_CURRENCY.get(listing_exchange.upper())
+
 
 class Trade(BaseModel):
     execution_id: str
@@ -159,7 +197,16 @@ class TradesService:
 
 
 def _map_trade(entry: dict[str, Any]) -> Trade:
-    currency_raw = entry.get("currency") or entry.get("base_currency")
+    # IBKR-Live-Schema (Recording AP-02 #04): Trade-Body hat `account`
+    # (nicht `account_id`) und keine direkte `currency`. Currency wird
+    # aus `listing_exchange` abgeleitet; Legacy-Felder bleiben als
+    # Fallback fuer den hartcodierten Mock und fuer FX-Cash-Trades, in
+    # denen IBKR `currency` setzt.
+    currency_raw = (
+        entry.get("currency")
+        or entry.get("base_currency")
+        or _currency_from_exchange(entry.get("listing_exchange"))
+    )
     price_currency = currency_raw or _FALLBACK_CURRENCY
     commission_currency = currency_raw or _FALLBACK_CURRENCY
     currency_assumed = currency_raw is None
@@ -187,7 +234,12 @@ def _map_trade(entry: dict[str, Any]) -> Trade:
     return Trade(
         execution_id=str(entry.get("execution_id") or entry.get("trade_id") or ""),
         order_id=_str_or_none(entry.get("order_id")),
-        account_id=_str_or_none(entry.get("account_id") or entry.get("acctId")),
+        account_id=_str_or_none(
+            entry.get("account")
+            or entry.get("accountCode")
+            or entry.get("account_id")
+            or entry.get("acctId")
+        ),
         conid=int(entry["conid"]) if entry.get("conid") is not None else None,
         symbol=_str_or_none(entry.get("symbol")),
         side=_str_or_none(entry.get("side")),

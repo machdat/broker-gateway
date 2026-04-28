@@ -4,6 +4,35 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.6.2] — 2026-04-28
+
+### Geaendert
+- `cp/orders.py::OrdersService.get_order` ruft jetzt den IBKR-Singular-
+  Pfad `GET /iserver/account/order/status/{orderId}` (vorher: nicht
+  existenter Bulk-Pfad `/iserver/account/orders/{orderId}`). Quelle:
+  `docs/research/ibkr-cpapi-doc.json`.
+- `cp/trades.py::_map_trade` mappt das IBKR-Live-Feld `account` (sowie
+  `accountCode`) auf das v1-Vertragsfeld `account_id` und leitet die
+  Currency aus `listing_exchange` ab. Eine kleine Tabelle deckt die fuer
+  U25235077 relevanten Boersen ab (NYSE/NASDAQ/ARCA -> USD,
+  IBIS/FWB/AEB -> EUR, LSE -> GBP usw.); ohne Match faellt der Adapter
+  auf den USD-Default zurueck und setzt `currency_assumed=True`.
+  Ein explizit gesetztes `currency`-Feld (FX-Cash-Trades) schlaegt den
+  Exchange-Lookup weiterhin.
+- `availability.py`: Prefix `Z` (Frozen) und `Y` (Frozen Delayed) laut
+  IBKR-OpenAPI-Spec ergaenzt - `ZB` taucht in realen Marketdata-
+  Antworten auf und wurde bisher als unbekannt gemeldet.
+- `tests/cp_mock/replay.py`: Mock-Order-Status-Pfad und Mock-Trade-Body
+  an das IBKR-Live-Schema angeglichen (Singular-Pfad, `account` +
+  `listing_exchange` statt `account_id` + `currency`). Flag
+  `omit_trade_currency` entfernt nun zusaetzlich `listing_exchange`,
+  damit der Fallback-Pfad weiterhin getestet wird.
+
+### Hinweis
+- v1-API-Vertrag unveraendert. Reine Adapter-Schicht. Zweite von vier
+  Sub-Karten in AP-02 #07. Live-Recording der korrigierten Pfade folgt
+  in der vierten Sub-Karte.
+
 ## [1.6.1] — 2026-04-27
 
 ### Geaendert

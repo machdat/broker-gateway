@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 
 from broker_gateway.auth.models import (
@@ -241,6 +243,44 @@ async def test_cancel_order_returns_cancellation(
     cancellation = await orders.cancel_order(_ACCOUNT_ID, placed.order_id)
     assert cancellation.order_id == placed.order_id
     assert cancellation.status.value == "Cancelled"
+
+
+async def test_get_order_uses_singular_status_path() -> None:
+    """Belegt: cp/orders.py ruft den IBKR-Singular-Pfad
+    /iserver/account/order/status/{orderId}, nicht den frueheren Bulk-
+    Pfad. Quelle: docs/research/ibkr-cpapi-doc.json."""
+    base_url = "http://cpgateway:5000/v1/api"
+    order_id = "1234567890"
+    with respx.mock(assert_all_called=False) as router:
+        route = router.get(
+            url=f"{base_url}/iserver/account/order/status/{order_id}"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "order_id": order_id,
+                    "order_status": "Submitted",
+                    "conid": 265598,
+                    "side": "BUY",
+                    "size": "1",
+                    "order_type": "LMT",
+                    "tif": "DAY",
+                    "currency": "USD",
+                    "limit_price": "150.00",
+                    "stop_price": None,
+                    "account_id": "U25235077",
+                },
+            )
+        )
+        client = CPGatewayClient(base_url=base_url)
+        try:
+            service = OrdersService(client)
+            order = await service.get_order(order_id)
+        finally:
+            await client.aclose()
+    assert route.called
+    assert order.order_id == order_id
+    assert order.status.value == "Submitted"
 
 
 # ---- POST /v1/orders ----

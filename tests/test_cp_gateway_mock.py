@@ -104,9 +104,9 @@ def test_order_create_then_status_lifecycle(cp_gateway_mock) -> None:
         order_id = place.json()[0]["order_id"]
         assert order_id in cp_gateway_mock.orders
 
-        status_1 = client.get(f"/iserver/account/orders/{order_id}").json()
-        status_2 = client.get(f"/iserver/account/orders/{order_id}").json()
-        status_3 = client.get(f"/iserver/account/orders/{order_id}").json()
+        status_1 = client.get(f"/iserver/account/order/status/{order_id}").json()
+        status_2 = client.get(f"/iserver/account/order/status/{order_id}").json()
+        status_3 = client.get(f"/iserver/account/order/status/{order_id}").json()
     assert status_1["order_status"] == "Submitted"
     assert status_2["order_status"] == "Filled"
     assert status_3["order_status"] == "Filled"

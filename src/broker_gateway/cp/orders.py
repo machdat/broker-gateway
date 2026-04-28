@@ -92,7 +92,11 @@ class OrdersService:
         )
 
     async def get_order(self, order_id: str) -> Order:
-        response = await self._client.get(f"/iserver/account/orders/{order_id}")
+        # IBKR liefert Status nur ueber Singular-Pfad. Bulk-Endpoint
+        # /iserver/account/orders/{order_id} existiert in der CP-API nicht.
+        # Quelle: docs/research/ibkr-cpapi-doc.json, Pfad
+        # /iserver/account/order/status/{orderId}.
+        response = await self._client.get(f"/iserver/account/order/status/{order_id}")
         if response.status_code == 404:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="order_id unbekannt")
         if response.status_code != 200:

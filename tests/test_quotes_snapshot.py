@@ -84,13 +84,19 @@ async def client(
         ("DXX", "delayed"),
         ("Frozen", "frozen"),
         ("rpb", "realtime"),
+        # IBKR-OpenAPI-Spec (docs/research/ibkr-cpapi-doc.json):
+        # Z = Frozen, Y = Frozen Delayed.
+        ("ZB", "frozen"),
+        ("Z", "frozen"),
+        ("zb", "frozen"),
+        ("YB", "frozen"),
     ],
 )
 def test_map_availability_known_codes(code: str, expected: str) -> None:
     assert map_availability(code) == expected
 
 
-@pytest.mark.parametrize("code", ["", None, "Z", "XPB"])
+@pytest.mark.parametrize("code", ["", None, "XPB"])
 def test_map_availability_unknown_returns_none(code: str | None) -> None:
     assert map_availability(code) is None
 

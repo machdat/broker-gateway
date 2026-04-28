@@ -348,7 +348,9 @@ class ReplayCPGatewayMock:
     def _h_order_status(self, request: httpx.Request) -> httpx.Response:
         if (resp := self._pre()) is not None:
             return resp
-        match = re.search(r"/iserver/account/orders/([^/]+)$", request.url.path)
+        match = re.search(
+            r"/iserver/account/order/status/([^/]+)$", request.url.path
+        )
         if match is None:
             return httpx.Response(400, json={"error": "invalid path"})
         order_id = match.group(1)
@@ -402,10 +404,13 @@ class ReplayCPGatewayMock:
         trades: list[dict[str, Any]] = []
         for i in range(days):
             day = max(1, 25 - i)
+            # IBKR-Live-Schema (Recording AP-02 #04): `account` statt
+            # `account_id`, `listing_exchange` statt direkter `currency`.
             entry = {
                 "execution_id": f"exec-{i:03d}",
                 "order_id": f"ord-{i:03d}",
-                "account_id": "U25235077",
+                "account": "U25235077",
+                "accountCode": "U25235077",
                 "symbol": "AAPL",
                 "conid": 265598,
                 "side": "BUY" if i % 2 == 0 else "SELL",
@@ -413,11 +418,15 @@ class ReplayCPGatewayMock:
                 "price": "150.00",
                 "net_amount": "150.00",
                 "commission": "1.50",
-                "currency": "USD",
+                "listing_exchange": "NASDAQ",
                 "trade_time": f"2026-04-{day:02d} 10:00:00",
             }
             if self.omit_trade_currency:
+                # Sowohl Legacy-Currency als auch Exchange entfernen,
+                # damit der Adapter auf den Fallback-Pfad (USD-Annahme +
+                # currency_assumed=True) faellt.
                 entry.pop("currency", None)
+                entry.pop("listing_exchange", None)
             trades.append(entry)
         return httpx.Response(200, json=trades)
 
@@ -437,6 +446,6 @@ class ReplayCPGatewayMock:
         router.get(url__regex=rf"^{b}/portfolio/[^/]+/ledger$").mock(side_effect=self._h_portfolio_ledger)
         router.post(url__regex=rf"^{b}/iserver/account/[^/]+/orders$").mock(side_effect=self._h_orders_post)
         router.post(url__regex=rf"^{b}/iserver/reply/[^/]+$").mock(side_effect=self._h_order_reply)
-        router.get(url__regex=rf"^{b}/iserver/account/orders/[^/]+$").mock(side_effect=self._h_order_status)
+        router.get(url__regex=rf"^{b}/iserver/account/order/status/[^/]+$").mock(side_effect=self._h_order_status)
         router.delete(url__regex=rf"^{b}/iserver/account/[^/]+/order/[^/]+$").mock(side_effect=self._h_order_cancel)
         router.get(url__regex=rf"^{b}/iserver/account/trades(\?.*)?$").mock(side_effect=self._h_trades)

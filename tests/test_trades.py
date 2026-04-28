@@ -16,7 +16,7 @@ from broker_gateway.auth.models import (
 from broker_gateway.auth.store import InMemoryTokenStore, generate_token_value
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.lifecycle import AuthLifecycle, AuthStatus
-from broker_gateway.cp.trades import Trade, TradesService
+from broker_gateway.cp.trades import Trade, TradesService, _map_trade
 from broker_gateway.main import create_app
 
 
@@ -65,6 +65,85 @@ async def client(
     )
     with TestClient(application) as test_client:
         yield test_client
+
+
+# ---- _map_trade (IBKR-Live-Schema) ----
+
+
+def test_map_trade_uses_account_field_for_account_id() -> None:
+    """IBKR-Live-Schema (Recording AP-02 #04): Trade-Body hat `account`,
+    nicht `account_id`. Adapter muss das mappen."""
+    entry = {
+        "execution_id": "exec-1",
+        "symbol": "T",
+        "side": "B",
+        "size": 12.0,
+        "price": "26.2193",
+        "commission": "1.0",
+        "net_amount": 314.6316,
+        "account": "U25235077",
+        "accountCode": "U25235077",
+        "listing_exchange": "NYSE",
+        "conid": 37018770,
+        "trade_time": "2026-04-25 14:00:00",
+    }
+    trade = _map_trade(entry)
+    assert trade.account_id == "U25235077"
+
+
+def test_map_trade_derives_currency_from_listing_exchange() -> None:
+    entry = {
+        "execution_id": "exec-2",
+        "side": "S",
+        "size": 1.0,
+        "price": "120.20",
+        "commission": "1.50",
+        "account": "U25235077",
+        "listing_exchange": "IBIS",  # XETRA -> EUR
+        "conid": 104747,
+    }
+    trade = _map_trade(entry)
+    assert trade.commission is not None
+    assert trade.commission.currency == "EUR"
+    assert trade.price is not None
+    assert trade.price.currency == "EUR"
+    assert trade.currency_assumed is False
+
+
+def test_map_trade_falls_back_to_usd_when_no_exchange_or_currency() -> None:
+    entry = {
+        "execution_id": "exec-3",
+        "side": "B",
+        "size": 1.0,
+        "price": "10.00",
+        "commission": "0.50",
+        "account": "U25235077",
+        # weder currency noch listing_exchange
+        "conid": 999,
+    }
+    trade = _map_trade(entry)
+    assert trade.commission is not None
+    assert trade.commission.currency == "USD"
+    assert trade.currency_assumed is True
+
+
+def test_map_trade_explicit_currency_wins_over_exchange() -> None:
+    """Wenn IBKR doch `currency` mitliefert (FX-Cash-Trades), schlaegt das
+    den Exchange-Lookup."""
+    entry = {
+        "execution_id": "exec-4",
+        "side": "B",
+        "size": 1.0,
+        "price": "1.10",
+        "commission": "0.10",
+        "account": "U25235077",
+        "currency": "GBP",
+        "listing_exchange": "NASDAQ",  # NASDAQ wuerde USD liefern
+        "conid": 12345,
+    }
+    trade = _map_trade(entry)
+    assert trade.commission is not None
+    assert trade.commission.currency == "GBP"
 
 
 # ---- TradesService ----
