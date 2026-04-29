@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** **v1.9.0 — Logging-Backbone: structlog/stdlib-Pipeline harmonisiert auf einen JSONRenderer; Routing per Logger-Name auf drei Stränge (`inbound.log`, `cp_wire.log`, `app.log`) via `BG_LOG_DIR`; zentrale Header-Redaktion in `cp/redaction.py` (Single Source of Truth). Backwards-kompatibel — ohne `BG_LOG_DIR` weiterhin stdout. AP-05 Karte 1/3.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release, CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1), CP-Recorder als Voraussetzung für den Mock-Replay (v1.1.0), Replay-Loader mit seed-Recordings (v1.2.0), Live-Recording-Session gegen U25235077 (v1.3.0) und vereinheitlichtes Error-Modell `{error: {code, message, ...}}` (v1.5.0).
+**Status:** **v1.10.0 — Inbound-Body-Logging: ObservabilityMiddleware schreibt jetzt Request-/Response-Bodies + gefilterte Header in `inbound.log`, mit `request_id` per `structlog.contextvars` für Korrelation zu kommenden CP-Wire-Events. Stream-Replacement-Pattern (`request._receive`-Replay) hält den Body für nachgelagerte Endpunkte intakt; SSE-Antworten werden als `response_streaming=true` markiert ohne Body. Notfall-Schalter via `BG_LOG_INBOUND_BODIES=off`. AP-05 Karte 2/3.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release, CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1), CP-Recorder als Voraussetzung für den Mock-Replay (v1.1.0), Replay-Loader mit seed-Recordings (v1.2.0), Live-Recording-Session gegen U25235077 (v1.3.0) und vereinheitlichtes Error-Modell `{error: {code, message, ...}}` (v1.5.0).
 
 ## Lokal starten
 
@@ -83,7 +83,15 @@ Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
 
 ## Observability
 
-Service emittiert pro HTTP-Request ein **JSON-Log-Event** (structlog) mit Pflichtfeldern `request_id`, `method`, `path`, `status`, `latency_ms`, `caller_id`, `scopes`, `idempotency_key`. **Token-Werte werden niemals geloggt** — nur die `caller_id` und die `scopes` aus dem aufgelösten Token.
+Service emittiert pro HTTP-Request ein **JSON-Log-Event** (structlog) mit Metadaten (`request_id`, `method`, `path`, `status`, `latency_ms`, `caller_id`, `scopes`, `idempotency_key`) plus — sofern `BG_LOG_INBOUND_BODIES=on` (Default) — Request-/Response-Headern (gefiltert via `cp/redaction.py`) und Bodies. **Token-Werte werden niemals geloggt** — nur die `caller_id` und die `scopes` aus dem aufgelösten Token; `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `X-Auth-Token`, `Proxy-Authorization` werden in jedem Strang gefiltert.
+
+`request_id` wird per `structlog.contextvars.bind_contextvars` gesetzt — damit erscheint sie automatisch in jedem nachgelagerten Event derselben Verarbeitung (z.B. `cp_wire`-Events des kommenden CP-Wire-Hooks), und Inbound- und CP-Roundtrips lassen sich darüber korrelieren.
+
+| Feld | Inhalt |
+|---|---|
+| `request_body` / `response_body` | Geparste JSON-Struktur (bei `application/json`), sonst UTF-8-String, sonst `null` mit `request_body_b64` / `response_body_b64` als Fallback. Bodies werden 1:1 geschrieben — keine Redaction, keine Truncation. |
+| `request_headers` / `response_headers` | Gefilterte Header-Map. |
+| `response_streaming` | `true` für SSE-Antworten (`text/event-stream`) — der Stream wird nicht materialisiert, `response_body` bleibt `null`. |
 
 ### Log-Stränge (forensische Nachvollziehbarkeit)
 
@@ -108,6 +116,7 @@ Routing per Logger-Name auf drei separate Sinks (wenn `BG_LOG_DIR` gesetzt; ohne
 | `BG_LOG_INBOUND_MAX_BYTES`, `BG_LOG_INBOUND_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `inbound.log`. |
 | `BG_LOG_CP_WIRE_MAX_BYTES`, `BG_LOG_CP_WIRE_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `cp_wire.log`. |
 | `BG_LOG_APP_MAX_BYTES`, `BG_LOG_APP_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `app.log`. |
+| `BG_LOG_INBOUND_BODIES` | `on` | `off` (oder `0`/`false`/`no`) deaktiviert Body- und Header-Felder im `http_request`-Event; Metadaten bleiben unverändert. Notfall-Schalter, falls Bodies zu groß werden. |
 
 ### Prometheus-Metrics
 
@@ -267,4 +276,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.9.0*
+*Version 1.10.0*

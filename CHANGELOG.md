@@ -4,6 +4,56 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.10.0] — 2026-04-29
+
+AP-05 Karte 2/3 - Inbound-Body-Logging. Die ObservabilityMiddleware
+schreibt jetzt zusaetzlich zu den Metadaten `request_headers`,
+`request_body`, `response_headers`, `response_body` und
+`response_streaming` ins `http_request`-Event. Bodies werden 1:1
+abgelegt (kein Normalize, keine Truncation); Header werden ueber
+`broker_gateway.cp.redaction.filter_headers` gefiltert. SSE-Antworten
+(`text/event-stream`) bleiben unangetastet und werden mit
+`response_streaming=true` markiert. `request_id` wird via
+`structlog.contextvars.bind_contextvars` an den ContextVar-Stack
+gebunden - damit landet sie automatisch in jedem nachgelagerten Event
+derselben Request-Verarbeitung (Vorbereitung fuer Karte 3 CP-Wire).
+
+### Hinzugefuegt
+- `BG_LOG_INBOUND_BODIES` (default `on`): Notfall-Schalter zur
+  Deaktivierung der Body-/Header-Erfassung. `off`/`0`/`false`/`no`
+  schaltet ab; Metadaten bleiben in beiden Modi unveraendert.
+- Neue Test-Cases in `tests/test_observability.py`: response_body bei
+  GET, request_body bei POST (`/v1/auth/token`), 422-Pfad mit Body,
+  Authorization/Cookie/X-API-Key/X-Auth-Token nie im Log,
+  `BG_LOG_INBOUND_BODIES=off`-Verhalten, Stream-Replacement (Endpunkt
+  sieht den Body nach Middleware-Read), SSE-Endpunkt mit
+  `response_streaming=true`.
+
+### Geaendert
+- `src/broker_gateway/middleware/observability.py`: Stream-Replacement
+  fuer Request-Body via `request._receive`-Replay, Response-Body durch
+  Materialisierung von `body_iterator` (neuer Response gebaut, damit
+  der Iterator nicht zweimal konsumiert wird), Streaming-Erkennung via
+  `Content-Type: text/event-stream`. Pre-Read nur fuer Requests mit
+  `Content-Length > 0` oder `Transfer-Encoding: chunked` - sonst
+  bleibt der ASGI-receive-Stream unberuehrt (sonst kollidiert das
+  Replay mit `BaseHTTPMiddleware.wrapped_receive` bei
+  GET-/SSE-Endpunkten).
+- `compose.yaml`, `pyproject.toml`, `__init__.py`, `test_health.py`,
+  README-Footer: 1.9.0 -> 1.10.0.
+- README Observability-Section: Body-/Header-/Streaming-Felder, neue
+  ENV-Variable `BG_LOG_INBOUND_BODIES`.
+
+### Bekannte Einschraenkungen
+- `cp_wire.log` bleibt leer, bis Karte 3 (CP-Wire-Log) den
+  `broker_gateway.cp.wire`-Logger befuellt. Die Korrelation per
+  `request_id` ist bereits vorbereitet.
+- Bodies werden ohne Truncation geschrieben - bei einzelnen sehr
+  grossen Payloads (Bulk-Order, grosse Quotes-Snapshots) kann
+  `inbound.log` schnell wachsen. Rotation via
+  `BG_LOG_INBOUND_MAX_BYTES`/`BG_LOG_INBOUND_BACKUP_COUNT` greift
+  trotzdem; pro-Event-Truncation ist out-of-scope dieser Karte.
+
 ## [1.9.0] — 2026-04-29
 
 AP-05 Karte 1/3 - Logging-Backbone. structlog/stdlib-Pipeline auf einen
