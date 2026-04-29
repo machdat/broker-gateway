@@ -25,14 +25,10 @@ from typing import Any
 import httpx
 
 from broker_gateway.cp.normalize import normalize_response
+from broker_gateway.cp.redaction import REDACTED_HEADERS, filter_headers
 
 
 _LOG = logging.getLogger(__name__)
-
-_REDACTED_HEADERS_LOWER: frozenset[str] = frozenset({
-    "authorization", "cookie", "set-cookie", "x-api-key",
-    "proxy-authorization", "x-auth-token",
-})
 
 
 class CPRecorder:
@@ -121,13 +117,13 @@ class CPRecorder:
                 "method": method,
                 "url": path,
                 "query": query,
-                "headers": _filter_headers(request.headers),
+                "headers": filter_headers(request.headers),
                 "body_json": req_json,
                 "body_text": req_text,
             },
             "response": {
                 "status_code": response.status_code,
-                "headers": _filter_headers(response.headers),
+                "headers": filter_headers(response.headers),
                 "body_json": resp_json,
                 "body_text": resp_text,
             },
@@ -180,14 +176,6 @@ def _query_dict(url: httpx.URL) -> dict[str, str]:
 # Backward-kompatible Aliase fuer recorder-internen Code.
 _sanitize_path = sanitize_path
 _query_hash = query_hash
-
-
-def _filter_headers(headers: httpx.Headers) -> dict[str, str]:
-    return {
-        name: value
-        for name, value in headers.items()
-        if name.lower() not in _REDACTED_HEADERS_LOWER
-    }
 
 
 def _split_body(content: bytes, content_type: str | None) -> tuple[Any | None, str | None]:

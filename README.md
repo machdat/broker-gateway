@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** **v1.8.0 — Duale Drift-Detection: Doku-Drift-Check (taeglich, Frueh-Warner via `scripts/check_doc_drift.py`) plus Live-Drift im Build-Acceptance-Modus (`ops/build-gateway.sh`). AP-03 abgeschlossen, AP-02 (Live-IBKR-Validierung) abgeschlossen.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release, CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1), CP-Recorder als Voraussetzung für den Mock-Replay (v1.1.0), Replay-Loader mit seed-Recordings (v1.2.0), Live-Recording-Session gegen U25235077 (v1.3.0) und vereinheitlichtes Error-Modell `{error: {code, message, ...}}` (v1.5.0).
+**Status:** **v1.9.0 — Logging-Backbone: structlog/stdlib-Pipeline harmonisiert auf einen JSONRenderer; Routing per Logger-Name auf drei Stränge (`inbound.log`, `cp_wire.log`, `app.log`) via `BG_LOG_DIR`; zentrale Header-Redaktion in `cp/redaction.py` (Single Source of Truth). Backwards-kompatibel — ohne `BG_LOG_DIR` weiterhin stdout. AP-05 Karte 1/3.** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release, CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1), CP-Recorder als Voraussetzung für den Mock-Replay (v1.1.0), Replay-Loader mit seed-Recordings (v1.2.0), Live-Recording-Session gegen U25235077 (v1.3.0) und vereinheitlichtes Error-Modell `{error: {code, message, ...}}` (v1.5.0).
 
 ## Lokal starten
 
@@ -84,6 +84,32 @@ Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
 ## Observability
 
 Service emittiert pro HTTP-Request ein **JSON-Log-Event** (structlog) mit Pflichtfeldern `request_id`, `method`, `path`, `status`, `latency_ms`, `caller_id`, `scopes`, `idempotency_key`. **Token-Werte werden niemals geloggt** — nur die `caller_id` und die `scopes` aus dem aufgelösten Token.
+
+### Log-Stränge (forensische Nachvollziehbarkeit)
+
+Sowohl `structlog`-Bound-Logger als auch stdlib-`logging.getLogger()` laufen durch denselben JSONRenderer — jede Log-Zeile ist garantiert ein JSON-Dict, auch aus Modulen wie `throttle`, `streams` oder `cp.lifecycle`.
+
+Routing per Logger-Name auf drei separate Sinks (wenn `BG_LOG_DIR` gesetzt; ohne `BG_LOG_DIR` schreiben alle drei weiter auf stdout — Backwards-Kompatibilität):
+
+| Logger-Name | Datei | Inhalt |
+|---|---|---|
+| `broker_gateway.http` | `inbound.log` | Consumer → broker-gateway HTTP-Verkehr (heute Metadaten; Bodies kommen mit Folge-Karte AP-05 #2) |
+| `broker_gateway.cp.wire` | `cp_wire.log` | broker-gateway → IBKR CP-Gateway HTTP-Roundtrip (Hook kommt mit AP-05 #3) |
+| `broker_gateway` | `app.log` | Lifecycle, Throttle, Subscriptions, Streams, Recorder, alles übrige |
+
+`propagate=False` an den drei Strang-Loggern verhindert Cross-Talk. Header-Redaktion (Authorization, Cookie, Set-Cookie, X-API-Key, X-Auth-Token, Proxy-Authorization) lebt zentral in `broker_gateway.cp.redaction` und wird vom CP-Recorder (und künftig CP-Wire-Logger sowie Inbound-Body-Middleware) gemeinsam genutzt — Single Source of Truth.
+
+| ENV | Default | Wirkung |
+|---|---|---|
+| `BG_LOG_DIR` | _leer_ | Leer = stdout (Default). Gesetzt = drei Datei-Sinks unter dem Pfad. |
+| `BG_LOG_LEVEL` | `INFO` | Schwellwert für alle drei Stränge. |
+| `BG_LOG_ROTATE_MAX_BYTES` | `10485760` (10 MiB) | Größe pro Datei vor Rotation. |
+| `BG_LOG_ROTATE_BACKUP_COUNT` | `20` | Anzahl Backup-Dateien pro Strang. |
+| `BG_LOG_INBOUND_MAX_BYTES`, `BG_LOG_INBOUND_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `inbound.log`. |
+| `BG_LOG_CP_WIRE_MAX_BYTES`, `BG_LOG_CP_WIRE_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `cp_wire.log`. |
+| `BG_LOG_APP_MAX_BYTES`, `BG_LOG_APP_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `app.log`. |
+
+### Prometheus-Metrics
 
 Prometheus-Scrape-Endpoint unter `GET /metrics` (kein `/v1`-Prefix, im Compose-Setup nur intern publiziert):
 
@@ -241,4 +267,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.8.0*
+*Version 1.9.0*

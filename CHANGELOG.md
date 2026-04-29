@@ -4,6 +4,49 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.9.0] — 2026-04-29
+
+AP-05 Karte 1/3 - Logging-Backbone. structlog/stdlib-Pipeline auf einen
+gemeinsamen JSONRenderer harmonisiert; Routing per Logger-Name auf drei
+Straenge (`broker_gateway.http` -> `inbound.log`, `broker_gateway.cp.wire`
+-> `cp_wire.log`, `broker_gateway` -> `app.log`) wenn `BG_LOG_DIR`
+gesetzt ist. Backwards-kompatibel - ohne `BG_LOG_DIR` schreiben alle
+drei Logger weiter auf stdout. Die Inhalte der Logs aendern sich noch
+nicht; Bodies kommen mit Karte 2 (Inbound) und 3 (CP-Wire).
+
+### Hinzugefuegt
+- `src/broker_gateway/cp/redaction.py`: `REDACTED_HEADERS` (frozenset,
+  lower-case) und `filter_headers()` als Single Source of Truth fuer
+  Header-Redaktion. Wird vom CPRecorder bereits genutzt; CP-Wire-Logger
+  und Inbound-Body-Middleware werden ebenfalls darauf importieren.
+- `src/broker_gateway/logging_setup.reset_for_testing()`: setzt das
+  `_CONFIGURED`-Flag und structlog-Defaults zurueck, damit Tests mit
+  geaenderten ENV-Variablen arbeiten koennen.
+- ENV-Variablen `BG_LOG_DIR`, `BG_LOG_LEVEL`, `BG_LOG_ROTATE_MAX_BYTES`,
+  `BG_LOG_ROTATE_BACKUP_COUNT` sowie pro-Strang-Overrides
+  `BG_LOG_INBOUND_*`, `BG_LOG_CP_WIRE_*`, `BG_LOG_APP_*`.
+- `tests/test_cp_redaction.py`, `tests/test_logging_setup.py`.
+
+### Geaendert
+- `src/broker_gateway/logging_setup.py`: structlog nutzt jetzt
+  `structlog.stdlib.LoggerFactory()` statt `PrintLoggerFactory`, und
+  formatiert via `structlog.stdlib.ProcessorFormatter` mit
+  `foreign_pre_chain`. Damit laufen stdlib-Logger (Throttle, Streams,
+  CP-Lifecycle, Recorder) durch denselben JSONRenderer wie
+  Bound-Logger - die README-Aussage "jede Log-Zeile ist ein JSON-Dict"
+  ist jetzt tatsaechlich wahr. stdout-Default-Pfad nutzt `_LazyStdout`,
+  damit pytest-`capsys` die Reference auch nach Modul-Import noch
+  patchen kann.
+- `src/broker_gateway/cp/recorder.py`: importiert `REDACTED_HEADERS`
+  und `filter_headers` aus `cp/redaction.py`; lokale Kopie entfernt.
+- `compose.yaml`, `src/broker_gateway/__init__.py`,
+  `tests/test_health.py`, README-Footer: 1.8.0 -> 1.9.0.
+
+### Bekannte Einschraenkungen
+- Inhalte der Logs sind noch unveraendert (Bodies fehlen weiter in
+  `inbound.log`, der CP-Wire-Strang ist noch leer). Das ist Scope von
+  Karten 2 und 3 in AP-05.
+
 ## [1.8.0] — 2026-04-28
 
 Release-Karte AP-03 - duale Drift-Detection. Doku-Drift-Check als
