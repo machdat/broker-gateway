@@ -9,6 +9,7 @@ jeder Consumer in seinem Repo zu führen hat.
 > Konsumenten-Modell — es **dupliziert keine Schemas**. Architektur-Hintergrund
 > liegt in [`docs/02-architecture.md`](02-architecture.md), Sicherheits-
 > Aussagen in [`docs/04-security.md`](04-security.md).
+> **Begriffsklärungen:** [`docs/06-glossary.md`](06-glossary.md).
 
 **Stand:** v1.11.0, 2026-04-30.
 

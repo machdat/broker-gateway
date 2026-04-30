@@ -9,7 +9,7 @@ für die Frage: **Wie ist dieser Service gebaut, und warum so?**
 > Troubleshooting) liegen unter `docs/runbooks/`. Die historische
 > Bootstrap-Session ist in `docs/01-context-from-bootstrap-session.md`
 > festgehalten — wer Architektur-Inhalte sucht, findet sie hier, nicht
-> dort.
+> dort. **Begriffsklärungen:** [`docs/06-glossary.md`](06-glossary.md).
 
 **Stand:** v1.11.0, 2026-04-30 (Snapshot zum Architektur-IST nach
 AP-01..AP-05 K2 und AP-04 K1..K4).

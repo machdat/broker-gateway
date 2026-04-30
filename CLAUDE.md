@@ -13,7 +13,7 @@ Anweisungen für Claude Code in diesem Repository.
 
 ## Lese-Pflicht für neue Sessions
 
-Erste Anlaufstelle ist [`docs/02-architecture.md`](docs/02-architecture.md) — dort liegen Architektur-Prinzipien, Komponenten-Übersicht, IBKR-Adaptions-Schicht, Auth-/Streaming-/Logging-Modell, Test-Strategie und alle aktuell offenen Architektur-Fragen. Deploy-Workflow, Pfade, Restart-Disziplin und Rollback in [`docs/03-deployment.md`](docs/03-deployment.md). Security-Konventionen (Token, Scopes, Header-Redaktion, 2FA-Lifecycle, Vorfall-Reaktion) in [`docs/04-security.md`](docs/04-security.md). API-Konsumenten-Einstieg in [`docs/05-api.md`](docs/05-api.md), formale v1-Spec in [`docs/api/v1.md`](docs/api/v1.md). README.md verlinkt die übrige operationelle Doku (Login, Recordings, Runbooks); KanPrompt liefert die Karten und ihre Detail-Beschreibungen.
+Erste Anlaufstelle ist [`docs/02-architecture.md`](docs/02-architecture.md) — dort liegen Architektur-Prinzipien, Komponenten-Übersicht, IBKR-Adaptions-Schicht, Auth-/Streaming-/Logging-Modell, Test-Strategie und alle aktuell offenen Architektur-Fragen. Deploy-Workflow, Pfade, Restart-Disziplin und Rollback in [`docs/03-deployment.md`](docs/03-deployment.md). Security-Konventionen (Token, Scopes, Header-Redaktion, 2FA-Lifecycle, Vorfall-Reaktion) in [`docs/04-security.md`](docs/04-security.md). API-Konsumenten-Einstieg in [`docs/05-api.md`](docs/05-api.md), formale v1-Spec in [`docs/api/v1.md`](docs/api/v1.md). Begriffsklärungen (IBKR-Vokabular und broker-gateway-Eigenvokabular) in [`docs/06-glossary.md`](docs/06-glossary.md). README.md verlinkt die übrige operationelle Doku (Login, Recordings, Runbooks); KanPrompt liefert die Karten und ihre Detail-Beschreibungen.
 
 ## Verbindliche Regeln
 

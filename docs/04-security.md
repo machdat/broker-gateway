@@ -8,6 +8,7 @@ und Vorfall-Reaktion.
 > Architektur-Sicht (Was) liegt in [`docs/02-architecture.md`](02-architecture.md)
 > Sektion 6 (Auth) und 8 (Logging). Hier dokumentieren wir das Wie und die
 > Threat-Sicht. Bei Überschneidung verweist eine Datei auf die andere.
+> **Begriffsklärungen:** [`docs/06-glossary.md`](06-glossary.md).
 
 **Stand:** v1.11.0, 2026-04-30.
 

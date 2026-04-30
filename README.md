@@ -15,6 +15,7 @@ Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Noteboo
 | Wie ist Security geregelt (Token, Scopes, Redaction, 2FA, Vorfall)? | [`docs/04-security.md`](docs/04-security.md) |
 | Wie logge ich den CP-Gateway initial ein? | [`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md) |
 | Welche IBKR-CP-API-Details liegen hinter Feld X? | [`docs/research/`](docs/research/) |
+| Was bedeutet conid / Availability-Code / Refcount / Cassette? | [`docs/06-glossary.md`](docs/06-glossary.md) |
 | Was war beim Bootstrap entschieden? | [`docs/01-context-from-bootstrap-session.md`](docs/01-context-from-bootstrap-session.md) |
 
 Erste Anlaufstelle für neue Sessions ist `docs/02-architecture.md`. Alles weitere unten ist Quickstart und operationelle Referenz.
