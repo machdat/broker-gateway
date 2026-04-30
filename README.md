@@ -9,7 +9,8 @@ Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Noteboo
 | Frage | Lebt in |
 |---|---|
 | Wie ist der Service intern gebaut? | [`docs/02-architecture.md`](docs/02-architecture.md) |
-| Welche Endpunkte gibt es, mit welchen Bodies/Headern? | [`docs/api/v1-draft.md`](docs/api/v1-draft.md) |
+| Wie nutze ich die API als Consumer (kuratierter Einstieg)? | [`docs/05-api.md`](docs/05-api.md) |
+| Welche Endpunkte gibt es, mit welchen Bodies/Headern (formale Spec)? | [`docs/api/v1.md`](docs/api/v1.md) |
 | Wie deploye ich (Workflow, Pfade, Restart-Disziplin)? | [`docs/03-deployment.md`](docs/03-deployment.md) |
 | Wie ist Security geregelt (Token, Scopes, Redaction, 2FA, Vorfall)? | [`docs/04-security.md`](docs/04-security.md) |
 | Wie logge ich den CP-Gateway initial ein? | [`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md) |

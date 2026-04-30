@@ -1,8 +1,8 @@
 """Instruments-Adapter: Symbol-Lookup gegen das interne CP-Gateway.
 
-Mappt CP-Gateway-Antworten auf die public API-Schemas (Section 4 im
-v1-draft) und cached die Ergebnisse. CP-Gateway-Calls sind teuer und
-ratelimitiert; conid-Mapping ändert sich praktisch nie.
+Mappt CP-Gateway-Antworten auf die public API-Schemas (Section 4 in
+docs/api/v1.md) und cached die Ergebnisse. CP-Gateway-Calls sind teuer
+und ratelimitiert; conid-Mapping ändert sich praktisch nie.
 """
 from __future__ import annotations
 

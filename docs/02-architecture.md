@@ -5,7 +5,7 @@ für die Frage: **Wie ist dieser Service gebaut, und warum so?**
 
 > **Abgrenzung:** dieses Dokument beschreibt Aufbau und Prinzipien. Die
 > konkrete API-Form (Endpunkte, Bodies, Status-Codes, Error-Modell) lebt
-> in `docs/api/v1-draft.md`. Operationelle Anleitungen (Login, Deploy,
+> in `docs/api/v1.md`. Operationelle Anleitungen (Login, Deploy,
 > Troubleshooting) liegen unter `docs/runbooks/`. Die historische
 > Bootstrap-Session ist in `docs/01-context-from-bootstrap-session.md`
 > festgehalten — wer Architektur-Inhalte sucht, findet sie hier, nicht
@@ -40,7 +40,7 @@ Gateway, sehen IBKR niemals direkt.
 | Frage | Lebt in |
 |---|---|
 | Wie ist der Service intern gebaut? | **Dieses Dokument** |
-| Welche Endpunkte gibt es, mit welchen Bodies/Headern? | [`docs/api/v1-draft.md`](api/v1-draft.md) |
+| Welche Endpunkte gibt es, mit welchen Bodies/Headern? | [`docs/api/v1.md`](api/v1.md) |
 | Wie deploye ich auf cma-pi-1? | [`docs/runbooks/cpgateway-login.md`](runbooks/cpgateway-login.md), [`docs/cp-recordings.md`](cp-recordings.md), README |
 | Was ist beim Bootstrap entschieden worden? | [`docs/01-context-from-bootstrap-session.md`](01-context-from-bootstrap-session.md) |
 | Welches IBKR-CP-API-Detail liegt hinter Feld X? | [`docs/research/`](research/) |
@@ -162,7 +162,7 @@ Alembic**. Datenmodell des Services ist die API selbst.
 
 | Concern | SSOT |
 |---|---|
-| API-Contract | `docs/api/v1-draft.md` |
+| API-Contract | `docs/api/v1.md` |
 | Scopes | `src/broker_gateway/auth/models.py` |
 | Header-Redaktion | `src/broker_gateway/cp/redaction.py` |
 | Mock-Fixtures | `tests/fixtures/recorded/` (live > seed) |
@@ -570,7 +570,7 @@ gleichzeitig eine wachsende Cassette-Schicht in
 
 ### 11.1 Verweise
 
-- API-Contract: [`docs/api/v1-draft.md`](api/v1-draft.md)
+- API-Contract: [`docs/api/v1.md`](api/v1.md)
 - Recording-Konzept: [`docs/cp-recordings.md`](cp-recordings.md)
 - WS-Findings: [`docs/research/ibkr-cpapi-websockets-findings.md`](research/ibkr-cpapi-websockets-findings.md)
 - WS-Use-Cases: [`docs/research/ibkr-cpapi-use-cases.md`](research/ibkr-cpapi-use-cases.md)
