@@ -5,11 +5,15 @@ Anweisungen für Claude Code in diesem Repository.
 ## Projekt-Identität
 
 - **Name:** broker-gateway
-- **Status:** Bootstrap. Noch keine Implementierung.
+- **Status:** v1.11.0 deployed auf cma-pi-1 (Port 4000). AP-01..AP-03 abgeschlossen, AP-04/AP-05 in Arbeit.
 - **KanPrompt-Projekt-ID:** `a6a45428-ac37-48f5-b295-d3ff26f31711`
 - **GitHub:** https://github.com/machdat/broker-gateway (public)
 - **Lokal:** `C:\Users\christian.mangold\git\broker-gateway`
 - **Session-Farbe:** yellow
+
+## Lese-Pflicht für neue Sessions
+
+Erste Anlaufstelle ist [`docs/02-architecture.md`](docs/02-architecture.md) — dort liegen Architektur-Prinzipien, Komponenten-Übersicht, IBKR-Adaptions-Schicht, Auth-/Streaming-/Logging-Modell, Test-Strategie und alle aktuell offenen Architektur-Fragen. README.md verlinkt die operationelle Doku (Login, Recordings, Runbooks); KanPrompt liefert die Karten und ihre Detail-Beschreibungen.
 
 ## Verbindliche Regeln
 
@@ -22,11 +26,7 @@ Anweisungen für Claude Code in diesem Repository.
 
 `broker-gateway` ist ein Singular-Service, der die IBKR-Trading-Session als gemultiplexte HTTP-API ausliefert. Consumer (PSM, trading-robot) sehen IBKR nicht. API ist versioniert (`/v1`).
 
-Vollständige Projekt-Beschreibung: README.md und KanPrompt-Projekt-Instructions (`mcp__kanprompt__get_project`).
-
-## Workflow für die erste Karte
-
-Es gibt noch keine Karten. Die erste Karte sollte vom **outline**-Skill aus geschrieben werden, nicht vom implementation-Skill — sie definiert die v1-API-Oberfläche und das Container-Layout, bevor Code entsteht.
+Vollständige Projekt-Beschreibung: `docs/02-architecture.md`, README.md und KanPrompt-Projekt-Instructions (`mcp__kanprompt__get_project`).
 
 ## Memory-Bezug zu Schwester-Projekten
 

@@ -2,7 +2,19 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** **v1.11.0 — WS-Client als wiederverwendbarer Baustein: `CPWebSocketClient` (in `broker_gateway.cp`) kapselt connect, Auth-Frame, Auth-Ack-Wait (`sts.authenticated=true`), async-Frame-Iteration, send, `tic`-Ping-Loop und Reconnect mit exponential backoff. Single-Owner-Konstraint: pro Instanz nur ein `connect()`. Der Baustein ist Foundation für die kommenden Marktdaten- und Order-Streams — er ist in dieser Karte bewusst NICHT in `main.py` oder einen Endpoint eingebunden (Decision-Gate-Pfad: AP-04 K4 → K5 → K6). AP-04 Karte 3. _Erweiterung 2026-04-30 (AP-04 K4):_ `scripts/ws_topic_explorer.py` mit Live-Mitschnitten gegen U25235077 (smd/sor/str/Reconnect) und Findings-Sektion in `docs/research/ibkr-cpapi-websockets-findings.md` inkl. Topic-Reife-Ranking (smd=grün, sor=grün, str=gelb, Reconnect=rot). Kein Version-Bump (Skript+Doku, `pyproject.toml`/`src/` unverändert).** Deployed mit `/v1/health` (v0.1.0), pytest-Mock-Fixture für das interne CP-Gateway (v0.2.0), Auth-Modell mit Token-Management (v0.3.0), CP-Gateway-Auth-Lifecycle inkl. `/v1/internal/health` (v0.4.0), Instruments-Lookup mit Symbol-Cache (v0.5.0), Quotes-Snapshot mit First-Call-Prime + Availability-Normalisierung (v0.6.0), SSE-Quotes-Stream mit Refcount + Fan-Out (v0.7.0), Portfolio-Endpunkten (Summary/Positions/Ledger) mit Money-Normalisierung (v0.8.0), Order-Lifecycle mit Idempotency-Key + Reply-Confirmation-Loop (v0.9.0), Trades-History inkl. MTD-Commission-Aggregat (v0.10.0), Events-Stream (SSE) für Execution/Position/Status mit EventBus + Last-Event-ID-Reconnect (v0.11.0), Rate-Limit-Throttle mit Token-Bucket pro Endpoint-Klasse + Pacing-Violation-Backoff (v0.12.0), Observability (structured JSON-Logs + Prometheus `/metrics`) im 1.0.0-Release, CP-Gateway-Container scharfgeschaltet inkl. Browser-2FA-Login-Runbook (v1.0.1), CP-Recorder als Voraussetzung für den Mock-Replay (v1.1.0), Replay-Loader mit seed-Recordings (v1.2.0), Live-Recording-Session gegen U25235077 (v1.3.0) und vereinheitlichtes Error-Modell `{error: {code, message, ...}}` (v1.5.0).
+**Status:** v1.11.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-03 abgeschlossen, AP-04 (WS-Discovery) Phase 1 durch K1..K4 fertig, AP-05 (Logging) K1+K2 live. Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
+
+## Architektur und Doku
+
+| Frage | Lebt in |
+|---|---|
+| Wie ist der Service intern gebaut? | [`docs/02-architecture.md`](docs/02-architecture.md) |
+| Welche Endpunkte gibt es, mit welchen Bodies/Headern? | [`docs/api/v1-draft.md`](docs/api/v1-draft.md) |
+| Wie deploye / login ich CP-Gateway? | [`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md) |
+| Welche IBKR-CP-API-Details liegen hinter Feld X? | [`docs/research/`](docs/research/) |
+| Was war beim Bootstrap entschieden? | [`docs/01-context-from-bootstrap-session.md`](docs/01-context-from-bootstrap-session.md) |
+
+Erste Anlaufstelle für neue Sessions ist `docs/02-architecture.md`. Alles weitere unten ist Quickstart und operationelle Referenz.
 
 ## Lokal starten
 
@@ -226,43 +238,15 @@ Der Tarball `clientportal.gw.tar.gz` wird **nicht** versioniert. Eingecheckt
 wird ausschließlich die SHA256-Prüfsumme (`ops/cpgateway/clientportal.gw.tar.gz.sha256`),
 die im Image-Build strikt verifiziert wird.
 
-## Warum dieser Service existiert
+## Warum dieser Service existiert, Boundary, Stack
 
-IBKR erlaubt nur **eine Trading-Session pro Konto**. Sobald PSM und trading-robot beide direkt mit dem CP Gateway sprechen würden, würden sie sich gegenseitig die Session abschießen. Außerdem hat IBKR clientseitige Rate-Limits (~50 Nachrichten/s pro Konto), Subscription-State ist global pro Session, und der Auth-/Tickle-Lifecycle erfordert einen einzigen langlaufenden Halter.
-
-`broker-gateway` ist dieser eine Halter. Consumer reden gegen eine HTTP-API mit Authorization-Token und Scope-Claims, der Service queueuet, throttelt, refcountet Subscriptions und fan-outed Streams.
-
-## Boundary
-
-**In Scope**
-- Single-Owner der IBKR-Trading-Session.
-- Authorization via API-Token mit Scope-Claims (`quotes:read`, `portfolio:read`, `orders:write`, `events:read`).
-- Subscription-Refcount + Fan-Out für Marktdaten-Streams (SSE/WebSocket).
-- Idempotency-Keys für Orders.
-- Rate-Limit-Throttle, Reconnect, Reauthenticate.
-- Versionierte API: `/v1` heute, `/v2` erst bei echter Breaking-Change.
-
-**Out of Scope**
-- Portfolio-Logik, Scoring, Trading-Strategie — gehört zu Consumern.
-- Persistente Geschäftsdaten — Service ist transient (In-Memory-Caches, optional Redis für Restart-Persistenz).
-- Frontend/UI — nur API.
-- Multi-Broker-Adapter zunächst nicht.
-
-## Konsumenten
-
-| Consumer | Erwartete Scopes |
-|---|---|
-| **personal_stock_manager** (PSM) | `quotes:read`, `portfolio:read`, `instruments:read` (kein `orders:write`) |
-| **trading-robot** | `quotes:read`, `portfolio:read`, `instruments:read`, `orders:write`, `events:read` |
-| Admin-CLI / Ad-hoc-Tools | konfigurierbar, mit Rotation |
-
-## Stack (Plan, nicht final)
-
-- Python 3.12 + FastAPI (analog PSM).
-- httpx für interne CP-Gateway-Calls.
-- SSE oder WebSocket für Stream-Endpoints (Entscheidung in erster Karte).
-- Docker Compose mit zwei Services: `gateway` (eigener Code) und `cpgateway` (IBKR CP Gateway, eclipse-temurin:21-jre-noble).
-- pytest, In-Memory Mock-CP-Gateway für Tests.
+IBKR erlaubt nur **eine Trading-Session pro Konto**. `broker-gateway` ist
+der einzige Halter dieser Session und exponiert sie gemultiplext über
+`/v1`. Vollständige Begründung, Architektur-Prinzipien (Singular-Halter,
+Stateless-Außen / Stateful-Innen, Idempotency, Transient,
+Single-Source-of-Truth), Komponenten-Übersicht und Was-NICHT-in-v1 in
+[`docs/02-architecture.md`](docs/02-architecture.md). Konsumenten-Mapping
+siehe Sektion 6 dort und [Authentifizierung](#authentifizierung) oben.
 
 ## Verwandte Projekte
 

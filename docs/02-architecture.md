@@ -1,0 +1,611 @@
+# 02 — Architektur
+
+Lebendes Architektur-Dokument für `broker-gateway`. Single Source of Truth
+für die Frage: **Wie ist dieser Service gebaut, und warum so?**
+
+> **Abgrenzung:** dieses Dokument beschreibt Aufbau und Prinzipien. Die
+> konkrete API-Form (Endpunkte, Bodies, Status-Codes, Error-Modell) lebt
+> in `docs/api/v1-draft.md`. Operationelle Anleitungen (Login, Deploy,
+> Troubleshooting) liegen unter `docs/runbooks/`. Die historische
+> Bootstrap-Session ist in `docs/01-context-from-bootstrap-session.md`
+> festgehalten — wer Architektur-Inhalte sucht, findet sie hier, nicht
+> dort.
+
+**Stand:** v1.11.0, 2026-04-30 (Snapshot zum Architektur-IST nach
+AP-01..AP-05 K2 und AP-04 K1..K4).
+
+## Inhalt
+
+1. [Zweck und Abgrenzung](#1-zweck-und-abgrenzung)
+2. [Kontext — warum existiert dieser Service](#2-kontext--warum-existiert-dieser-service)
+3. [Architektur-Prinzipien](#3-architektur-prinzipien)
+4. [Komponenten und Container-Komposition](#4-komponenten-und-container-komposition)
+5. [IBKR-Adaptions-Schicht](#5-ibkr-adaptions-schicht)
+6. [Auth-Modell](#6-auth-modell)
+7. [Streaming-Architektur](#7-streaming-architektur)
+8. [Logging-Architektur](#8-logging-architektur)
+9. [Test-Strategie](#9-test-strategie)
+10. [Was bewusst NICHT in v1 ist](#10-was-bewusst-nicht-in-v1-ist)
+11. [Verweise und offene Fragen](#11-verweise-und-offene-fragen)
+
+---
+
+## 1. Zweck und Abgrenzung
+
+`broker-gateway` ist ein **Singular-Service**, der die IBKR-Trading-Session
+als gemultiplexte HTTP-API ausliefert. Consumer (PSM, trading-robot,
+Ad-hoc-CLI/Notebooks) sprechen ausschließlich über `/v1` mit dem
+Gateway, sehen IBKR niemals direkt.
+
+| Frage | Lebt in |
+|---|---|
+| Wie ist der Service intern gebaut? | **Dieses Dokument** |
+| Welche Endpunkte gibt es, mit welchen Bodies/Headern? | [`docs/api/v1-draft.md`](api/v1-draft.md) |
+| Wie deploye ich auf cma-pi-1? | [`docs/runbooks/cpgateway-login.md`](runbooks/cpgateway-login.md), [`docs/cp-recordings.md`](cp-recordings.md), README |
+| Was ist beim Bootstrap entschieden worden? | [`docs/01-context-from-bootstrap-session.md`](01-context-from-bootstrap-session.md) |
+| Welches IBKR-CP-API-Detail liegt hinter Feld X? | [`docs/research/`](research/) |
+| Welche WebSocket-Topics liefern was? | [`docs/research/ibkr-cpapi-websockets-findings.md`](research/ibkr-cpapi-websockets-findings.md) |
+
+Architektur-Aussagen, die hier stehen, sollen **nirgendwo sonst** dupliziert
+sein. README enthält Quickstart und Verweise; CLAUDE.md verweist auf
+dieses Dokument als Lese-Pflicht für neue Sessions.
+
+---
+
+## 2. Kontext — warum existiert dieser Service
+
+### 2.1 IBKR Single-Session-Constraint
+
+IBKR erlaubt **eine einzige Trading-Session pro Konto**, nicht pro
+Benutzer. Sobald zwei Komponenten parallel mit demselben Konto am
+IBKR-CP-Gateway hängen würden, kickt sich das eine das andere weg.
+Das ist in der Bootstrap-Session am 2026-04-23 reproduziert worden:
+ein Browser-Login ins IBKR-Kundenportal hat die laufende
+CP-Gateway-Session invalidiert (HTTP 401 nach Re-Login).
+
+**Konsequenz:** Es muss genau eine Komponente geben, die exklusiv die
+IBKR-Session hält. Alle anderen müssen über sie sprechen.
+
+### 2.2 Rate-Limit-Realität
+
+IBKR throttelt pro Konto auf grob **50 Nachrichten/Sekunde** über alle
+gleichzeitigen Verbindungen, mit zusätzlich endpoint-spezifischen
+Limits (Snapshot anders als Orders anders als Subscriptions).
+Mehrere unkoordinierte Caller produzieren `Pacing violation` und
+Verbindungsabbrüche.
+
+**Konsequenz:** Eine zentrale Throttle-Schicht serialisiert Requests.
+Nur sie weiß, wie viele Requests aktuell offen sind.
+
+### 2.3 Subscription-State ist global pro Session
+
+Marktdaten-Subscriptions im CP Gateway sind **session-global**, nicht
+caller-spezifisch. Wenn Caller A `AAPL` abonniert und Caller B den
+unsubscribt, verliert A unbemerkt seinen Stream. Es braucht
+**Refcounting**: ein Symbol bleibt subscribed solange mindestens ein
+Consumer es will.
+
+### 2.4 Auth- und Tickle-Lifecycle
+
+CP Gateway braucht alle ~60 s einen `POST /tickle`, sonst läuft die
+Session aus. Browser-Login muss vor Ablauf erneuert oder per
+`reauthenticate` aufgefrischt werden. Das ist nicht-trivialer Zustand,
+den nur eine Stelle halten darf.
+
+### 2.5 Bewährte IBKR-Beobachtungen
+
+In der Bootstrap-Session und in den Live-Recordings 2026-04-23..2026-04-30
+mehrfach reproduziert:
+
+- **First-Call-Primes-Subscription:** der erste Snapshot-Call liefert
+  `[{conidEx, conid}]` ohne Werte. Erst der zweite Call (~3 s später)
+  liefert reale Daten.
+- **6509-Availability-Code:** drei Zeichen (`DPB` = Delayed/Paid/Book,
+  `RPB` = Realtime/Paid/Book). Entscheidet Realtime vs. Delayed
+  unabhängig vom Portal-„aktiv"-Listing.
+- **Konto-Reifung:** Non-Pro-US-Realtime-Streams werden im Portal als
+  „aktiv" gelistet, sind aber erst nach 30 Tagen Kontoalter oder
+  Erreichen der USD-30-MTD-Commission-Waiver tatsächlich freigeschaltet.
+- **whatif-Risk-Subsystem** prüft ein anderes Marktdaten-Flag als der
+  Snapshot-Endpoint. Ohne Realtime-Freigabe liefert whatif Warnings 4 +
+  21 („Percentage price check cannot be performed", „blind trading"),
+  selbst wenn der Snapshot-Endpoint brauchbare Werte liefert.
+- **MTD-Commissions** lassen sich aus `/iserver/account/trades?days=30`
+  aggregieren (Summe `commission`-Feld), aber das Feld hat keine
+  Währungsangabe — bei mehrheitlich US-Aktien plausibel USD.
+
+---
+
+## 3. Architektur-Prinzipien
+
+Verbindlich — neue Karten dürfen sie nicht eigenmächtig brechen.
+
+### 3.1 Singular-Halter
+
+Es gibt **genau eine** Instanz von `broker-gateway` pro IBKR-Konto.
+Das ist keine Skalierungs-Entscheidung, sondern Hard-Constraint von
+IBKR (siehe 2.1). Skalierung passiert auf Consumer-Seite, nicht hier.
+
+### 3.2 Stateless-Außen, Stateful-Innen
+
+Nach außen verhält sich `/v1` wie ein klassischer REST-Service: jeder
+Request ist self-contained (Bearer-Token im Header, alle nötigen
+Parameter im Body/Query). Innen hält der Service Auth-Session,
+Subscription-State, Idempotency-Map, Order-Cache, Throttle-Buckets.
+Diese Trennung erlaubt minimale Consumer.
+
+### 3.3 Versioniert am Contract, nicht am Code
+
+`/v1` muss rückwärtskompatibel bleiben, solange er angeboten wird.
+Additive Felder in Responses sind erlaubt. Breaking Changes
+ausschließlich in `/v2`. `/v1` und `/v2` können parallel laufen, mit
+`Deprecation`-Header bei Ablauf-Plan.
+
+### 3.4 Idempotency für Schreiboperationen
+
+Jede Schreiboperation (Order, Cancel) erfordert einen
+`Idempotency-Key`-Header. Der Service speichert das Mapping
+`key -> response` für eine konfigurierbare TTL (Default 24 h).
+Wiederholungen liefern identische Responses ohne erneuten Broker-Call.
+**Schutz vor Duplicate-Orders bei Netzwerk-Retries.**
+
+Implementierung: `src/broker_gateway/idempotency.py`, In-Memory-Map.
+
+### 3.5 Transient
+
+Kein Business-Persistenz-Layer. Session-State, Cache, Subscription-Map,
+Idempotency-Map liegen im Prozess-Memory. Optional Redis als externes
+State-Backing für Restart-Persistenz, aber **kein eigenes Schema, kein
+Alembic**. Datenmodell des Services ist die API selbst.
+
+### 3.6 Single Source of Truth pro Concern
+
+| Concern | SSOT |
+|---|---|
+| API-Contract | `docs/api/v1-draft.md` |
+| Scopes | `src/broker_gateway/auth/models.py` |
+| Header-Redaktion | `src/broker_gateway/cp/redaction.py` |
+| Mock-Fixtures | `tests/fixtures/recorded/` (live > seed) |
+| Architektur-Beschreibung | dieses Dokument |
+
+Wo etwas dupliziert wird, gewinnt der SSOT. Verstöße werden in einer
+Folge-Karte behoben, nicht im laufenden Code „mal eben angepasst".
+
+### 3.7 Observability eingebaut
+
+- **Strukturierte Logs:** JSON-Lines, ein Event pro HTTP-Request inkl.
+  `request_id`, `caller_id`, `scope`, `latency_ms`. Drei Stränge
+  (siehe Sektion 8).
+- **Prometheus-Metriken** unter `/metrics` (kein `/v1`-Prefix):
+  Request-Count/Latency pro Endpoint, IBKR-Session-Age,
+  Subscription-Count, Pacing-Violations, Throttle-Extra-Wait.
+- **Healthcheck mit Failure-Modes:** `/v1/health` unprivilegiert,
+  `/v1/internal/health` admin-geschützt mit IBKR-Detail
+  (`auth_lost`, `ibkr_down`, OK).
+
+---
+
+## 4. Komponenten und Container-Komposition
+
+### 4.1 Compose-Stack
+
+Der Service läuft als Docker-Compose-Stack mit zwei Services:
+
+```
++---------------------------+
+| Consumer (PSM, robot, …)  |
+|        HTTP / SSE         |
++-------------+-------------+
+              | Port 4000 (extern)
+              v
++---------------------------+        +---------------------------+
+| gateway                   |  HTTP  | cpgateway                 |
+| broker-gateway:1.11.0     +--------> broker-cpgateway:1.0.3    |
+| Port 8000 intern          |        | Port 5000 intern          |
+| (FastAPI / uvicorn)       |        | (Java CP-Gateway)         |
++---------------------------+        +-------------+-------------+
+                                                   | HTTPS / WSS
+                                                   v
+                                          api.ibkr.com (IBKR Backend)
+```
+
+- **`gateway`** (Image `broker-gateway:1.11.0`): die FastAPI-App,
+  intern Port 8000, extern auf 4000 publiziert.
+- **`cpgateway`** (Image `broker-cpgateway:1.0.3`): IBKR Client Portal
+  Gateway als Java-Prozess (eclipse-temurin), nur intern. Externer
+  Zugriff für den Browser-2FA-Login ausschließlich über SSH-Reverse-Tunnel
+  (siehe `docs/runbooks/cpgateway-login.md`).
+- `gateway` wartet via `depends_on: condition: service_healthy` auf den
+  `cpgateway`-Healthcheck.
+- Beim Image-Bump muss der `image:`-Tag in `compose.yaml` mitgezogen
+  werden (Konvention: Image-Tag = Service-Version).
+
+Deployment-Target: cma-pi-1 unter `/mnt/ssd/broker-gateway`. Gateway-Port
+4000 ist frei (KanPrompt belegt 8000/8001 auf demselben Host).
+
+### 4.2 Repo-Layout
+
+```
+src/broker_gateway/
+  api/v1/                # FastAPI-Router pro Endpoint-Gruppe
+    health.py            # /v1/health, /v1/internal/health
+    auth.py              # /v1/auth/token (POST/DELETE)
+    instruments.py       # /v1/instruments/*
+    quotes.py            # /v1/quotes/snapshot
+    quotes_stream.py     # /v1/quotes/stream (SSE)
+    portfolio.py         # /v1/portfolio/{accountId}/*
+    orders.py            # /v1/orders, /v1/orders/{id}
+    trades.py            # /v1/trades
+    events_stream.py     # /v1/events/stream (SSE)
+    errors.py            # zentrale Error-Envelope-Helper
+  auth/                  # Token-Modell, Store, FastAPI-Middleware
+  cp/                    # IBKR-Adapter-Schicht (siehe Sektion 5)
+    client.py            # CPGatewayClient (httpx-basiert)
+    lifecycle.py         # Auth-Status, Tickle-Job, Reauthenticate
+    redaction.py         # Header-Redaktion (SSOT)
+    recorder.py          # httpx-Event-Hook fuer Live-Recordings
+    normalize.py         # Money / Availability / Currency
+    instruments.py       # conid-Cache + Search-Adapter
+    quotes.py            # Snapshot mit First-Call-Prime
+    portfolio.py         # Summary / Positions / Ledger
+    orders.py            # Order-Lifecycle (whatif, reply-loop)
+    trades.py            # Trades-History + MTD-Aggregation
+    ws_client.py         # CPWebSocketClient (AP-04 K3)
+  streams/               # SSE-Stream-Manager (Quotes + EventBus)
+    manager.py           # Subscription-Refcount + Fan-Out
+    events.py            # EventBus fuer /v1/events/stream
+  throttle/              # Token-Bucket (Pro-Endpoint-Klasse)
+  middleware/observability.py  # request_id, structlog binding, metrics
+  metrics.py             # Prometheus-Collectoren
+  cache.py               # generischer TTL-Cache
+  money.py, availability.py    # Pure-Funktionen fuer Normalisierung
+  idempotency.py         # In-Memory Idempotency-Key-Map
+  logging_setup.py       # structlog + Routing auf drei Straenge
+  main.py                # FastAPI-App-Factory + Router-Wiring
+```
+
+Kein eigenes Repo-Layout für Consumer — Consumer hängen sich nur an
+`/v1`.
+
+### 4.3 Healthchecks und Failure-Modes
+
+| Endpoint | Auth | Liefert | Wozu |
+|---|---|---|---|
+| `GET /v1/health` | keiner | `{"status":"ok","version":"1.11.0"}` | Liveness ohne IBKR-Abhängigkeit |
+| `GET /v1/internal/health` | `admin:*` | IBKR-Auth-Status, Tickle-Age, Subscription-Count, OK / `auth_lost` / `ibkr_down` | Readiness mit Detail |
+| `GET /metrics` | keiner (nur intern) | Prometheus-Format | Scrape vom Pi-Prometheus |
+
+Bei `auth_lost` antworten alle Business-Endpunkte mit `503` und
+`Retry-After: 30` — der Recovery-Mechanismus läuft im Hintergrund
+(bis zu drei `reauthenticate`-Versuche, dann 503 bis Operator-Eingriff).
+
+---
+
+## 5. IBKR-Adaptions-Schicht
+
+Die `cp/`-Module sind die einzige Stelle, an der IBKR-Spezifika
+adressiert werden. Außerhalb dieses Pakets darf nichts wissen, dass
+hinter dem Gateway IBKR steht.
+
+| IBKR-Eigenheit | Lösung im Gateway | Modul |
+|---|---|---|
+| First-Call leerer Snapshot | Server primt intern: bei Snapshot-Anfrage zwei Calls, gibt nur den zweiten zurück. Consumer sieht immer Daten. | `cp/quotes.py` |
+| Tickle alle 60 s | Hintergrund-Job (`asyncio.Task`) solange Auth aktiv. | `cp/lifecycle.py` |
+| Browser-2FA-Login initial | Operator-Aufgabe (Runbook). Service erkennt invalide Session und meldet `auth_lost` über Internal-Health; Consumer-API liefert 503 + `Retry-After`. | `cp/lifecycle.py` |
+| Session-Kicked durch Portal-Login | Service erkennt es im Tickle-Lifecycle, versucht bis zu 3x `reauthenticate`, sonst 503. | `cp/lifecycle.py` |
+| Subscription-Limits (~5 conids/Snapshot, ~250 Streams/Session) | Subscription-Manager mit Refcount + Multi-Snapshot-Aggregation; Throttle pro Endpoint-Klasse. | `streams/manager.py`, `throttle/` |
+| Symbol/conid-Mapping | TTL-Cache, Symbole wechseln conid praktisch nie. | `cp/instruments.py`, `cache.py` |
+| Currency in Order/Portfolio-Bodies | Explizit normalisieren: jedes Geldfeld bekommt `value` + `currency`. | `cp/normalize.py`, `money.py` |
+| 6509-Availability-Code | Im Quote-Response in eigenem Feld `availability` mit semantischer Übersetzung (`realtime` / `delayed` / `frozen`). Roher Code zusätzlich für Debug. | `availability.py`, `cp/quotes.py` |
+| Order-Confirmation-Replies | IBKR fragt vor Order-Submit bis zu 3 Confirmations (price-cap, no-market-data, mandatory-cap). Adapter loopt automatisch über `/iserver/reply/{id}` mit `confirmed:true`. | `cp/orders.py` |
+| Trade-Aggregation MTD | `/iserver/account/trades?days=30` summieren, ohne Currency-Annotation (Empirie: USD bei US-Aktien). | `cp/trades.py` |
+
+Live-Snapshot-Lookup geht durch `CPGatewayClient` (`cp/client.py`),
+ein httpx-AsyncClient mit Recording-Event-Hook (s. Sektion 9).
+
+---
+
+## 6. Auth-Modell
+
+Single Source of Truth für Scopes: `src/broker_gateway/auth/models.py`.
+Tokens sind opake Strings (kein JWT) — passt zur Singular-Natur des
+Services und ermöglicht jederzeit Revoke ohne Verifikations-Cache.
+
+### 6.1 Bootstrap
+
+Beim Start liest die App `BG_BOOTSTRAP_ADMIN_TOKEN` aus dem Environment.
+Wenn gesetzt, wird der Wert als Admin-Token mit Scope `admin:*`
+registriert. Persistenz wahlweise über `BG_TOKEN_FILE`
+(`/var/lib/broker-gateway/tokens.json`, atomare Writes); ohne
+Variable arbeitet der Service mit In-Memory-Store.
+
+### 6.2 Scopes
+
+| Scope | Berechtigt zu |
+|---|---|
+| `instruments:read` | Symbol- und conid-Lookup |
+| `quotes:read` | Snapshots + Streams |
+| `portfolio:read` | Portfolio + Positions + Ledger + Trades |
+| `orders:write` | Orders platzieren / canceln + Order-Status |
+| `events:read` | Events-Stream |
+| `admin:*` | Token-Verwaltung; passt automatisch alle Scope-Checks |
+
+Standard-Mapping pro Consumer:
+
+| Consumer | Erwartete Scopes |
+|---|---|
+| **personal_stock_manager (PSM)** | `quotes:read`, `portfolio:read`, `instruments:read` (kein `orders:write`) |
+| **trading-robot** | `quotes:read`, `portfolio:read`, `instruments:read`, `orders:write`, `events:read` |
+| Admin-CLI / Notebooks | konfigurierbar, mit Rotation, kurzlebig |
+
+### 6.3 Lifecycle
+
+- Token erzeugen: `POST /v1/auth/token` mit Admin-Token im Authorization-Header.
+- Token revoken: `DELETE /v1/auth/token` (Self oder `admin:*`).
+- Auth-Middleware (`auth/middleware.py`) prüft Bearer-Token gegen
+  `Store` (Memory oder File-backed), bindet `caller_id` und `scopes`
+  per `structlog.contextvars` an den Request.
+
+Token-Werte werden **nirgendwo geloggt** — nur `caller_id` und
+`scopes`. Die Header-Redaktion (s. Sektion 8) entfernt
+`Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `X-Auth-Token`
+und `Proxy-Authorization` aus jedem Log-Strang.
+
+---
+
+## 7. Streaming-Architektur
+
+### 7.1 Heute: SSE für Quotes und Events (v1.11.0)
+
+Zwei SSE-Endpunkte sind in Produktion:
+
+| Endpunkt | Modul | Reconnect | Inhalt |
+|---|---|---|---|
+| `GET /v1/quotes/stream` | `streams/manager.py`, `api/v1/quotes_stream.py` | Client-seitiges Reconnect via `Last-Event-ID` | Quote-Updates pro Symbol |
+| `GET /v1/events/stream` | `streams/events.py`, `api/v1/events_stream.py` | dito | Execution-Reports, Position-Updates, Status-Changes |
+
+Auf der IBKR-Seite gibt es **eine** Subscription pro `conid`. Mehrere
+Consumer für dasselbe Symbol bekommen den Fan-Out aus einer einzigen
+IBKR-Subscription. Der `SubscriptionManager` hält Refcounts und
+unsubscribed erst, wenn der letzte Consumer den Stream verlässt.
+
+`request_id` und `caller_id` werden per
+`structlog.contextvars.bind_contextvars` gesetzt; SSE-Bodies
+materialisieren wir nicht (`response_streaming: true` im Inbound-Log).
+
+### 7.2 Discovery für WebSocket (AP-04, IST: K1..K4 done)
+
+Phase 1 von AP-04 hat den IBKR-CP-Gateway-WebSocket
+(`wss://localhost:5000/v1/api/ws`) explorativ vermessen. Die
+Findings sind in `docs/research/ibkr-cpapi-websockets-findings.md`
+mit Topic-Reife-Ranking konsolidiert:
+
+| Topic | Reife (K4 Live-Test U25235077) | Bemerkung |
+|---|---|---|
+| `smd` (Marktdaten) | grün | Subscribe-Format `smd+<conid>+{...}`, Felder als Deltas, mixed-type values |
+| `sor` (Order-Updates) | grün | volle Order-Lifecycle-Frames, kompakter als REST-Polling |
+| `str` (Trade-Stream) | gelb | Frequency hoch, Inhalt überprüfungsbedürftig |
+| Reconnect-Verhalten | rot | Subscriptions persistieren NICHT über Reconnect — Re-Subscribe-Pflicht |
+
+`CPWebSocketClient` (`cp/ws_client.py`, ab v1.10.0) ist als
+wiederverwendbarer Baustein implementiert: connect, Auth-Frame,
+`sts.authenticated=true`-Wait, async Frame-Iteration, send,
+`tic`-Ping-Loop, exponential-backoff Reconnect. **Single-Owner-Konstraint:
+pro Instanz nur ein `connect()`.**
+
+### 7.3 Phase 2 (AP-04 K5/K6, geplant)
+
+K5 ist ein Consumer-Fragebogen (PSM, trading-robot) zu Topics, SLOs,
+Symbol-Skala, Failure-Modes. K6 entscheidet das WS-Adapter-Design
+(Subscription-Manager, Topic-Adapter, EventBus-Producer). Die Anbindung
+an `/v1/quotes/stream` und `/v1/events/stream` (Migration von
+REST-Polling auf WS-Push) wird in einem Folge-AP-05 spezifiziert,
+nicht in AP-04.
+
+---
+
+## 8. Logging-Architektur
+
+Stand: AP-05 K1 (Logging-Backbone, v1.9.0) und K2 (Inbound-Body-Logging,
+v1.10.0) sind live. K3 (CP-Wire-Hook) und K4ff folgen.
+
+### 8.1 Drei Log-Stränge
+
+Alle Stränge schreiben **JSON-Lines** durch denselben structlog-
+JSONRenderer. Routing per Logger-Name auf separate Sinks:
+
+| Logger-Name | Datei | Inhalt | Status |
+|---|---|---|---|
+| `broker_gateway.http` | `inbound.log` | Consumer -> broker-gateway HTTP (Metadaten + Bodies) | live |
+| `broker_gateway.cp.wire` | `cp_wire.log` | broker-gateway -> IBKR CP HTTP-Roundtrip | Hook kommt mit AP-05 K3 |
+| `broker_gateway` | `app.log` | Lifecycle, Throttle, Subscriptions, Streams, Recorder, alles übrige | live |
+
+`propagate=False` auf den drei Strang-Loggern verhindert Cross-Talk.
+Ohne `BG_LOG_DIR` schreiben alle drei auf stdout (Backwards-Kompatibilität).
+
+### 8.2 Korrelation per `request_id`
+
+Die Observability-Middleware (`middleware/observability.py`) erzeugt
+pro Inbound-Request eine `request_id` und bindet sie über
+`structlog.contextvars.bind_contextvars`. Damit erscheint sie automatisch
+in jedem nachgelagerten Event derselben Verarbeitung — auch in
+`cp_wire`-Events, sobald der Wire-Hook scharfgeschaltet ist. Inbound-
+und CP-Roundtrips lassen sich darüber rekonstruieren.
+
+### 8.3 Header-Redaktion (SSOT)
+
+`src/broker_gateway/cp/redaction.py` ist die einzige Stelle, an der
+festgelegt wird, welche Header-Werte vor dem Logging zu entfernen
+sind: `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`,
+`X-Auth-Token`, `Proxy-Authorization`. Verwendet vom CP-Recorder, vom
+Inbound-Body-Middleware und (kommend) vom CP-Wire-Hook. Token-Werte
+landen niemals auf Disk.
+
+### 8.4 Body-Logging
+
+Inbound-Bodies werden 1:1 geschrieben — keine Redaction, keine
+Truncation. SSE-Antworten (`text/event-stream`) materialisieren wir
+nicht (`response_streaming: true`, `response_body: null`).
+Notfall-Schalter `BG_LOG_INBOUND_BODIES=off` deaktiviert Body- und
+Header-Felder im `http_request`-Event; Metadaten bleiben unverändert.
+
+### 8.5 Rotation
+
+`logging.handlers.RotatingFileHandler` pro Strang. Default
+10 MiB, 20 Backups. Pro-Strang-Override via
+`BG_LOG_INBOUND_MAX_BYTES`, `BG_LOG_CP_WIRE_MAX_BYTES`,
+`BG_LOG_APP_MAX_BYTES` und entsprechenden `..._BACKUP_COUNT`.
+
+### 8.6 Prometheus-Metrics (`/metrics`)
+
+Custom-Collectoren lesen Gauges beim Scrape live aus den Singletons
+(AuthLifecycle, SubscriptionManager, ThrottleManager) — keine
+Stale-State-Probleme.
+
+| Metrik | Typ | Labels |
+|---|---|---|
+| `broker_gateway_requests_total` | Counter | `path`, `status`, `scope` |
+| `broker_gateway_request_latency_seconds` | Histogram | `path` |
+| `broker_gateway_pacing_violations_total` | Counter | `class` |
+| `broker_gateway_session_age_seconds` | Gauge | — |
+| `broker_gateway_subscription_count` | Gauge | — |
+| `broker_gateway_throttle_extra_wait_seconds` | Gauge | `class` |
+
+---
+
+## 9. Test-Strategie
+
+Vier Schichten — keine läuft gegen Live-IBKR im Default-Workflow.
+
+### 9.1 In-Process Mock (heute, default)
+
+`pytest` startet die FastAPI-App in-process gegen einen
+`cp_gateway_mock`-Fixture (`tests/conftest.py`). Statische Bodies werden
+ab v1.2.0 aus `tests/fixtures/recorded/` geladen — **`live/` hat
+Vorrang vor `seed/`**. Stateful Endpunkte (snapshot, Orders-Lifecycle,
+Trades-Schleife, unsubscribe) generieren Antworten weiterhin im Code
+in `tests/cp_mock/replay.py`.
+
+Konfigurierbare Fixture-Flags ohne eigene Mocks:
+
+| Flag | Wirkung |
+|---|---|
+| `auth_lost` | `/iserver/auth/status` liefert `authenticated=false` |
+| `slow_response_ms` | künstliche Latenz pro Request in Millisekunden |
+| `pacing_violation_after_n` | nach N Requests HTTP 429 für jeden weiteren |
+
+Stand: 381 pytest-Tests passieren ohne Live-Verbindung.
+
+### 9.2 Record-and-Replay (AP-02, AP-03, AP-04)
+
+`CPGatewayClient` enthält einen httpx-Event-Hook (`cp/recorder.py`),
+der Live-HTTP-Verkehr als deterministische JSON-Fixtures unter
+`tests/fixtures/recorded/` ablegt — aktiviert ausschließlich über
+`BG_CP_RECORD_DIR`. Vor dem Schreiben:
+- Authorization-/Cookie-/API-Key-Header werden gefiltert
+  (`cp/redaction.py`).
+- Timestamps und Order-/Execution-/Session-IDs werden durch
+  Platzhalter ersetzt (`cp/normalize.py`).
+
+Konzept und Diff-Bewertung in `docs/cp-recordings.md`. Live-Recordings
+gegen U25235077 leben unter `tests/fixtures/recorded/live/`,
+WebSocket-Mitschnitte (AP-04 K2/K4) unter
+`tests/fixtures/recorded/ws/`.
+
+### 9.3 Drift-Detection (AP-03, ab v1.5.0 in Betrieb)
+
+Zwei komplementäre Mechanismen:
+
+- **Doku-Drift (Frühwarner):** systemd-Timer auf cma-pi-1 zieht
+  täglich die IBKR-OpenAPI-Spec, vergleicht gegen
+  `docs/research/ibkr-cpapi-doc.json`. Bei Diff legt das Skript eine
+  KanPrompt-Karte an (blocked=true bei breaking).
+- **Live-Drift (Build-Acceptance):** `scripts/check_mock_drift.py
+  --build-acceptance` läuft beim Container-Rebuild als Acceptance-Gate.
+  Build schlägt fehl, wenn Mock-Fixture und Live-Antwort divergieren.
+
+### 9.4 Paper-Test-Pyramide (AP-06..AP-11, geplant)
+
+Zweite, parallel laufende `broker-gateway`-Instanz auf IBKR-Paper-Konto,
+deployed aus demselben git-Stand wie Live. Einziger Unterschied: `.env`
+(Paper-Login, Paper-Account-ID, eigener Compose-Project-Name, eigene
+Volumes/Ports — geplant cpgateway-paper:5001, gateway-paper:4001).
+Test-Harness mit vier Aggressivitäts-Markern (`paper_readonly`,
+`paper_safe_write`, `paper_pic`, `paper_destructive`); pytest.ini
+deaktiviert sie alle im Default-Lauf. Sicherheits-Schranken
+unabhängig vom Marker: Paper-Account-Whitelist (`account_id`
+beginnt mit `DU`), `max_notional_per_order`, `max_open_orders`,
+globaler Kill-Switch `BG_PAPER_TESTS_DISABLED`.
+
+Erst Lese-Stufe (AP-08, `paper_readonly`) ist als Karten geplant; sie
+prüft Adapter-Verhalten gegen die deployed Paper-Instanz und füllt
+gleichzeitig eine wachsende Cassette-Schicht in
+`tests/fixtures/recorded/paper/{date}/`.
+
+---
+
+## 10. Was bewusst NICHT in v1 ist
+
+- **Multi-Account-Support.** v1 spricht mit genau einem Konto.
+  Multi-Account braucht eine zweite Service-Instanz pro Konto — ist
+  Konsequenz aus dem Singular-Halter-Prinzip (3.1).
+- **Multi-Broker-Support.** v1 ist auf IBKR-CP-Gateway angeschnitten.
+  Adapter-Pattern für andere Broker ist denkbar in v2/v3, aber jetzt YAGNI.
+- **Historische Marktdaten** (Bars, EOD-Series). PSM nutzt yfinance und
+  andere Sources. `broker-gateway` ist Realtime-fokussiert.
+- **Options-Chains, FOPs, Futures** in v1. Erst wenn der Account
+  entsprechende Permissions hat. Bis dahin: Stocks + Cash (FX).
+- **Order-Routing-Strategien** (Smart-Routing-Konfigurationen,
+  OCA-Gruppen). v1 nimmt einfache Order-Typen (`LMT`, `MKT`, `STP`,
+  `STP-LMT`) und routet via IBKR-Default.
+- **Komplexe Auth-Pipelines** (OAuth, OIDC). v1 nutzt opake API-Tokens
+  mit Scope-Claims, intern in Memory oder File.
+- **Frontend / UI.** Nur API.
+- **Persistente Geschäftsdaten.** Service ist transient — In-Memory-Caches,
+  optional Redis für Restart-Persistenz.
+
+---
+
+## 11. Verweise und offene Fragen
+
+### 11.1 Verweise
+
+- API-Contract: [`docs/api/v1-draft.md`](api/v1-draft.md)
+- Recording-Konzept: [`docs/cp-recordings.md`](cp-recordings.md)
+- WS-Findings: [`docs/research/ibkr-cpapi-websockets-findings.md`](research/ibkr-cpapi-websockets-findings.md)
+- WS-Use-Cases: [`docs/research/ibkr-cpapi-use-cases.md`](research/ibkr-cpapi-use-cases.md)
+- Login-Runbook: [`docs/runbooks/cpgateway-login.md`](runbooks/cpgateway-login.md)
+- Troubleshooting: [`docs/runbooks/cpgateway-troubleshooting.md`](runbooks/cpgateway-troubleshooting.md)
+- Doc-Drift: [`docs/runbooks/doc-drift-check.md`](runbooks/doc-drift-check.md)
+- Mock-Drift: [`docs/runbooks/mock-drift-check.md`](runbooks/mock-drift-check.md)
+- Bootstrap-Historie: [`docs/01-context-from-bootstrap-session.md`](01-context-from-bootstrap-session.md)
+
+### 11.2 Offene Architektur-Fragen
+
+Hier festgehalten, weil sie quer zu mehreren APs liegen — werden im
+Verlauf als Karten umgesetzt, **nicht** in diesem Dokument
+eigenmächtig entschieden:
+
+- **Stream-Transport für Consumer:** SSE bleibt für `quotes:read` und
+  `events:read`; ob Consumer zusätzlich einen WebSocket angeboten
+  bekommen, entscheidet AP-04 K6 nach Auswertung des Consumer-Fragebogens.
+- **WS-Adapter-Architektur:** Subscription-Manager-Refactor +
+  Topic-Adapter + EventBus-Producer aus Findings ableiten — Zielbild
+  für Folge-AP-05 (separat von Logging-AP-05; Naming-Kollision
+  beobachten).
+- **Reauthenticate-Strategie nach Pause:** vor 2FA erst
+  `POST /iserver/reauthenticate`, dann Drift-Check 2x mit 90s
+  Warmup-Pause (Memory-Eintrag `project_ibkr_session_resume`). Noch
+  nicht in einem Runbook konsolidiert.
+- **TLS / Reverse-Proxy:** aktuell HTTP-only intern (Tailscale),
+  externer TLS-Endpunkt steht noch nicht zur Diskussion.
+- **Idempotency-Storage Restart-Persistenz:** Redis als optionales
+  Backing für `idempotency.py` ist im Design erwähnt, aber noch nicht
+  implementiert. Solange der Service in-process restartet, ist die
+  Memory-Map akzeptabel.
+
+---
+
+*Stand: v1.11.0 (2026-04-30). Lebt mit dem Code: jede Karte mit
+architekturrelevanten Konsequenzen aktualisiert dieses Dokument oder
+verweist explizit auf die Sektion, die geändert werden muss.*
