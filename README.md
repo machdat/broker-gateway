@@ -10,7 +10,8 @@ Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Noteboo
 |---|---|
 | Wie ist der Service intern gebaut? | [`docs/02-architecture.md`](docs/02-architecture.md) |
 | Welche Endpunkte gibt es, mit welchen Bodies/Headern? | [`docs/api/v1-draft.md`](docs/api/v1-draft.md) |
-| Wie deploye / login ich CP-Gateway? | [`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md) |
+| Wie deploye ich (Workflow, Pfade, Restart-Disziplin)? | [`docs/03-deployment.md`](docs/03-deployment.md) |
+| Wie logge ich den CP-Gateway initial ein? | [`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md) |
 | Welche IBKR-CP-API-Details liegen hinter Feld X? | [`docs/research/`](docs/research/) |
 | Was war beim Bootstrap entschieden? | [`docs/01-context-from-bootstrap-session.md`](docs/01-context-from-bootstrap-session.md) |
 
@@ -206,37 +207,14 @@ docker compose up -d
 curl http://localhost:4000/v1/health
 ```
 
-Der Stack besteht aus zwei Services: `gateway` (FastAPI-App) und `cpgateway`
-(IBKR Client Portal Gateway, ab v1.0.1 scharfgeschaltet — Build aus
-`Dockerfile.cpgateway` mit Tarball aus `ops/cpgateway/clientportal.gw.tar.gz`,
-siehe Abschnitt **CP-Gateway live betreiben**). Extern publiziert auf Port 4000
-(intern 8000), passend zum geplanten Default `broker-gateway:4000` aus
-`docs/api/v1-draft.md` Section 1.1. Der `cpgateway`-Service ist nicht extern
-publiziert; `gateway` wartet via `depends_on: condition: service_healthy` auf
-einen healthy CP-Gateway-Container.
-
-## CP-Gateway live betreiben
-
-Der IBKR Client Portal Gateway läuft als interner Container im Compose-Stack.
-Beim ersten Start ist eine manuelle Browser-Anmeldung mit 2FA (Konto
-**U25235077**) erforderlich; danach hält der `gateway`-Service die Session
-über den Tickle-Lifecycle warm.
-
-- **Setup-Anleitung:** `ops/cpgateway/README.md` (Tarball-Download, SHA256, Layout).
-- **Login-Runbook:** `docs/runbooks/cpgateway-login.md` (SSH-Tunnel, Browser-Login, Validierung).
-- **Troubleshooting:** `docs/runbooks/cpgateway-troubleshooting.md` (sechs typische Fehlerbilder mit Fix).
-
-Der `cpgateway`-Container läuft ab v1.0.3 als non-root-User `cpgw`. UID/GID
-werden über die Build-Args `CPGW_UID`/`CPGW_GID` (Default 1000) gesetzt und
-in `compose.yaml` aus den gleichnamigen Environment-Variablen / `.env`-Werten
-gelesen. Auf einem Host, dessen Betriebs-User eine andere UID hat als 1000,
-müssen die Werte in `.env` gepflegt werden — sonst gehören die Log-Dateien
-unter `var/cpgateway/logs/` einem im Host nicht existierenden User. Prüfen mit
-`id cma`.
-
-Der Tarball `clientportal.gw.tar.gz` wird **nicht** versioniert. Eingecheckt
-wird ausschließlich die SHA256-Prüfsumme (`ops/cpgateway/clientportal.gw.tar.gz.sha256`),
-die im Image-Build strikt verifiziert wird.
+Stack besteht aus `gateway` (FastAPI, intern 8000, extern 4000) und
+`cpgateway` (IBKR Client Portal Gateway, nur intern). Vollständige
+Deploy-Anleitung — Pfad-Konventionen, Workflow, Restart-Disziplin,
+Rollback, ENV-Variablen Live vs Paper — in
+[`docs/03-deployment.md`](docs/03-deployment.md). CP-Gateway-Tarball-
+Bezug und SHA256-Verifikation: [`ops/cpgateway/README.md`](ops/cpgateway/README.md).
+Login mit Browser-2FA: [`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md).
+Troubleshooting: [`docs/runbooks/cpgateway-troubleshooting.md`](docs/runbooks/cpgateway-troubleshooting.md).
 
 ## Warum dieser Service existiert, Boundary, Stack
 
