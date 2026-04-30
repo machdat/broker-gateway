@@ -26,9 +26,16 @@ from broker_gateway.cp.quotes import (
     resolve_fields,
 )
 from broker_gateway.cp.trades import Trade, TradesAggregate, TradesService
+from broker_gateway.cp.ws_client import (
+    CPWebSocketClient,
+    WSAuthError,
+    WSConnection,
+    WSIncomingFrame,
+)
 
 __all__ = [
     "CPGatewayClient",
+    "CPWebSocketClient",
     "Instrument",
     "InstrumentDetail",
     "InstrumentsService",
@@ -49,4 +56,7 @@ __all__ = [
     "Trade",
     "TradesAggregate",
     "TradesService",
+    "WSAuthError",
+    "WSConnection",
+    "WSIncomingFrame",
 ]

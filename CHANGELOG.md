@@ -4,6 +4,49 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.11.0] — 2026-04-30
+
+AP-04 K3 - WS-Client als wiederverwendbarer Baustein. ``CPWebSocketClient``
+kapselt connect, Auth-Frame, Auth-Ack-Wait (sts.authenticated=true),
+async-Frame-Iteration, send, tic-Ping-Loop und Reconnect mit exponential
+backoff. Single-Owner-Konstraint: pro Instanz nur ein ``connect()``. Der
+Baustein wird in dieser Karte NICHT in main.py oder einen Endpoint
+eingebunden - Konsumenten (Quotes-Stream, EventBus, SSE-Mapping) entstehen
+spaeter im AP-04 K6 / Folge-AP.
+
+### Hinzugefuegt
+- `src/broker_gateway/cp/ws_client.py`: Klasse ``CPWebSocketClient`` plus
+  ``WSIncomingFrame``, ``WSAuthError`` und das ``WSConnection``-Protocol.
+  Connect-Default ``ws://cpgateway:5000/v1/api/ws`` (Plain-HTTP wie der
+  REST-Pfad im Compose-Netzwerk), Override per ENV ``BG_CP_WS_URL``.
+  Cookie-Reuse aus dem REST-Client erfolgt explizit als
+  Methodenparameter (kein Import-Coupling). TLS-Strategie liegt komplett
+  bei der ``websockets``-Lib - kein lokaler SSL-Override.
+- `src/broker_gateway/cp/__init__.py`: Re-Export der drei oeffentlichen
+  Symbole + ``WSConnection``.
+- `tests/test_ws_client.py`: 10 Tests gegen einen In-Memory-FakeConnection-
+  Stub (kein echter Socket noetig). Deckt connect+auth, Auth-Failure
+  (``sts.authenticated=false``), Auth-Timeout, tic-Ping-Loop, Reconnect
+  bei broken pipe, Aufgabe nach max-Reconnect-Attempts, Single-Owner-
+  Doppel-Connect-Reject, Frame-Iteration mit der spike-baseline-Fixture
+  aus K2, send-vor-connect und send-nach-close.
+
+### Geaendert
+- `pyproject.toml`: neue Runtime-Dep ``websockets>=12``. Begruendung
+  (Implementation-Log): pure-async, gut testbar via injizierbarer
+  connect-Factory, kein C-Extension-Build noetig auf cma-pi-1.
+- `compose.yaml`, `src/broker_gateway/__init__.py`,
+  `tests/test_health.py`, README-Footer: 1.10.0 -> 1.11.0.
+
+### Bekannte Einschraenkungen
+- Der WS-Client ist nirgends im App-Lifespan instanziiert - das ist die
+  bewusste Karten-Abgrenzung. Naechste Schritte: AP-04 K4 (Topic-
+  Exploration), K5 (Consumer-Fragebogen), K6 (Architektur-Decision-Gate).
+- ``tic``-Multiplikator (4 Server-Antworten pro Client-Ping, dokumentiert
+  in `docs/research/ibkr-cpapi-websockets-findings.md`) wird vom Frame-
+  Iterator unveraendert durchgereicht. Dedup ist Konsumenten-Logik (z.B.
+  EventBus) und kommt in einer Folge-Karte.
+
 ## [1.10.0] — 2026-04-29
 
 AP-05 Karte 2/3 - Inbound-Body-Logging. Die ObservabilityMiddleware
