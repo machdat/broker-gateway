@@ -187,12 +187,103 @@ Inter-Frame-Delay ist standardmaessig 0 (synchroner Test-Pfad). Mit
 ``timing="compressed"`` und ``compression_factor`` kann ein Test
 realistische Pausen zwischen Frames einplanen, ohne 75 s zu blockieren.
 
+## Topic-Exploration (K4, 2026-04-30)
+
+Live-Mitschnitte mit ``scripts/ws_topic_explorer.py`` gegen die
+U25235077-Session. Output unter
+``tests/fixtures/recorded/ws/topic-explorer-2026-04-30/``. Sechs
+Szenarien (a-f), alle gegen das interne ``ws://cpgateway:5000/v1/api/ws``
+aus dem ``broker-gateway_default``-Compose-Netzwerk. Datenbasis:
+RTH-Boersenstunden, Markt aktiv.
+
+### Bekannte Mitschnitt-Einschraenkung
+
+``CPWebSocketClient`` konsumiert die initialen ``system+success``,
+``act`` und ``sts``-Frames waehrend des internen Auth-Waits, **bevor**
+die Frames im Recorder ankommen. K4-Mitschnitte enthalten daher kein
+Connect-Burst; die initialen Frames sind bereits in der K1-Baseline
+dokumentiert. Erstes ``in``-Frame in den K4-JSONLs ist immer schon
+das Topic-Update nach Subscribe.
+
+### a) ``smd`` Single-Symbol (AAPL conid 265598)
+
+- 14 ``smd+265598``-Frames in 60 s -> ~1 Update / 4 s.
+- Felder im **ersten** Frame: vollstaendig (31, 83, 84, 86, 6509, _updated, 6119, server_id, conid, conidEx, topic).
+- Folge-Frames: nur **Delta-Felder** (z.B. nur 84+86 wenn nur Bid/Ask sich geaendert haben). 6509 (DPB-Availability) wird selten neu gesendet, _updated/conid/topic/server_id/6119 immer.
+- Werte: Preise 31/84/86 als **String** (`"271.55"`), 83 (% change) als **Float** (0.56). Mixed Types — der Adapter muss pro Feld Zieltyp kennen.
+- Keine Pacing-Hinweise.
+
+### b) ``smd`` Multi-Symbol (5 Top-US-Werte)
+
+- 5x Subscribe ``smd+<conid>+{fields}`` direkt hintereinander, Server akzeptiert alle ohne Throttle.
+- 98 in-Frames in 60 s, verteilt auf alle 5 Symbole (16-22 Updates / Symbol). Keine sichtbare Reihenfolge-Garantie zwischen Symbolen.
+- Frequenz korreliert mit Liquiditaet: META und GOOGL >20 Updates, AAPL nur 16.
+
+### c) ``smd`` Multi-Symbol gross (25 Top-US-Werte)
+
+- 25 Subscribes hintereinander, alle akzeptiert. Conid-Resolve via ``/iserver/secdef/search`` vor dem Subscribe (alle 25 erfolgreich).
+- 187 in-Frames in 60 s -> ~3 frames/s aggregiert. Keine Pacing-Violation, kein 429, kein ``message`` mit ``throttle``/``violation``.
+- Frequenz pro Symbol stark uneinheitlich: V (80268543) erhielt **80 Updates** allein (sehr hohe Tick-Frequenz), KO (8595) und JNJ (4901) je 4-8.
+- Spalte ``server_id``/``6119`` schwankt zwischen Sessions zwischen ``q1`` und ``q32`` - vermutlich IBKR-Quote-Server-ID; nicht stabil ueber Reconnect.
+
+### d) ``sor`` (Live Order Updates) - mit Test-Order
+
+- **Phase 1 (30 s sub ohne Aktion):** 0 sor-Frames. IBKR liefert **keinen** Initial-Snapshot der bestehenden Orders ueber ``sor``. Doku-Aussage "Erste Antwort enthaelt alle aktuellen Orders" stimmt fuer Konten **mit** offenen Orders nicht zwangslaeufig - das Konto war zu dem Zeitpunkt order-frei. Empfehlung Doku: ``/iserver/account/orders`` REST vor Subscribe pollen.
+- **Phase 2 (Test-Order):** LMT BUY 1x AAPL @ $1.00 (weit unter Markt). IBKR fragt **drei** Confirmations ab (price-cap 3%, no-market-data, mandatory-cap-price), alle via ``POST /v1/api/iserver/reply/{id} {"confirmed":true}`` bestaetigt. Order erhielt ``order_id=912091175``. Sofortiger ``DELETE /iserver/account/U25235077/order/{id}``.
+- **Phase 3 (30 s nach Order-Aktion):** Voller Order-Lifecycle in **<50 ms** ueber 6 sor-Frames:
+  1. Vollstaendiger Snapshot (alle Felder: conid, side, orderDesc, status="Inactive", price="1.00", remainingQuantity=1.0, totalSize=1.0, lastExecutionTime, ...).
+  2. Mini-Frame nur mit ``conid``+``conidex``+``orderId``+``isEventTrading`` (Marker, keine Status-Aenderung).
+  3-5. Status-Deltas: ``PendingSubmit`` -> ``PreSubmitted`` -> ``Submitted``. Jeweils nur ``orderId``, ``status``, ``order_ccp_status``, ``bgColor``/``fgColor`` (UI-Hint).
+  6. Snapshot mit ``status="PendingCancel"`` (komplett).
+  7. Status-Delta ``status="Cancelled"``.
+- **Quirk:** ``timeInForce`` im sor-Frame hiess ``"CLOSE"``, obwohl die Order mit ``"tif":"DAY"`` plaziert wurde - vermutlich IBKR-interne Codierung (DAY ausserhalb RTH wird zu CLOSE). In Adapter-Layer normalisieren.
+- **Quirk:** ``bgColor``/``fgColor`` als Hex-Strings - reine UI-Indicator-Felder fuer das offizielle TWS-UI, fuer Trading-Logik irrelevant.
+
+### e) ``str`` (Trades, ``realtimeUpdatesOnly=false``)
+
+- **Initial-Burst:** der erste sub-Frame liefert ``args=[]``, der zweite die komplette Trade-History der letzten 6 Tage. Im Lauf enthielt das ein einzelnes EUR.USD-Forex-Liquidations-Trade vom Vortag.
+- **Re-Send statt Delta:** identische ``execution_id`` kommt mehrfach im Stream - einmal ohne ``commission``, danach mit ``commission="0.0"``. IBKR liefert Trade-Updates also als **kompletten Frame**, der Adapter muss auf ``execution_id`` deduplizieren.
+- 277 in-Frames in 60 s sind massiv (eigentlich 1 Trade) - das deutet auf einen kontinuierlichen Re-Send-Mechanismus oder einen IBKR-internen Heartbeat-Trigger hin. Bei aktiveren Konten kann der Frame-Strom deutlich groesser werden, das muss der Adapter mit Backpressure handhaben.
+- Felder: ``execution_id``, ``conid``, ``conidEx``, ``side`` (S/B 1-Char), ``size`` (float), ``price`` (string!), ``commission`` (string), ``net_amount`` (float!), ``trade_time`` (`YYYYMMDD-HH:MM:SS`), ``trade_time_r`` (unix-ms), ``account``, ``exchange``, ``sec_type`` (STK/CASH/...), ``order_id``, ``execution_id``, ``order_description`` (textuell).
+
+### f) Reconnect mit aktiver Subscription
+
+- Phase 1: subscribe smd+265598, 30 s -> 8 in-Frames. Anschliessend ``CPWebSocketClient.aclose()``.
+- 3 s Pause, dann frische ``/tickle``-Session-ID, neuer Connect mit gleicher session-id-Variable - aber der **Server-seitige Subscription-State ist verloren**.
+- Phase 2: 30 s Lauschen ohne neuen Subscribe -> **0 smd-Frames**, nur Heartbeats.
+- Konsequenz fuer K6: Auto-Reconnect-Logik im WS-Adapter MUSS alle Subscriptions nach jedem Reconnect neu absetzen. CPWebSocketClient (K3) hat den Reconnect, aber kein Subscription-State-Replay - der gehoert in die naechste Schicht.
+
+### Topic - Reife (Ranking-Tabelle)
+
+| Topic | Reife | Begruendung |
+|-------|-------|-------------|
+| ``smd`` | **gruen** | Felder klar, Subscribe-Format stabil, kein Pacing bei 25 Symbolen. Delta-Verhalten dokumentiert; mixed-type-Werte (string vs. float) sind handhabbar. Erste AP-05-Iteration: nur smd integrieren. |
+| ``sor`` | **gruen** | Order-Lifecycle vollstaendig beobachtet, Statuswerte konsistent mit IBKR-Doku. Adapter muss Confirmations-Flow (3 Reply-Schritte) und Delta-vs-Snapshot-Frame-Mix kennen. **Achtung:** Initial-Snapshot ist nicht garantiert - REST ``/iserver/account/orders`` als Bootstrap noetig. |
+| ``str`` | **gelb** | Initial-Burst ist gut, aber 277 Frames in 60 s fuer einen historischen Trade ist suspekt - moeglicherweise ein IBKR-Quirk oder eine versteckte Re-Subscription. Vor Adapter-Integration: Mitschnitt mit Konto, das _heute_ einen frischen Trade hatte, wiederholen. ``execution_id``-Dedup im Adapter Pflicht. |
+| Reconnect | **rot** | Subscription-State ist verloren - Folge-Layer muss eigenen Subscription-Cache halten und nach jedem ``connect()`` neu auspielen. Kein Server-side-Recovery. |
+
+### Konsequenzen fuer K5 / K6 / AP-05
+
+1. **K5 (Consumer-Fragebogen):** drei konkrete Fragen ableiten.
+   (a) Brauchen PSM/trading-robot ``smd`` mit Delta-Updates oder einen normalisierten Quote-Snapshot pro Tick?
+   (b) Soll ``sor`` Order-Updates als Deltas (kompakt) oder als materialisierte Snapshots (immer voll) ausgeliefert werden?
+   (c) Welche ``str``-Frequenz ist realistisch fuer das Konto - braucht es Sampling/Throttling?
+2. **K6 (Architektur-Schnitt):** drei Schichten zwischen ``CPWebSocketClient`` und Consumer-API:
+   (a) Subscription-Manager - haelt erwartete Subscriptions, replay nach Reconnect.
+   (b) Topic-Adapter - parsed Frame-Format pro Topic (smd/sor/str), normalisiert Mixed-Types, dedupliziert.
+   (c) EventBus-Producer - publiziert auf den bestehenden in-process EventBus (v0.11.0).
+3. **AP-05 erste Iteration:** nur ``smd`` aufschalten. ``sor``/``str`` warten auf K5-Antworten.
+
 ## Offene Fragen fuer spaeter
 
 - Bei ``smd``-Subscribe: kommt das Format dann ``smd+{...}`` oder JSON?
   (Im Spike nicht getestet, weil Subscribe out of scope.)
+  **Beantwortet K4:** Subscribe-Frame ist ``smd+<conid>+{json}``,
+  Server-Push-Frame ist reines JSON mit ``topic="smd+<conid>"``.
 - Verhalten bei ``competing=true`` - wechselt der ``sts``-Frame, oder
   fliegt die WS raus? Wuerde man nur durch parallele Browser-Session
   herausfinden, was hier gegen den Single-Owner-Constraint geht.
 - ``ntf`` / ``blt`` - Format und Frequenz; nur unter realer Trade-/
   Bulletin-Last sichtbar.
+- ``str``-Frame-Frequenz unter heute-aktivem Konto - die K4-Beobachtung
+  von 277 Frames fuer einen Vortags-Trade ist erklaerungsbeduerftig.

@@ -4,6 +4,48 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.11.0] — Nachtrag 2026-04-30 (AP-04 K4)
+
+AP-04 K4 - Topic-Exploration smd/sor/str gegen Live-Session. Reines
+Skript+Doku-Update; ``pyproject.toml`` und ``src/`` bleiben per
+Karten-Constraint unveraendert (Skript ist explorativ, kein Production-
+Pfad). Kein Version-Bump, kein Image-Rebuild, kein Deploy.
+
+### Hinzugefuegt
+- `scripts/ws_topic_explorer.py`: CLI mit Subcommands ``smd-single``,
+  ``smd-multi``, ``smd-large``, ``str-trades``, ``sor`` (mit
+  ``--with-test-order``), ``reconnect`` und ``all``. Nutzt den
+  ``CPWebSocketClient`` aus K3 plus eine ``JsonlSink``-Hilfsklasse,
+  die Frames im K2-kanonischen ``{ts, dir, topic, raw, parsed}``-Format
+  schreibt. Robust gegen ``bytes``-Frames, die der untenliegende
+  ``websockets.recv()`` liefern kann (Skript-seitiger Workaround, der
+  ``CPWebSocketClient``-Type-Hint bleibt unangetastet).
+- `tests/fixtures/recorded/ws/topic-explorer-2026-04-30/`: sechs
+  Live-Mitschnitte (smd-single 14, smd-multi 98, smd-large 187,
+  str 277, sor 15, reconnect 8 in-Frames) gegen U25235077 zur
+  RTH-Boersenstunde. sor-Mitschnitt enthaelt einen vollstaendigen
+  Order-Lifecycle (LMT BUY 1x AAPL @ $1.00, sofortiger Cancel, kein
+  Match) inkl. der drei IBKR-Confirmation-Replies.
+
+### Geaendert
+- `docs/research/ibkr-cpapi-websockets-findings.md`: neuer Abschnitt
+  ``Topic-Exploration (K4, 2026-04-30)`` mit pro-Szenario-Auswertung,
+  Felder-Inventar, Pacing-Beobachtungen, sor-Order-Lifecycle-Analyse
+  und einer Ranking-Tabelle ``Topic - Reife`` (smd=gruen, sor=gruen,
+  str=gelb, Reconnect=rot). Konsequenzen fuer K5/K6/AP-05 ableitet.
+- `README.md` Status-Footer: K4-Hinweis ergaenzt.
+
+### Wichtigste Befunde fuer K6
+- ``smd`` liefert Felder als **Delta** - jeder Frame nur Aenderungen,
+  Adapter braucht State-Cache pro Symbol.
+- ``sor`` liefert keinen garantierten Initial-Snapshot - ``/iserver/account/orders``
+  REST als Bootstrap noetig.
+- Subscription-State **persistiert nicht** ueber Reconnect - ein
+  Subscription-Manager im Adapter-Layer muss alle Subs nach jedem
+  Reconnect neu auspielen.
+- Mixed-Type-Werte (Preise als String, Mengen als Float) sind die Regel,
+  nicht die Ausnahme - Adapter normalisiert pro Feld.
+
 ## [1.11.0] — 2026-04-30
 
 AP-04 K3 - WS-Client als wiederverwendbarer Baustein. ``CPWebSocketClient``
