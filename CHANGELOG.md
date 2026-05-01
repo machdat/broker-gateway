@@ -4,6 +4,46 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.11.0] — Nachtrag 2026-05-01 (AP-04 K6)
+
+AP-04 K6 - WS-Adapter-Architektur-Design als Decision-Gate zwischen
+AP-04 und AP-05. Reines Doku-Update; ``pyproject.toml``, ``src/`` und
+``compose.yaml`` bleiben per Karten-Constraint unveraendert (kein
+Production-Code, kein Image-Rebuild, kein Deploy).
+
+### Hinzugefuegt
+- `docs/architecture/ws-adapter-design.md` NEU: 9 Sektionen +
+  2 Anhaenge. Konsumiert die Phase-1-Findings aus K1-K4, die
+  PSM-Antwort
+  (`personal_stock_manager/docs/integrations/broker-gateway.md`,
+  KanPrompt-Karte `a1037c45-b4af-42bc-abd4-8a2ac015ceeb`) und die
+  trading_robot-Antwort
+  (`trading_robot/docs/integrations/broker-gateway.md`,
+  KanPrompt-Karte `e71623d2-bd8d-4643-a15b-6d93c1afafd5`) zu einem
+  konkreten Adapter-Schnitt. Sektionen: Quellen, Zielbild
+  (Topic-Entscheidungen smd/sor integriert, str/spl/smh/sbd nicht),
+  Komponenten-Diagramm (SubscriptionRegistry, TopicAdapter,
+  WSPushSource, OrdersStreamRouter, StatusEndpoint), Consumer-API
+  (`/v1/quotes/stream`-Vertrag bleibt, `/v1/orders/stream` neu,
+  `schema_version` Pflichtfeld, `X-Stream-Failure-Mode`-Header zur
+  Konsumer-Konfliktaufloesung), Failure-Mode-Strategie,
+  Test-Strategie (Unit + Integration + Live), Migration mit
+  Phase-A/B/C und ENV-Rollback-Pfad, AP-05-Karten-Skizzen (8 Karten),
+  Risiken/offene Fragen, Decision-Gate-Markierung.
+
+### Hauptentscheidungen
+- Erste AP-05-Iteration nur ``smd``; ``sor`` zweite Iteration mit
+  REST-Bootstrap (IBKR liefert keinen Initial-Snapshot ueber WS).
+- Konsumer-Konflikt Failure-Mode (PSM REST-Fallback fuer ``smd``,
+  Robot Fail-Loud) via Per-Subscription-Header
+  ``X-Stream-Failure-Mode`` aufgeloest, Default ``fail-loud``.
+- Robot-Latenz-SLO ``smd`` p95 < 150 ms als Adapter-Ziel - PSM
+  bekommt das geschenkt.
+- WS-Egress vom Service zu Consumern bewusst ausgeschlossen,
+  beide Consumer waehlen SSE.
+- ``schema_version: int`` als Pflicht-Frame-Feld + optionaler
+  ``X-Schema-Version``-Subscribe-Header fuer N-1-Compat.
+
 ## [1.11.0] — Nachtrag 2026-04-30 (AP-04 K4)
 
 AP-04 K4 - Topic-Exploration smd/sor/str gegen Live-Session. Reines
