@@ -4,6 +4,22 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.19.1] — 2026-05-02 (AP-11 K4 hotfix — symbol-Pflichtparameter fuer trsrv/secdef/schedule)
+
+Live-Smoke gegen U25235077 zeigte: IBKR ``/trsrv/secdef/schedule``
+verlangt zusaetzlich zum ``exchange`` einen ``symbol``-Parameter,
+sonst antwortet das CP-Gateway mit ``HTTP 400`` (laut K6-Anhang
+C.1 dokumentiert, beim ersten Implementierungs-Wurf uebersehen).
+Schedule selbst gilt boersenweit, das Symbol ist nur ein Aufhaenger.
+
+`CalendarService.get(exchange_id, *, symbol="AAPL")` schickt jetzt
+einen Default-Symbol-Wert mit; AAPL als US-Aktie deckt NASDAQ/NYSE
+ab. Aufrufer koennen pro Call ein anderes Symbol angeben (z.B.
+fuer asiatische Boersen, wo AAPL nicht gelistet ist). Tests
+unveraendert; Live-Smoke greift in 1.19.1.
+
+---
+
 ## [1.19.0] — 2026-05-02 (AP-11 K4 — CalendarService + /v1/exchanges + Symbol-zu-Boerse-Mapping)
 
 CalendarService haelt 14-Tage-Boersenschedules im 12h-Cache pro

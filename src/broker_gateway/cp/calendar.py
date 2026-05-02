@@ -45,6 +45,13 @@ logger = logging.getLogger(__name__)
 _SCHEDULE_TTL_S = 12 * 60 * 60
 _INSTRUMENT_TTL_S = 24 * 60 * 60
 
+# IBKR ``/trsrv/secdef/schedule`` verlangt sowohl ``symbol`` als auch
+# ``exchange``; der Schedule selbst gilt boersenweit, das Symbol ist nur
+# ein Aufhaenger. Default ``AAPL`` deckt NASDAQ/NYSE/US-Boersen ab. Bei
+# anderen Boersen kann der Aufrufer per ``service.get(exchange, symbol=...)``
+# einen passenden Default mitgeben.
+_DEFAULT_SCHEDULE_SYMBOL = "AAPL"
+
 SessionType = Literal["rth", "pre", "post"]
 
 
@@ -85,9 +92,20 @@ class CalendarService:
         self._clock = clock or _utcnow
         self._cache: dict[str, _CacheEntry] = {}
 
-    async def get(self, exchange_id: str) -> ExchangeCalendar:
+    async def get(
+        self,
+        exchange_id: str,
+        *,
+        symbol: str = _DEFAULT_SCHEDULE_SYMBOL,
+    ) -> ExchangeCalendar:
         """Liefert den Schedule fuer ``exchange_id`` aus dem Cache oder
-        zieht ihn vom CP-Gateway nach."""
+        zieht ihn vom CP-Gateway nach.
+
+        IBKR ``/trsrv/secdef/schedule`` verlangt sowohl ``symbol`` als
+        auch ``exchange``; der Schedule gilt boersenweit, das Symbol ist
+        nur ein Aufhaenger. Default ``AAPL`` (US-Aktie, NASDAQ-Listing)
+        deckt die haeufigsten US-Boersen ab.
+        """
         normalized = exchange_id.strip().upper()
         if not normalized:
             raise HTTPException(
@@ -97,7 +115,7 @@ class CalendarService:
         entry = self._cache.get(normalized)
         if entry is not None and not self._is_expired(entry):
             return entry.calendar
-        calendar = await self._fetch(normalized)
+        calendar = await self._fetch(normalized, symbol=symbol)
         self._cache[normalized] = _CacheEntry(
             calendar=calendar,
             fetched_at=self._clock(),
@@ -119,9 +137,12 @@ class CalendarService:
         delta = (self._clock() - entry.fetched_at).total_seconds()
         return delta >= self._ttl_s
 
-    async def _fetch(self, exchange_id: str) -> ExchangeCalendar:
+    async def _fetch(
+        self, exchange_id: str, *, symbol: str
+    ) -> ExchangeCalendar:
         params = {
             "assetClass": "STK",
+            "symbol": symbol,
             "exchange": exchange_id,
         }
         response = await self._client.get(
