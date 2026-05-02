@@ -292,12 +292,21 @@ und [`src/broker_gateway/money.py`](../src/broker_gateway/money.py).
 
 ### Pacing-Header
 
-(geplant, nicht im Live-Stand) Response-Header der Endpunkt-Klasse, der
-verbleibende Token-Bucket-Kapazität anzeigt. Detail in `v1.md`
-Section 11. **[OFFENE FRAGE]** ob konkret implementiert oder nur
-spezifiziert — heute liefert die Pacing-Information nur via
-`broker_gateway_pacing_violations_total`-Metric.
-*Quelle:* `v1.md` Section 11.
+**Stand-Audit AP-09 (Mai 2026):** teilweise implementiert.
+
+| Header | Implementiert? | Wo |
+|--------|----------------|----|
+| `Retry-After` (RFC 7231) | **ja** — bei `429 Too Many Requests` und bei `503` mit `auth_lost`/`cp_down`. | [`src/broker_gateway/cp/lifecycle.py`](../src/broker_gateway/cp/lifecycle.py) (503), [`src/broker_gateway/api/v1/quotes_stream.py`](../src/broker_gateway/api/v1/quotes_stream.py) (429), [`src/broker_gateway/api/v1/errors.py`](../src/broker_gateway/api/v1/errors.py) (Error-Envelope). |
+| `X-RateLimit-Remaining`, `X-RateLimit-Reset` | **nein** — nicht im Code-Pfad. | n/a |
+| `X-Pacing-Wait` | **nein** — nicht im Code-Pfad. | n/a |
+
+Konsumenten lesen heute ausschliesslich `Retry-After` (das ist nach
+RFC 7231 die normative Pacing-Information). Detaillierte Token-Bucket-
+Metriken sind nicht im Response-Header, sondern als Prometheus-
+Metriken sichtbar:
+`broker_gateway_pacing_violations_total`,
+`broker_gateway_throttle_extra_wait_seconds`. *Quelle:* `v1.md`
+Section 11, [`src/broker_gateway/throttle/`](../src/broker_gateway/throttle/).
 
 ### Recording / Replay
 
@@ -419,9 +428,13 @@ sind:
   diesem Research-Doku ergänzt.
 - WebSocket-Topics jenseits von `smd`/`sor`/`str` (`spl`, `smh`,
   `sbd`) — Inhalt und Subscribe-Format noch nicht in AP-04-Discovery.
-- Pacing-Header-Implementierungs-Stand (spezifiziert in v1.md Section
-  11; Live-Stand unklar — heute liefert der Service Pacing-Info nur
-  als Prometheus-Metric).
+- ~~Pacing-Header-Implementierungs-Stand (spezifiziert in v1.md Section
+  11; Live-Stand unklar).~~ **geklärt** (AP-09, Mai 2026): nur
+  `Retry-After` ist live; `X-RateLimit-*` und `X-Pacing-Wait` sind
+  spezifiziert, aber nicht implementiert. Details im
+  Glossar-Eintrag oben. Folge-Hardening (RateLimit-Header live
+  schalten) bleibt als optionale Karte offen — kein Blocker fuer
+  Consumer, die `Retry-After` lesen.
 
 Diese Fragen werden über separate Karten geklärt — die Antworten
 fließen dann hier ein, nicht woanders.
