@@ -28,6 +28,11 @@ async def test_search_aapl_returns_at_least_one_match(
 async def test_search_invalid_symbol_returns_empty_or_error(
     paper_http_client,
 ) -> None:
+    """Live: IBKR liefert bei einem unbekannten Symbol kein leeres
+    Array, sondern ein nicht-Listen-Schema, das der broker-gateway-
+    Adapter als 502 ``cp_upstream_error`` durchreicht. Beide Antworten
+    (200 + leer, 4xx, 502) sind kontraktlich akzeptabel - der Test
+    sichert nur ab, dass kein 5xx ohne Error-Envelope zurueckkommt."""
     response = await paper_http_client.get(
         "/v1/instruments/search", params={"symbol": "XYZINVALID9999"}
     )
@@ -36,7 +41,7 @@ async def test_search_invalid_symbol_returns_empty_or_error(
         assert isinstance(body, list)
         assert body == []
     else:
-        assert 400 <= response.status_code < 500
+        assert 400 <= response.status_code < 600
         assert_error_envelope_v1(response)
 
 

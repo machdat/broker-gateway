@@ -27,14 +27,14 @@ def _is_money_or_number(value: object) -> bool:
 async def test_summary_includes_money_fields(
     paper_http_client, paper_account_id
 ) -> None:
+    """Live: der Summary-Endpunkt heisst ``/v1/portfolio/{acc}`` ohne
+    den Suffix ``/summary``."""
     response = await paper_http_client.get(
-        f"/v1/portfolio/{paper_account_id}/summary"
+        f"/v1/portfolio/{paper_account_id}"
     )
     assert response.status_code == 200
     body = response.json()
     assert isinstance(body, dict)
-    # Der Adapter darf entweder Money-Wrapper liefern oder einen
-    # numerischen String. Wichtig: keiner der drei Hauptwerte fehlt.
     for key in (
         "net_liquidation",
         "total_cash",
@@ -90,7 +90,7 @@ async def test_portfolio_requires_portfolio_read_scope(
         )
         try:
             response = await admin.get(
-                f"/v1/portfolio/{paper_account_id}/summary",
+                f"/v1/portfolio/{paper_account_id}",
                 headers={"Authorization": f"Bearer {scoped}"},
             )
             assert response.status_code == 403

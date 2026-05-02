@@ -46,6 +46,9 @@ async def test_trades_history_returns_list_with_canonical_fields(
 async def test_trades_aggregates_commissions_mtd_returns_money(
     paper_http_client,
 ) -> None:
+    """Live-Schema (1.23.0): Body hat
+    ``{metric, period_from, period_to, account_id, value: {value,
+    currency}, trade_count, currency_assumption}``."""
     response = await paper_http_client.get(
         "/v1/trades/aggregates", params={"metric": "commissions_mtd"}
     )
@@ -53,11 +56,14 @@ async def test_trades_aggregates_commissions_mtd_returns_money(
         pytest.skip("aggregates-Endpoint nicht implementiert in dieser Version")
     assert response.status_code == 200
     body = response.json()
-    total = body.get("commission_total") or body.get("total")
-    if isinstance(total, dict):
-        assert "value" in total and "currency" in total
-    else:
-        assert _is_decimalable(total)
+    assert body.get("metric") == "commissions_mtd"
+    money = body.get("value")
+    assert isinstance(money, dict)
+    assert "value" in money and "currency" in money
+    # Bei leerer Trade-Liste muss value=0 stehen (Adapter-Vertrag).
+    if body.get("trade_count", 0) == 0:
+        assert _is_decimalable(money["value"])
+        assert Decimal(str(money["value"])) == Decimal("0")
 
 
 async def test_trades_aggregates_unknown_metric_returns_envelope(
