@@ -18,6 +18,7 @@ from broker_gateway.streams.registry import (
     SubscribeCallable,
     SubscriptionRegistry,
 )
+from broker_gateway.streams.ws_source import WSPushSource
 
 __all__ = [
     "ALL_EVENT_TYPES",
@@ -33,4 +34,5 @@ __all__ = [
     "SubscriptionLimitExceeded",
     "SubscriptionManager",
     "SubscriptionRegistry",
+    "WSPushSource",
 ]

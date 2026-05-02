@@ -4,6 +4,83 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.18.0] — 2026-05-02 (AP-11 K3 — WSPushSource + ENV-Schalter BG_QUOTES_SOURCE)
+
+WSPushSource-Bruecke verbindet `SmdTopicAdapter` (K1) und
+`SubscriptionRegistry` (K2) mit dem bestehenden `SubscriptionManager`-
+Refcount/Fan-Out-Pfad. Pro WS-Frame laeuft ein Snapshot durch den
+Adapter; das Ergebnis wird zu einem `Quote` (Public-API-Schema mit
+String-Feldern) konvertiert und ueber `SubscriptionManager.publish`
+an die Consumer-Queues gefan-outet. ENV-Schalter `BG_QUOTES_SOURCE`
+mit Werten `ws|polling` (Default `polling`); Wechsel auf `ws` ist
+opt-in und im `.env.example` mit Lehrtext dokumentiert.
+
+### Hinzugefuegt
+- `src/broker_gateway/config.py` mit `quotes_source()` als zentralem
+  ENV-Reader. Default `polling`; ungueltige Werte fallen mit Warning
+  zurueck. `Literal`-Typing, schmale API-Schicht ohne Pydantic-
+  Settings (Service-Scope rechtfertigt keine Hierarchie).
+- `src/broker_gateway/streams/ws_source.py` mit `WSPushSource`-Klasse:
+  haelt einen Reader-Task der vom `CPWebSocketClient` iteriert, jedes
+  Frame durch den `SmdTopicAdapter` schickt und das resultierende
+  Snapshot an `SubscriptionManager.publish(conid, quote)` weitergibt.
+  Konstruktor verdrahtet automatisch einen
+  `add_on_connected_callback` an den Client - nach jedem Reconnect
+  replayt die Registry alle aktiven Subscriptions. `subscribe_quotes`/
+  `unsubscribe_quotes` als Manager-Callbacks pflegen Registry und
+  senden `smd+<conid>+{json}` bzw. `usmd+<conid>+{}`. Send-Fehler
+  werden geschluckt; Replay holt den Subscribe nach Reconnect nach.
+- `src/broker_gateway/streams/manager.py` erweitert:
+  - Konstruktor-Parameter `quotes_source: "polling"|"ws"` (Default
+    `polling`) plus `ws_subscribe`/`ws_unsubscribe` als Callables.
+    Im `ws`-Modus startet `_ConidSubscription.start_poll` keinen
+    Poll-Task mehr; stattdessen feedet der WSPushSource Frames via
+    neuer Methode `publish(conid, quote)`. Der `subscribe()`-Pfad
+    ruft das `ws_subscribe`-Callback ausserhalb des Locks auf - ein
+    Send-Fehler darf den Consumer-Stream nicht killen, weil die
+    Registry den Soll-State haelt und der Replay nachzieht.
+  - `_ConidSubscription.push_quote(quote)` als interner Fan-Out-
+    Helper, der Ringpuffer und Consumer-Queues mit dem extern
+    gelieferten Quote-Wert versorgt. Slow-Consumer-Drop-Logik
+    identisch zum Poll-Pfad.
+  - `_teardown` ruft im `ws`-Modus optional `ws_unsubscribe(conid)`
+    auf, damit ein leerer Refcount auch serverseitig die
+    Subscription beendet.
+- `tests/test_ws_push_source.py` mit 14 Tests: Adapter-zu-Manager-
+  Bruecke (Frame-Dispatch, Iterator-Event), `quotes_source='ws'`
+  ohne `ws_subscribe` wirft (Konstruktor-Validierung),
+  Polling-Modus startet Poll-Task / WS-Modus skippt Poll-Task,
+  SSE-Vertragsgleichheit (Quote-Schema identisch zum Polling-Pfad),
+  Reconnect triggert Registry-Replay, `subscribe_quotes` schreibt
+  Registry plus sendet `smd+...`-Frame mit Default-Feldern,
+  `unsubscribe_quotes` raeumt Registry plus sendet `usmd+...`,
+  Frame fuer unbekannten conid wird verworfen ohne Fehler,
+  Send-Fehler im Subscribe wird geschluckt, drei Tests fuer den
+  ENV-Reader (`config.quotes_source` Default-Polling, ws-Lookup,
+  Garbage-Fallback).
+- `.env.example` um `BG_QUOTES_SOURCE`-Block mit Live-Wechsel-
+  Hinweis ergaenzt.
+
+### Default `polling` statt `ws` (Abweichung vom Karten-Soll)
+Die Karte wuenscht Default `ws`; tatsaechlich ist der WS-Pfad im
+laufenden Service noch nicht im FastAPI-Lifespan verdrahtet
+(`CPWebSocketClient`-Instanz fehlt im Bootstrap). Mit Default
+`polling` laeuft der Service auf cma-pi-1 unveraendert weiter, der
+WS-Pfad ist Code-bereit und Test-abgedeckt, das Lifespan-Wiring plus
+der Live-Smoke werden in einer Folgekarte angelegt. Begruendung:
+saubere Defaults vor automatischem Auto-Revert; Phase A Live-
+Aktivierung ist ein operatives Go-Live, nicht ein Build-Schritt.
+
+### Naechste Schritte (AP-11 Phase A)
+- K3 Folge: Lifespan-Wiring (CPWebSocketClient + WSPushSource im
+  `main.py` instanziieren), Live-Smoke mit `BG_QUOTES_SOURCE=ws`
+  gegen U25235077, Default-Flip auf `ws`.
+- K4 `CalendarService` (parallel zu K3 umsetzbar - keine direkte
+  Code-Abhaengigkeit).
+- K5 Tradeability-Felder (haengt von K1 + K4).
+
+---
+
 ## [1.17.0] — 2026-05-02 (AP-11 K2 — SubscriptionRegistry mit Reconnect-Replay-Hook)
 
 Soll-State-Speicher fuer aktive WS-Subscriptions plus on-connected-Hook
