@@ -12,6 +12,10 @@ exponiert ein einziges `POST /v1/orders`, der Adapter sammelt
 Warnings und quittiert sie automatisch (max. `MAX_REPLY_ROUNDS`).
 Wer die unbestaetigten Warnings im Output sehen will, findet sie als
 `warnings`-Liste im Order-Objekt.
+
+Bekannte Warning-Codes (1, 4, 21, "Mandatory-Cap-Price"), Empirie aus
+Live-Recordings und Severity-Klassifikation:
+``docs/research/ibkr-whatif-warnings.md`` (AP-09, Mai 2026).
 """
 from __future__ import annotations
 
