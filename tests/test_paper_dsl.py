@@ -59,11 +59,13 @@ def test_within_limits_default_ok() -> None:
 def test_within_limits_per_order_violation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Default-Per-Order-Limit ist 500 USD - darum eine grossere Order
+    # fuer den Verletzungs-Test.
     monkeypatch.delenv("BG_PAPER_MAX_NOTIONAL_USD", raising=False)
     with pytest.raises(PaperSafetyError, match="Per-Order"):
         assert_within_paper_limits(
-            notional_usd=Decimal("5.00"),
-            cumulative_notional_usd=Decimal("5.00"),
+            notional_usd=Decimal("600.00"),
+            cumulative_notional_usd=Decimal("600.00"),
         )
 
 

@@ -8,6 +8,9 @@ from tests_paper._dsl.safety import (
     PaperSafetyError,
     assert_paper_account,
     assert_within_paper_limits,
+    kill_switch_active,
+    max_notional_per_order,
+    max_open_orders,
 )
 
 __all__ = [
@@ -17,4 +20,7 @@ __all__ = [
     "assert_paper_account",
     "assert_side_valid",
     "assert_within_paper_limits",
+    "kill_switch_active",
+    "max_notional_per_order",
+    "max_open_orders",
 ]
