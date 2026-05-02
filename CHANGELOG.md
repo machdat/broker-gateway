@@ -4,6 +4,54 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.11.0] — Nachtrag 2026-05-01 (AP-04 K6 rev. 2 nach User-Review)
+
+AP-04 K6 Architektur-Doku in der zweiten Iteration: vier
+User-Direktiven aus dem Review eingearbeitet plus Handelszeit-/
+Tradeability-/Boersenkalender-Modell ergaenzt. Doku-only.
+
+### Geaendert
+- `docs/architecture/ws-adapter-design.md` rev. 2:
+  - **AP-Bezug korrigiert**: das Folge-AP heisst nicht "AP-05"
+    (existiert bereits als Logging-Infrastruktur), sondern
+    Vorschlag-Titel "AP-11 WS-Adapter Implementation".
+  - **Multi-Tenant raus**, Single-Tenant zementiert (PSM bleibt
+    Single-User per User-Direktive).
+  - **WS-Egress als zweites Ziel-Tier** parallel zu SSE
+    (`/v1/quotes/ws`, `/v1/orders/ws` neu in Phase B; SSE bleibt
+    Pflicht-Pfad in Phase A).
+  - **Failure-Mode-Header `X-Stream-Failure-Mode` zurueckgenommen**
+    -- Default `fail-loud` global; PSM macht REST-Polling als
+    eigene Reaktion (Consumer-Logik, nicht Adapter-Komplexitaet).
+  - **N-1-Schema-Compat-Vertrag zurueckgenommen** -- Schema-Wechsel
+    werden synchron zwischen broker-gateway, PSM und trading_robot
+    koordiniert (User-Direktive: Consumer unter eigener Kontrolle);
+    `schema_version` bleibt nur als optionales Diagnose-Feld.
+  - **Per-Konto-Token-Scopes deferred** -- bleibt Coarse-Scope.
+
+### Hinzugefuegt
+- Anhang C "Handelszeit, Tradeability und Boersenkalender" mit
+  drei Schichten:
+  1. Boersenkalender (14 Tage Sessions inkl. Feiertage) aus
+     IBKR-REST `/trsrv/secdef/schedule`, `CalendarService`-Cache
+     pro `exchange_id` (TTL 12h).
+  2. Symbol-zu-Boerse-Mapping aus `/iserver/contract/{conid}/info`,
+     Cache pro `conid` (TTL 24h).
+  3. Live-Tradeability aus `smd`-Frame-Feldern 6509/7295/7296,
+     abgeleitete Felder `is_tradeable_now: bool` und
+     `current_session: rth|pre|post|closed|halted`.
+- Neue Endpunkte skizziert:
+  - `GET /v1/exchanges` (Liste der bekannten Boersen).
+  - `GET /v1/exchanges/{exchange_id}/calendar?days=N` (Default 14,
+    max 14 -- IBKR-Vorrat).
+  - `/v1/instruments/{conid}` um `exchange_id` und `calendar_url`
+    ergaenzt.
+- AP-11-Karten-Skizzen aktualisiert: 8 Karten (Failure-Mode-Header
+  und Schema-Versionierungs-Karten gestrichen, dafuer eine
+  CalendarService-Karte und eine WS-Egress-Karte neu).
+
+Doku-only, kein Production-Code, kein Image-Rebuild, kein Deploy.
+
 ## [1.11.0] — Nachtrag 2026-05-01 (AP-04 K6)
 
 AP-04 K6 - WS-Adapter-Architektur-Design als Decision-Gate zwischen
