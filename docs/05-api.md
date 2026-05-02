@@ -156,6 +156,7 @@ werden. Genaue Bodies, Status-Codes, Beispiele in `v1.md`.
 | **Health** | `GET /v1/health`, `GET /v1/internal/health` | 3.1, 3.2 | keine / `admin:*` |
 | **Auth** | `POST /v1/auth/token`, `DELETE /v1/auth/token` | 2.1, 2.2 | `admin:*` (für POST) / Self oder `admin:*` (für DELETE) |
 | **Instruments** | `GET /v1/instruments/search`, `GET /v1/instruments/{conid}` | 4.1, 4.2 | `instruments:read` |
+| **Exchanges** | `GET /v1/exchanges`, `GET /v1/exchanges/{exchange_id}/calendar` | 4.3 (neu, AP-11 K4) | `instruments:read` |
 | **Quotes** | `GET /v1/quotes/snapshot`, `GET /v1/quotes/stream` | 5.1, 5.2 | `quotes:read` |
 | **Portfolio** | `GET /v1/portfolio/{accountId}`, `.../positions`, `.../ledger` | 6.1, 6.2, 6.3 | `portfolio:read` |
 | **Orders** | `POST /v1/orders`, `GET /v1/orders/{id}`, `DELETE /v1/orders/{id}` | 7.1, 7.2, 7.3 | `orders:write` |

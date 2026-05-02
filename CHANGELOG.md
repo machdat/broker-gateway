@@ -4,6 +4,59 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.19.0] — 2026-05-02 (AP-11 K4 — CalendarService + /v1/exchanges + Symbol-zu-Boerse-Mapping)
+
+CalendarService haelt 14-Tage-Boersenschedules im 12h-Cache pro
+`exchange_id` und exponiert sie ueber zwei neue Endpunkte. Damit
+liegt die Vorarbeit fuer AP-11 K5 (Tradeability-Felder im smd-Frame)
+an: der `SmdTopicAdapter` kann ueber den Service `is_tradeable_now`
+und `current_session` aus `availability_code` plus Live-Schedule
+ableiten.
+
+### Hinzugefuegt
+- `src/broker_gateway/cp/calendar.py` mit `CalendarService` und den
+  Pydantic-Modellen `ExchangeCalendar`/`CalendarDay`/`CalendarSession`.
+  `get(exchange_id)` cached pro Boerse, Cache-Miss zieht
+  `/trsrv/secdef/schedule` (assetClass=STK). LIQUID-Sessions werden
+  zu `rth`, NON_LIQUID anhand der zeitlichen Position relativ zur
+  RTH-Session zu `pre`/`post`. Halbtages-Sessions bleiben mit der
+  IBKR-eigenen kuerzeren `closingTime`. Feiertage = Tag mit leerer
+  `sessions`-Liste und `is_holiday=true`. Time-Zone aus dem Schedule-
+  Response (`timeZoneId`); ungueltige Zonen (Mars/Olympus_Mons-Stil)
+  werden als 502 abgewiesen. `cached_exchanges`-Property liefert die
+  Liste aller nicht-abgelaufenen Eintraege fuer den `/v1/exchanges`-
+  Endpoint.
+- `src/broker_gateway/api/v1/exchanges.py` mit zwei FastAPI-Endpunkten:
+  - `GET /v1/exchanges` listet die Boersen aus dem Schedule-Cache mit
+    `exchange_id`/`time_zone`/`description` und einem
+    `cached_calendars`-Counter. Scope `read:instruments`.
+  - `GET /v1/exchanges/{exchange_id}/calendar?days=N` liefert den
+    14-Tage-Schedule (Default 14, Range 1..14, 422 ausserhalb). Scope
+    `read:instruments`.
+- `src/broker_gateway/cp/instruments.py` `InstrumentDetail` um zwei
+  Felder erweitert: `exchange_id` (Heimat-Boerse aus
+  `listingExchange`, Fallback erster Token aus `validExchanges`) und
+  `calendar_url` als Convenience-Link auf den neuen Endpoint. Public
+  API: `GET /v1/instruments/{conid}` liefert beide Felder mit.
+- `src/broker_gateway/main.py` instanziiert `CalendarService` im
+  Lifespan und registriert den Dependency-Override.
+- `tests/test_calendar_service.py` mit 9 Tests: Cache-Hit/Miss,
+  TTL-Ablauf, LIQUID-zu-rth/NON_LIQUID-zu-pre-post,
+  Halbtages-Session, Feiertag, `cached_exchanges`-Live-Filter,
+  empty-exchange-id-422, CP-Fehler-zu-502, ungueltige Time-Zone-zu-502.
+- `tests/test_exchanges_api.py` mit 6 Tests: leere Liste, Liste nach
+  Cache-Befuellung, days=0/15/-Range-422 (zwei Tests), Scope-403 ohne
+  `read:instruments`, `/v1/instruments/{conid}` liefert `exchange_id`
+  (mit IBKR-Wert `NASDAQ.NMS` fuer AAPL) und `calendar_url`.
+- `docs/05-api.md`: Endpunkt-Landkarte um Exchanges-Zeile ergaenzt.
+
+### Naechste Schritte (AP-11 Phase A)
+- K5 Tradeability-Felder im smd-Frame nutzt CalendarService und das
+  exchange_id-Mapping.
+- K3-Folgekarte (Lifespan-Wiring + Live-Smoke) bleibt parallel offen.
+
+---
+
 ## [1.18.0] — 2026-05-02 (AP-11 K3 — WSPushSource + ENV-Schalter BG_QUOTES_SOURCE)
 
 WSPushSource-Bruecke verbindet `SmdTopicAdapter` (K1) und

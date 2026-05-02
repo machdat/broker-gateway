@@ -28,6 +28,17 @@ class Instrument(BaseModel):
 
 class InstrumentDetail(Instrument):
     exchange: str | None = None
+    exchange_id: str | None = Field(
+        default=None,
+        description="Heimat-Boerse fuer Schedule-Lookup (listingExchange)",
+    )
+    calendar_url: str | None = Field(
+        default=None,
+        description=(
+            "Convenience-Link auf /v1/exchanges/{exchange_id}/calendar; "
+            "leer, wenn keine listingExchange ableitbar ist."
+        ),
+    )
 
 
 def _map_search_entry(entry: dict[str, Any]) -> Instrument:
@@ -54,7 +65,19 @@ def _map_info(payload: dict[str, Any]) -> InstrumentDetail:
     # exchange-Default in Live ist "listingExchange", "exchange" listet nur
     # validExchanges-Komma-Liste.
     symbol = payload.get("symbol") or payload.get("ticker") or ""
-    exchange = payload.get("listingExchange") or payload.get("exchange")
+    listing_exchange = payload.get("listingExchange")
+    exchange = listing_exchange or payload.get("exchange")
+    # ``listingExchange`` ist die Heimat-Boerse fuer den Calendar-Lookup
+    # (AP-11 K4 / K6-Anhang C.1.2). Fallback: erster Token aus der
+    # ``exchange``-Validlist.
+    exchange_id = listing_exchange
+    if not exchange_id and isinstance(exchange, str) and exchange:
+        exchange_id = exchange.split(",", 1)[0].strip() or None
+    if exchange_id:
+        exchange_id = exchange_id.upper()
+    calendar_url = (
+        f"/v1/exchanges/{exchange_id}/calendar" if exchange_id else None
+    )
     return InstrumentDetail(
         conid=int(payload["conid"]),
         symbol=str(symbol).upper(),
@@ -62,6 +85,8 @@ def _map_info(payload: dict[str, Any]) -> InstrumentDetail:
         currency=payload.get("currency"),
         sec_type=payload.get("secType"),
         exchange=exchange,
+        exchange_id=exchange_id,
+        calendar_url=calendar_url,
     )
 
 

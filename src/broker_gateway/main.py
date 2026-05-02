@@ -16,6 +16,7 @@ from broker_gateway.api.v1.errors import (
     build_error_response,
     default_code_for,
 )
+from broker_gateway.api.v1.exchanges import get_calendar_service
 from broker_gateway.api.v1.instruments import get_instruments_service
 from broker_gateway.api.v1.orders import (
     get_idempotency_store,
@@ -28,6 +29,7 @@ from broker_gateway.api.v1.trades import get_trades_service
 from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
+from broker_gateway.cp.calendar import CalendarService
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
 from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
@@ -77,6 +79,7 @@ def create_app(
     instruments_service: InstrumentsService | None = None,
     quotes_service: QuotesService | None = None,
     subscription_manager: SubscriptionManager | None = None,
+    calendar_service: CalendarService | None = None,
     portfolio_service: PortfolioService | None = None,
     orders_service: OrdersService | None = None,
     idempotency_store: IdempotencyStore | None = None,
@@ -135,6 +138,11 @@ def create_app(
             if subscription_manager is not None
             else SubscriptionManager(cast(CPGatewayClient, services_client))
         )
+        cal_service = (
+            calendar_service
+            if calendar_service is not None
+            else CalendarService(cast(CPGatewayClient, services_client))
+        )
         pf_service = (
             portfolio_service
             if portfolio_service is not None
@@ -165,6 +173,7 @@ def create_app(
         app.state.instruments_service = inst_service
         app.state.quotes_service = qts_service
         app.state.subscription_manager = sub_manager
+        app.state.calendar_service = cal_service
         app.state.portfolio_service = pf_service
         app.state.orders_service = ord_service
         app.state.idempotency_store = idem_store
@@ -183,6 +192,9 @@ def create_app(
         )
         app.dependency_overrides[get_subscription_manager] = (
             lambda: cast(SubscriptionManager, app.state.subscription_manager)
+        )
+        app.dependency_overrides[get_calendar_service] = (
+            lambda: cast(CalendarService, app.state.calendar_service)
         )
         app.dependency_overrides[get_portfolio_service] = (
             lambda: cast(PortfolioService, app.state.portfolio_service)
