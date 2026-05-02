@@ -6,16 +6,20 @@ services:
       context: .
       dockerfile: Dockerfile
     image: broker-gateway:1.23.0
-    container_name: broker-gateway
+    container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
-    # Extern 4000 (Default laut API-Draft 1.1), intern 8000 (FastAPI/Dockerfile-CMD).
-    # Port 8000 ist auf cma-pi-1 von KanPrompt belegt.
+    # Extern 4000 (Default laut API-Draft 1.1) bzw. 4001 fuer den
+    # Paper-Stack (siehe ops/build-gateway.sh --env=paper). Intern
+    # 8000 (FastAPI/Dockerfile-CMD). Port 8000 ist auf cma-pi-1 von
+    # KanPrompt belegt.
     ports:
-      - "4000:8000"
+      - "${BG_GATEWAY_HOST_PORT:-4000}:8000"
     # .env liegt nur lokal und ist gitignored - enthaelt mindestens
-    # BG_BOOTSTRAP_ADMIN_TOKEN. Vorlage in .env.example.
+    # BG_BOOTSTRAP_ADMIN_TOKEN. Vorlage in .env.example. Beim
+    # paper-Deploy ueber ops/build-gateway.sh --env=paper kommt
+    # docker compose --env-file .env.paper zum Einsatz.
     env_file:
-      - path: .env
+      - path: ${BG_ENV_FILE:-.env}
         required: false
     depends_on:
       cpgateway:
@@ -38,12 +42,14 @@ services:
         CPGW_UID: ${CPGW_UID:-1000}
         CPGW_GID: ${CPGW_GID:-1000}
     image: broker-cpgateway:1.0.3
-    container_name: broker-cpgateway
+    container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}-cpgateway
     restart: unless-stopped
     volumes:
       # CP-Gateway-Logs persistieren - bei Container-Restart bleiben sie
-      # erhalten und sind ohne docker exec einsehbar.
-      - ./var/cpgateway/logs:/opt/clientportal.gw/logs
+      # erhalten und sind ohne docker exec einsehbar. Beim Paper-Stack
+      # liegt das Volume unter /mnt/ssd/broker-gateway-paper/var/
+      # cpgateway-paper/logs (siehe ops/build-gateway.sh --env=paper).
+      - ${BG_CPGATEWAY_VOLUME:-./var/cpgateway/logs}:/opt/clientportal.gw/logs
     healthcheck:
       # 401 unauth ist erwartet, solange kein Browser-Login erfolgte -
       # zeigt aber, dass der HTTP-Listener up ist. Erst nach erfolgreichem
