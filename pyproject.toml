@@ -46,11 +46,15 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q -m 'not live and not stresstest'"
+addopts = "-q -m 'not live and not stresstest and not paper_readonly and not paper_safe_write and not paper_pic and not paper_destructive'"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "live: laeuft gegen das Live-CP-Gateway / U25235077",
     "stresstest: Stresstest mit hoher Last (manueller Run)",
     "integration: Integrationstest, nicht Standard-Suite",
+    "paper_readonly: tests_paper L1 - Read-only gegen Paper-Stack",
+    "paper_safe_write: tests_paper L2 - sichere Schreib-Operationen ohne Order-Lifecycle",
+    "paper_pic: tests_paper L3 - Place + Immediate Cancel",
+    "paper_destructive: tests_paper L4 - Position auf und zu",
 ]
