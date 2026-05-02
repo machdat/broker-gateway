@@ -14,6 +14,11 @@ from broker_gateway.streams.manager import (
     SubscriptionLimitExceeded,
     SubscriptionManager,
 )
+from broker_gateway.streams.orders import (
+    OrderStreamEvent,
+    OrdersBroadcaster,
+    get_orders_broadcaster,
+)
 from broker_gateway.streams.registry import (
     SubscribeCallable,
     SubscriptionRegistry,
@@ -27,6 +32,8 @@ __all__ = [
     "EventSource",
     "EventType",
     "ExecutionEvent",
+    "OrderStreamEvent",
+    "OrdersBroadcaster",
     "PositionEvent",
     "StatusEvent",
     "StreamEvent",
@@ -35,4 +42,5 @@ __all__ = [
     "SubscriptionManager",
     "SubscriptionRegistry",
     "WSPushSource",
+    "get_orders_broadcaster",
 ]

@@ -4,6 +4,55 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.21.0] — 2026-05-02 (AP-11 K6 — sor-Adapter + OrdersBroadcaster + /v1/orders/stream)
+
+Phase B startet. SorTopicAdapter normalisiert IBKR-sor-Frames auf
+das Anhang-A-Schema, OrdersBroadcaster fan-outet pro Account mit
+Bootstrap-Frame voraus und Live-Push danach. Neuer SSE-Endpoint
+/v1/orders/stream mit Scope orders:read.
+
+### Hinzugefuegt
+- `src/broker_gateway/cp/topics/sor.py` mit `SorFrame` und
+  `SorTopicAdapter`. Field-Mapping nach K6-Anhang A
+  (orderId/cOID/parentId/acct/ticker/side/totalSize/filledQuantity/
+  avgPrice/status/timeInForce/lastExecutionTime/orderRejectReason/
+  conid). Status-Normalisierung: IBKR-Werte werden auf
+  pending/accepted/partial_fill/filled/cancelled/rejected reduziert
+  (defensiver Default ``pending`` fuer unbekannte Status).
+  timeInForce-Quirk: ``CLOSE`` wird auf ``DAY`` gemappt.
+  ``bgColor``/``fgColor`` werden gefiltert. Bootstrap-Pfad
+  ``adapter.bootstrap(rest_orders)`` reicht REST-Bodies durch
+  denselben Decode-Pfad.
+- `src/broker_gateway/streams/orders.py` mit `OrdersBroadcaster`
+  und ``OrderStreamEvent``: pro Account eine Subscription mit
+  Refcount, asyncio-Queue und Ringpuffer fuer Last-Event-ID-
+  Reconnect; Slow-Consumer-Drop analog zum Quotes-Pfad.
+- `src/broker_gateway/api/v1/orders_stream.py` mit dem SSE-
+  Endpoint und der `OrdersBootstrapLoader`-Klasse, die einmal
+  beim Subscribe-Start ``GET /iserver/account/orders`` ruft und
+  das Ergebnis durch den Adapter-Bootstrap-Pfad leitet.
+- Neuer Scope `SCOPE_ORDERS_READ = "orders:read"` in
+  `auth/models.py` (analog zu `quotes:read`).
+- `main.py`-Lifespan instanziiert `OrdersBroadcaster`,
+  `SorTopicAdapter` und `OrdersBootstrapLoader` und registriert die
+  Dependency-Overrides. Router `/v1/orders/stream` wird im
+  v1-Aggregations-Router eingebunden.
+- `tests/test_topic_adapter_sor.py` mit 8 Tests: Field-Mapping,
+  Status-Normalisierung-Lifecycle, timeInForce-CLOSE-Quirk,
+  UI-Filter, Snapshot-Merge, Bootstrap-Pfad, Non-sor-Frame-None,
+  fehlende order_id-None.
+- `tests/test_orders_stream.py` mit 5 Tests: Bootstrap-Frame
+  zuerst, Live-Frame nach Subscribe, Last-Event-ID-Replay-Skip,
+  Publish ohne Subscriber stumm, Scope-403 ohne `orders:read`.
+
+### Naechste Schritte (AP-11 Phase B)
+- K7: WS-Egress-Endpunkte `/v1/quotes/ws` und `/v1/orders/ws`.
+- K8: `/v1/status`-Endpoint plus 150-Symbol-Stresstest.
+- K3-Folge: Lifespan-Wiring fuer `CPWebSocketClient` plus
+  `WSPushSource` plus Live-Smoke gegen U25235077.
+
+---
+
 ## [1.20.0] — 2026-05-02 (AP-11 K5 — Tradeability-Felder im smd-Frame, Phase A komplett)
 
 `SmdTopicAdapter` reichert pro Frame zwei neue Felder an:

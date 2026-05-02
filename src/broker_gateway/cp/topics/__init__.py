@@ -6,5 +6,12 @@ Adapter sind reine Python-Komponenten ohne REST-/IO-Abhaengigkeit; sie
 werden vom ``WSPushSource`` (AP-11 K3) im Stream-Pfad eingehaengt.
 """
 from broker_gateway.cp.topics.smd import SmdFrame, SmdTopicAdapter
+from broker_gateway.cp.topics.sor import OrderStatus, SorFrame, SorTopicAdapter
 
-__all__ = ["SmdFrame", "SmdTopicAdapter"]
+__all__ = [
+    "OrderStatus",
+    "SmdFrame",
+    "SmdTopicAdapter",
+    "SorFrame",
+    "SorTopicAdapter",
+]

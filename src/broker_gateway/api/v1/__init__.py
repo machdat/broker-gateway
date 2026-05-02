@@ -7,6 +7,7 @@ from broker_gateway.api.v1.health import router as health_router
 from broker_gateway.api.v1.instruments import router as instruments_router
 from broker_gateway.api.v1.internal_health import router as internal_health_router
 from broker_gateway.api.v1.orders import router as orders_router
+from broker_gateway.api.v1.orders_stream import router as orders_stream_router
 from broker_gateway.api.v1.portfolio import router as portfolio_router
 from broker_gateway.api.v1.quotes import router as quotes_router
 from broker_gateway.api.v1.quotes_stream import router as quotes_stream_router
@@ -22,5 +23,6 @@ router.include_router(quotes_router)
 router.include_router(quotes_stream_router)
 router.include_router(portfolio_router)
 router.include_router(orders_router)
+router.include_router(orders_stream_router)
 router.include_router(trades_router)
 router.include_router(events_stream_router)

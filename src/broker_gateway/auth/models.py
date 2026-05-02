@@ -17,6 +17,7 @@ SCOPE_QUOTES_READ = "quotes:read"
 SCOPE_PORTFOLIO_READ = "portfolio:read"
 SCOPE_INSTRUMENTS_READ = "instruments:read"
 SCOPE_EVENTS_READ = "events:read"
+SCOPE_ORDERS_READ = "orders:read"
 SCOPE_ORDERS_WRITE = "orders:write"
 SCOPE_ADMIN_ALL = "admin:*"
 
@@ -26,6 +27,7 @@ ALL_SCOPES: frozenset[str] = frozenset(
         SCOPE_PORTFOLIO_READ,
         SCOPE_INSTRUMENTS_READ,
         SCOPE_EVENTS_READ,
+        SCOPE_ORDERS_READ,
         SCOPE_ORDERS_WRITE,
         SCOPE_ADMIN_ALL,
     }

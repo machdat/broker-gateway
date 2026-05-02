@@ -18,6 +18,10 @@ from broker_gateway.api.v1.errors import (
 )
 from broker_gateway.api.v1.exchanges import get_calendar_service
 from broker_gateway.api.v1.instruments import get_instruments_service
+from broker_gateway.api.v1.orders_stream import (
+    OrdersBootstrapLoader,
+    get_orders_bootstrap_loader,
+)
 from broker_gateway.api.v1.orders import (
     get_idempotency_store,
     get_orders_portfolio_invalidator,
@@ -32,6 +36,7 @@ from broker_gateway.auth.store import TokenStore, build_default_store
 from broker_gateway.cp.calendar import CalendarService
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
+from broker_gateway.cp.topics.sor import SorTopicAdapter
 from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
 from broker_gateway.cp.orders import OrdersService
 from broker_gateway.cp.portfolio import PortfolioService
@@ -49,6 +54,10 @@ from broker_gateway.streams.events import EventBus, get_event_bus
 from broker_gateway.streams.manager import (
     SubscriptionManager,
     get_subscription_manager,
+)
+from broker_gateway.streams.orders import (
+    OrdersBroadcaster,
+    get_orders_broadcaster,
 )
 from broker_gateway.throttle.manager import ThrottleManager, get_throttle_manager
 
@@ -143,6 +152,11 @@ def create_app(
             if calendar_service is not None
             else CalendarService(cast(CPGatewayClient, services_client))
         )
+        orders_broadcaster = OrdersBroadcaster()
+        sor_adapter = SorTopicAdapter()
+        orders_bootstrap = OrdersBootstrapLoader(
+            cast(CPGatewayClient, services_client), sor_adapter
+        )
         pf_service = (
             portfolio_service
             if portfolio_service is not None
@@ -174,6 +188,8 @@ def create_app(
         app.state.quotes_service = qts_service
         app.state.subscription_manager = sub_manager
         app.state.calendar_service = cal_service
+        app.state.orders_broadcaster = orders_broadcaster
+        app.state.orders_bootstrap_loader = orders_bootstrap
         app.state.portfolio_service = pf_service
         app.state.orders_service = ord_service
         app.state.idempotency_store = idem_store
@@ -195,6 +211,14 @@ def create_app(
         )
         app.dependency_overrides[get_calendar_service] = (
             lambda: cast(CalendarService, app.state.calendar_service)
+        )
+        app.dependency_overrides[get_orders_broadcaster] = (
+            lambda: cast(OrdersBroadcaster, app.state.orders_broadcaster)
+        )
+        app.dependency_overrides[get_orders_bootstrap_loader] = (
+            lambda: cast(
+                OrdersBootstrapLoader, app.state.orders_bootstrap_loader
+            )
         )
         app.dependency_overrides[get_portfolio_service] = (
             lambda: cast(PortfolioService, app.state.portfolio_service)
