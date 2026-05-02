@@ -191,12 +191,14 @@ aus. `broker-gateway` betreibt einen `asyncio.Task`-Tickle-Worker.
 
 IBKR-Pre-Trade-Risk-Check (`POST /iserver/account/{id}/order/whatif`).
 Der CP-Gateway antwortet mit Margin-Impact und Warnings 1-99. Speziell
-**Warning 4** („Percentage price check cannot be performed") und
-**Warning 21** („blind trading without market data") tauchen auf, wenn
-Realtime-Marktdaten für das Instrument nicht freigeschaltet sind —
-unabhängig davon, ob der Snapshot-Endpoint brauchbare Werte liefert.
-*Quelle:* `02-architecture.md` Sektion 2.5, [OFFENE FRAGE] vollständige
-Warning-Code-Tabelle.
+**Warning 1**/`21` („You are trying to submit an order without having
+market data") und **Warning 4** („Percentage price check cannot be
+performed") tauchen auf, wenn Realtime-Marktdaten für das Instrument
+nicht freigeschaltet sind — unabhängig davon, ob der Snapshot-Endpoint
+brauchbare Werte liefert. Vollständige Tabelle der bekannten Codes,
+Severity-Klassifikation, Empirie und Service-Reaktion in
+[`docs/research/ibkr-whatif-warnings.md`](research/ibkr-whatif-warnings.md).
+*Quelle:* `02-architecture.md` Sektion 2.5, Research-Doku oben.
 
 ### WebSocket-Topics: `smd`, `sor`, `str`
 
@@ -409,8 +411,12 @@ sind:
   (AP-09, Mai 2026).
 - ~~Genauer Semantik-Block des `F` (Frozen) im Availability-Code.~~
   **geklärt** im selben Research-Doku.
-- whatif-Warning-Code-Tabelle 1-99 (heute nur Warnings 4 + 21
-  empirisch bekannt).
+- ~~whatif-Warning-Code-Tabelle 1-99 (heute nur Warnings 4 + 21
+  empirisch bekannt).~~ **kuratiert konsolidiert** in
+  [`docs/research/ibkr-whatif-warnings.md`](research/ibkr-whatif-warnings.md)
+  (AP-09, Mai 2026). Vollständige 1-99-Tabelle bleibt offen, da IBKR
+  sie nicht zentral dokumentiert; neue Codes werden bei Auftritt in
+  diesem Research-Doku ergänzt.
 - WebSocket-Topics jenseits von `smd`/`sor`/`str` (`spl`, `smh`,
   `sbd`) — Inhalt und Subscribe-Format noch nicht in AP-04-Discovery.
 - Pacing-Header-Implementierungs-Stand (spezifiziert in v1.md Section
