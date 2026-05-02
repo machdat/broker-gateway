@@ -4,6 +4,40 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.22.0] — 2026-05-02 (AP-11 K7 — WS-Egress /v1/quotes/ws + /v1/orders/ws)
+
+WebSocket-Egress als zweites Ziel-Tier neben SSE. Beide Endpunkte
+schoepfen aus demselben StreamHub wie die SSE-Pendants und liefern
+das gleiche Frame-Schema, lediglich gewrappt in ein JSON-Objekt
+``{id, event, data}`` (kein SSE-Header-Format).
+
+### Hinzugefuegt
+- `src/broker_gateway/api/v1/ws_auth.py` mit
+  ``authenticate_websocket(websocket, store, required_scope)``.
+  Akzeptiert Bearer-Token aus drei Quellen: Authorization-Header,
+  Sec-WebSocket-Protocol als ``bearer.<token>`` (Browser-Pattern;
+  Subprotokoll wird im accept echoed), Query-Param ``?token=``.
+  Bei Auth-Fehler wird der Socket mit Code 1008 (Policy Violation)
+  geschlossen.
+- `src/broker_gateway/api/v1/quotes_ws.py` mit `/v1/quotes/ws`-
+  WebSocket-Endpoint, Scope ``quotes:read``. Frames werden als
+  Text-Frames im Wrapper-Format gesendet, Quelle ist der
+  ``SubscriptionManager`` (gleicher StreamHub wie ``/v1/quotes/stream``).
+- `src/broker_gateway/api/v1/orders_ws.py` mit `/v1/orders/ws`-
+  WebSocket-Endpoint, Scope ``orders:read``. Bootstrap-Frame plus
+  Live-Push aus dem ``OrdersBroadcaster``.
+- `tests/test_quotes_ws_endpoint.py` mit 5 Tests: Auth via Header,
+  Auth via Query-Token, Auth via Sec-WebSocket-Protocol mit
+  Subprotokoll-Echo, Token fehlt -> 1008, falscher Scope -> 1008.
+- `tests/test_orders_ws_endpoint.py` mit 2 Tests: Token fehlt ->
+  1008, Query-Token akzeptiert (Auth-Pfad isoliert).
+
+### Naechste Schritte (AP-11 Phase B)
+- K8: ``/v1/status``-Endpoint plus 150-Symbol-Stresstest.
+- K3-Folge: Lifespan-Wiring fuer ``CPWebSocketClient`` plus Live-Smoke.
+
+---
+
 ## [1.21.0] — 2026-05-02 (AP-11 K6 — sor-Adapter + OrdersBroadcaster + /v1/orders/stream)
 
 Phase B startet. SorTopicAdapter normalisiert IBKR-sor-Frames auf
