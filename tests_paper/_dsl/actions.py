@@ -112,13 +112,13 @@ async def place_limit_far_from_market(
     max_notional_per_order(limit_price, qty_d)
 
     body: dict[str, Any] = {
-        "account": account_id,
+        "account_id": account_id,
         "conid": conid,
         "side": side_norm,
         "quantity": str(qty_d),
         "order_type": "LMT",
         "limit_price": str(limit_price),
-        "time_in_force": "DAY",
+        "tif": "DAY",
     }
     headers = (
         {"Idempotency-Key": idempotency_key} if idempotency_key else None
@@ -144,9 +144,9 @@ async def cancel_order(
             "BG_PAPER_TESTS_DISABLED gesetzt - cancel_order abgelehnt."
         )
     assert_paper_account(account_id)
-    headers = (
-        {"Idempotency-Key": idempotency_key} if idempotency_key else None
-    )
+    headers: dict[str, str] = {"X-Account-Id": account_id}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     return await client.delete(f"/v1/orders/{order_id}", headers=headers)
 
 
@@ -219,12 +219,12 @@ async def flatten_positions(
         last_price = Decimal(str(pos.get("last") or pos.get("avg_price") or 0))
         max_notional_per_order(last_price, quantity)
         body = {
-            "account": account_id,
+            "account_id": account_id,
             "conid": pos.get("conid"),
             "side": side,
             "quantity": str(quantity),
             "order_type": "MKT",
-            "time_in_force": "DAY",
+            "tif": "DAY",
         }
         response = await client.post("/v1/orders", json=body)
         if response.status_code in (200, 201):
@@ -381,13 +381,13 @@ class PaperActions:
             cumulative_notional_usd=cumulative,
         )
         body: dict[str, Any] = {
-            "account": self._account_id,
+            "account_id": self._account_id,
             "conid": conid,
             "side": side.upper(),
             "quantity": str(quantity),
             "order_type": "LMT",
             "limit_price": str(limit_price),
-            "time_in_force": time_in_force.upper(),
+            "tif": time_in_force.upper(),
         }
         response = await self._client.post("/v1/orders", json=body)
         if 200 <= response.status_code < 300:
