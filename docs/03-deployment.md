@@ -236,10 +236,10 @@ Zusammenfassung der Trigger, die einen Re-Login erzwingen:
 | Tickle scheitert > 3× in Folge | **Ja** — Service kippt auf `auth_lost` |
 | `gateway` antwortet `503` mit `Retry-After`, `auth_lost` im Internal-Health | **Ja** |
 
-**Reauth nach Pause** (Memory-Notiz `project_ibkr_session_resume`):
-vor 2FA-Login zuerst `POST /iserver/reauthenticate` versuchen,
-**dann** Drift-Check 2× mit 90 s Warmup-Pause. Erst wenn das nicht hilft,
-Browser-2FA-Login durchspielen.
+**Reauth nach Pause** ist als eigenes Runbook konsolidiert:
+[`docs/runbooks/cpgateway-session-resume.md`](runbooks/cpgateway-session-resume.md).
+Kurz: erst `POST /iserver/reauthenticate`, dann Drift-Check 2× mit
+90 s Warmup-Pause; Browser-2FA erst bei zweimaligem Misserfolg.
 
 Troubleshooting bei sechs typischen Fehlerbildern:
 [`docs/runbooks/cpgateway-troubleshooting.md`](runbooks/cpgateway-troubleshooting.md).

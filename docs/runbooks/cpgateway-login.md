@@ -1,5 +1,11 @@
 # Runbook: CP-Gateway Browser-2FA-Login
 
+> **Bei Session-Pause zuerst Resume-Pfad versuchen:**
+> [`cpgateway-session-resume.md`](cpgateway-session-resume.md). Wenn
+> der Container weitergelaufen ist und nur das SSO-Cookie schlaeft,
+> spart `POST /iserver/reauthenticate` plus 2x 90 s Drift-Check die
+> 2FA-Tortur.
+
 Schritt-fuer-Schritt-Anleitung, wie der IBKR Client Portal Gateway im
 broker-gateway-Compose-Stack initial mit dem Live-Account
 **U25235077** (Non-Pro AT) verbunden wird.

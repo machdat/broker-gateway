@@ -7,6 +7,12 @@ Loesung.
 Das Login-Runbook (`cpgateway-login.md`) deckt den Happy Path ab.
 Diese Datei sammelt alles, was schiefgehen kann.
 
+> **Wenn die Session "nur" pausiert war** (Laptop-Sleep, kurzer
+> Container-Restart, geplante Wartung): zuerst dem Reauth-Pfad in
+> [`cpgateway-session-resume.md`](cpgateway-session-resume.md) folgen,
+> bevor du auf Browser-2FA eskalierst. Spart in den meisten Faellen
+> die 2FA-Tortur.
+
 ---
 
 ## 1. Container scheitert beim Build mit SHA256-Mismatch
@@ -123,6 +129,12 @@ dass eine "stuck session" auf U25235077 forciert beendet werden soll.
 ---
 
 ## 5. Container laeuft, aber broker-gateway meldet `cp_reachable: false`
+
+> **Erst pruefen:** Ist der Container laufzeit-gesund, aber die Session
+> nur pausiert? Dann dem Reauth-Pfad in
+> [`cpgateway-session-resume.md`](cpgateway-session-resume.md) folgen.
+> Erst wenn dort Schritt 5 (Eskalation auf Browser-Login) erreicht
+> wird, ist dieses Fehlerbild relevant.
 
 **Symptom:** `cpgateway`-Container ist healthy, aber
 `/v1/internal/health` des broker-gateway-Service zeigt

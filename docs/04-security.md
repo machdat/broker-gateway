@@ -339,7 +339,8 @@ Operationelle Trigger: [`docs/03-deployment.md`](03-deployment.md) Sektion 8.
 
 Vor dem 2FA-Login zuerst `POST /iserver/reauthenticate` versuchen, dann
 Drift-Check 2× mit 90 s Warmup-Pause. Erst wenn das nicht hilft,
-Browser-2FA. Quelle: Memory-Notiz `project_ibkr_session_resume`.
+Browser-2FA. Voller Ablauf:
+[`docs/runbooks/cpgateway-session-resume.md`](runbooks/cpgateway-session-resume.md).
 
 ### 7.3 Status-Endpunkte
 

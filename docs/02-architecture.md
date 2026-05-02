@@ -593,10 +593,12 @@ eigenmächtig entschieden:
   Topic-Adapter + EventBus-Producer aus Findings ableiten — Zielbild
   für Folge-AP-05 (separat von Logging-AP-05; Naming-Kollision
   beobachten).
-- **Reauthenticate-Strategie nach Pause:** vor 2FA erst
-  `POST /iserver/reauthenticate`, dann Drift-Check 2x mit 90s
-  Warmup-Pause (Memory-Eintrag `project_ibkr_session_resume`). Noch
-  nicht in einem Runbook konsolidiert.
+- **Reauthenticate-Strategie nach Pause:** **geklaert** (AP-09,
+  Mai 2026). Volles Runbook in
+  [`docs/runbooks/cpgateway-session-resume.md`](runbooks/cpgateway-session-resume.md):
+  vor 2FA erst `POST /iserver/reauthenticate`, dann Drift-Check 2x mit
+  90 s Warmup-Pause; Eskalation auf Browser-2FA erst, wenn beide
+  Drift-Checks scheitern.
 - **TLS / Reverse-Proxy:** aktuell HTTP-only intern (Tailscale),
   externer TLS-Endpunkt steht noch nicht zur Diskussion.
 - **Idempotency-Storage Restart-Persistenz:** Redis als optionales
