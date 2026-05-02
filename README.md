@@ -32,6 +32,26 @@ uvicorn broker_gateway.main:app --reload
 curl http://localhost:8000/v1/health
 ```
 
+### Live-/Paper-Stack (cma-pi-1)
+
+Beide Stacks teilen sich `compose.yaml` und unterscheiden sich nur in
+Project-Name, Port, Volume und ENV-Datei (siehe AP-06 K2 +
+[`docs/runbooks/paper-account-setup.md`](docs/runbooks/paper-account-setup.md)).
+
+```bash
+# Live (Default-Stack)
+cp .env.live.template .env       # einmalig, Token eintragen
+./ops/build-gateway.sh           # Port 4000, Project broker-gateway
+
+# Paper (parallel zum Live-Stack)
+cp .env.paper.template .env.paper  # einmalig, Token + DU-Konto eintragen
+./ops/build-gateway.sh --env=paper # Port 4001, Project broker-gateway-paper
+```
+
+`.env`, `.env.paper` und `.env.live` sind in `.gitignore`. Templates
+(`.env.example`, `.env.live.template`, `.env.paper.template`) werden
+committed.
+
 Der Pre-Commit-Hook läuft automatisch bei jedem `git commit` und scannt staged JSON/JSONL unter `tests/fixtures/recorded/` auf Authorization-Header, URL-safe-Token-Strings (≥ 32 Zeichen) und Cookie-Pattern. Single Source of Truth für die Header-Liste ist `broker_gateway.cp.redaction.REDACTED_HEADERS`. Manueller Lauf über alle Recordings: `pre-commit run --all-files`.
 
 ## Authentifizierung
