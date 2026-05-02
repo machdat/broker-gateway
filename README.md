@@ -1,5 +1,7 @@
 # broker-gateway
 
+[![ci](https://github.com/machdat/broker-gateway/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/machdat/broker-gateway/actions/workflows/ci.yml)
+
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
 **Status:** v1.24.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 + AP-10 abgeschlossen, AP-11 Phase A+B vollständig (K1..K9). WS-Lifespan-Verdrahtung (BG_QUOTES_SOURCE=ws opt-in) ist drin; Live-Smoke gegen U25235077 als nächster Schritt nach Pi-Deploy. Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).

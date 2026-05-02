@@ -20,7 +20,7 @@ Erste Anlaufstelle ist [`docs/02-architecture.md`](docs/02-architecture.md) — 
 1. **KanPrompt-Skill zuerst laden.** Vor jedem `mcp__kanprompt__*`-Tool-Call: `mcp__kanprompt__get_skill(name="implementation")`. Globale Anweisung in `~/.claude/CLAUDE.md`.
 2. **Karten-Lifecycle einhalten.** Jede Karte: `transition_card_status(in-progress)` → `add_log_entry(action: Start)` → Arbeit → `add_log_entry(action: Abschluss)` → `finalize_card`. Minimum zwei Log-Einträge.
 3. **Version-Bump bei jeder funktionalen Änderung.** Patch oder Minor in `pyproject.toml` und im README-Footer. Dokumentations-only-Änderungen ebenfalls als Patch.
-4. **Direkt auf `main` committen**, solange CI noch nicht eingerichtet ist (analog zur PSM-Übergangsregel). Sobald CI steht, auf Branch+PR umstellen.
+4. **Branch + PR + grüne CI vor Merge.** Seit AP-13 K1 läuft `.github/workflows/ci.yml` auf jedem push/PR (pytest-Matrix Python 3.12 + 3.13). Direkt-auf-`main`-Commits sind nur noch für Hotfixes erlaubt, in denen das Risiko eines fehlgeschlagenen Workflows kleiner ist als die Verzögerung; im Zweifel über Branch + PR.
 
 ## Scope (kompakt)
 
