@@ -51,6 +51,13 @@ def _probe_health(base_url: str) -> bool:
 
 
 def _probe_internal_health(base_url: str, token: str) -> tuple[bool, str | None]:
+    """Prueft auth_status=ok aus dem Lifecycle-Snapshot.
+
+    ``/v1/internal/health`` liefert keinen ``account_id`` mit; die
+    DU-Praefix-Validierung passiert separat ueber die
+    ``BG_PAPER_ACCOUNT_ID``-ENV (Aufrufer-Verantwortung) bzw. ueber
+    ``GET /v1/portfolio/{account}/summary``.
+    """
     url = f"{base_url}/v1/internal/health"
     try:
         request = urllib.request.Request(
@@ -61,20 +68,32 @@ def _probe_internal_health(base_url: str, token: str) -> tuple[bool, str | None]
                 _fail(f"GET {url} -> HTTP {response.status}")
                 return False, None
             payload = json.loads(response.read())
-            account = payload.get("account_id") or (
-                payload.get("accounts") or [None]
-            )[0]
-            if not account or not str(account).startswith("DU"):
+            auth_status = payload.get("auth_status")
+            cp_reachable = payload.get("cp_reachable")
+            if auth_status != "ok" or not cp_reachable:
                 _fail(
-                    f"GET {url} -> account_id={account!r} hat keinen "
-                    "DU-Praefix (Paper-Konto erwartet)"
+                    f"GET {url} -> auth_status={auth_status!r} "
+                    f"cp_reachable={cp_reachable!r}"
                 )
-                return False, account
+                return False, None
             print(
-                f"OK   GET {url} -> session_status={payload.get('session_status')!r} "
-                f"account_id={account}"
+                f"OK   GET {url} -> auth_status=ok cp_reachable=True "
+                f"session_age_s={payload.get('session_age_s')}"
             )
-            return True, account
+            # Optionaler DU-Praefix-Check ueber BG_PAPER_ACCOUNT_ID-ENV.
+            paper_account = os.environ.get("BG_PAPER_ACCOUNT_ID")
+            if paper_account and not paper_account.upper().startswith("DU"):
+                _fail(
+                    f"BG_PAPER_ACCOUNT_ID={paper_account!r} hat keinen "
+                    "DU-Praefix - kein Paper-Konto."
+                )
+                return False, paper_account
+            if paper_account:
+                print(
+                    f"OK   BG_PAPER_ACCOUNT_ID={paper_account} "
+                    "(DU-Praefix bestaetigt)"
+                )
+            return True, paper_account
     except urllib.error.HTTPError as exc:
         _fail(f"GET {url} -> HTTP {exc.code} {exc.reason}")
         return False, None
