@@ -4,6 +4,42 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.15.0] — 2026-05-02 (AP-10 K1 — tokens.json Permission-Check, AP-10 abgeschlossen)
+
+`FileTokenStore` haertet die persistente Token-Datei: beim Init wird
+gewarnt bei zu offenen Permissions, beim Schreiben werden neue Dateien
+per `os.chmod(..., 0o600)` reduziert. Schliesst die offene Sicherheits-
+Frage 12.2 zu `tokens.json` ab; AP-10 (Security-Hardening) ist mit
+dieser Karte vollstaendig abgeschlossen.
+
+### Hinzugefuegt
+- `src/broker_gateway/auth/store.py` `FileTokenStore._check_permissions`:
+  per `os.stat()` werden `S_IRGRP|S_IWGRP|S_IXGRP|S_IROTH|S_IWOTH|S_IXOTH`
+  geprueft. Bei Treffer eine `WARNING` an Logger `broker_gateway`
+  (Strang `app.log`) mit konkretem `chmod 0600 <pfad>`-Hinweis. Auf
+  Windows (`sys.platform == "win32"`) wird die Pruefung mit Debug-Log
+  uebersprungen. Crash-frei: zu offene Permissions sind kein Service-
+  Stop, nur eine Diagnose-Warnung.
+- `_persist_locked` setzt vor dem atomaren `os.replace` ein
+  `os.chmod(tmp, 0o600)` - neue/aktualisierte Token-Dateien sind
+  damit auf POSIX dauerhaft 0600. `chmod`-Fehler sind auch hier
+  best-effort: wird geloggt, blockiert das Schreiben aber nicht.
+- `tests/test_auth_token_file_permissions.py` (5 Tests, 4 davon
+  POSIX-only via `pytest.mark.skipif(sys.platform == "win32")`):
+  existierende 0644-Datei -> Warning; neu geschriebene Datei ->
+  Mode 0600; existierende 0600-Datei -> kein Warning; 0644-Datei
+  wird beim ersten `put()` auf 0600 reduziert; nicht-existente
+  Datei -> kein Warning (plattform-uebergreifend).
+
+### Geaendert
+- `docs/04-security.md` Sektion 2.2: vollstaendige Beschreibung des
+  Permission-Checks und der Selbstheilung beim Schreiben. Sektion
+  12.2: `tokens.json`-Frage als geklaert markiert (Bezug AP-10 K1).
+- `tests/test_health.py`: `test_health_version_matches_package_version`
+  entfernt - der hardcoded Versions-String brach bei jedem Bump und
+  duplizierte den ersten Test (`test_health_returns_ok_and_version`),
+  der `__version__` direkt vergleicht.
+
 ## [1.14.0] — 2026-05-02 (AP-05 K5 — Body-Token-Scan-Test, AP-05 abgeschlossen)
 
 Letzte Karte des AP-05: automatischer Test, dass kein Bearer-Token-Wert

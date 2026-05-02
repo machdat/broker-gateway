@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** v1.14.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 abgeschlossen (Logging-Backbone, Inbound-Body-Logging, CP-Wire-Log, Recording-Pre-Commit-Hook, Body-Token-Scan-Test). Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
+**Status:** v1.15.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 + AP-10 abgeschlossen (Logging-Backbone, Body-Logging, CP-Wire-Log, Recording-Pre-Commit-Hook, Body-Token-Scan-Test, tokens.json Permission-Check). Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Architektur und Doku
 
@@ -249,4 +249,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.14.0*
+*Version 1.15.0*

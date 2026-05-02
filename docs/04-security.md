@@ -73,10 +73,18 @@ sicherer Speicherung, Verschlüsselung-at-rest für die Token-Datei.
 | `InMemoryTokenStore` | Default (kein `BG_TOKEN_FILE`) | Thread-sicher, verliert State beim Neustart. Konsistent mit dem transienten Service-Charakter. |
 | `FileTokenStore` | `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json` | JSON, atomare Writes (temp-file + `os.replace`). Nur lesen/schreiben durch den Service-User. |
 
-Persistenz im File-Backend ist ausschließlich `tokens.json`. Der Inhalt
-sollte mit Datei-Permissions auf den Service-User beschränkt sein
-(`chmod 0600`); das Repository erzwingt das nicht — siehe offene Frage
-12.2.
+Persistenz im File-Backend ist ausschließlich `tokens.json`. Der
+`FileTokenStore` (AP-10 K1, ab v1.15.0) prüft beim Init die
+Datei-Permissions: jeder lesbare/schreibbare/ausführbare Zugriff für
+`group` oder `other` (`S_IRGRP|S_IWGRP|S_IXGRP|S_IROTH|S_IWOTH|S_IXOTH`)
+löst eine `WARNING` im `app.log`-Strang mit konkretem `chmod 0600`-Hinweis
+aus. Neue/überschriebene Token-Dateien werden vor dem atomaren Rename
+explizit per `os.chmod(..., 0o600)` abgesichert — nach dem ersten
+`put()` ist das File auf POSIX dauerhaft auf 0600. Auf Windows ist die
+Pruefung übersprungen (NTFS-Inheritance, kein verlässlicher
+POSIX-mode). Crash-frei: zu offene Permissions sind eine Warnung, kein
+Service-Stop, weil legitime Setups (z.B. Backup-Tool mit Group-Read)
+existieren können.
 
 Andere Backends (Redis, SQL) sind über das `TokenStore`-Protocol
 denkbar, aber nicht implementiert.
@@ -479,9 +487,10 @@ forensische Rekonstruktion läuft über `inbound.log` (Body 1:1) und
   Response-Headern auftaucht. SSE-Stream-Endpunkte sind out-of-scope
   dieser Karte (separate Karte falls Token-Echo dort relevant wird).
   Siehe Sektion 4.3.
-- **Permissions auf `tokens.json`.** Service-Code erzwingt heute nicht,
-  dass die Datei `chmod 0600` hat. Operator-Aufgabe — könnte als
-  Startup-Check implementiert werden.
+- ~~**Permissions auf `tokens.json`.**~~ Geklärt mit AP-10 K1 (v1.15.0):
+  `FileTokenStore` warnt beim Init bei zu offenen Permissions und
+  schreibt neue/aktualisierte Dateien per `os.chmod(..., 0o600)`. Siehe
+  Sektion 2.2.
 - **Audit-Log für Admin-Aktionen.** Token-Erzeugung und Revoke laufen
   heute durch dieselben Inbound-Logs wie alles andere. Ein dedizierter
   `audit.log`-Strang für Admin-Schreibaktionen ist denkbar.
@@ -490,6 +499,6 @@ forensische Rekonstruktion läuft über `inbound.log` (Body 1:1) und
 
 ---
 
-*Stand: v1.14.0 (2026-05-02). Karten mit Auth-, Logging-, Recording-
+*Stand: v1.15.0 (2026-05-02). Karten mit Auth-, Logging-, Recording-
 oder Tokenmodell-Wirkung aktualisieren dieses Dokument oder verweisen
 explizit auf die Sektion, die zu pflegen ist.*
