@@ -1,0 +1,31 @@
+---
+# Pre-Commit-Konfiguration fuer broker-gateway.
+#
+# Aktivierung pro Clone (einmalig):
+#
+#     pip install -e .[dev]
+#     pre-commit install
+#
+# Danach laeuft der Hook automatisch bei jedem ``git commit``. Manuell
+# ueber alle Recording-Dateien:
+#
+#     pre-commit run --all-files
+#
+# Der Hook ist absichtlich ein lokaler Hook (kein remote-Repo): das
+# Skript ``scripts/pre_commit_recording_scan.py`` lebt im Repo und
+# importiert ``REDACTED_HEADERS`` aus ``broker_gateway.cp.redaction`` -
+# Single Source of Truth fuer die zu schwaerzenden Header.
+
+repos:
+  - repo: local
+    hooks:
+      - id: recording-token-scan
+        name: Recording-Token-Scan (tests/fixtures/recorded/)
+        description: >-
+          Scannt staged JSON/JSONL unter tests/fixtures/recorded/ auf
+          Authorization-Header, URL-safe-Token-Strings (>=32 Zeichen)
+          und Cookie-Pattern. Fail-loud bei Verdacht.
+        entry: python scripts/pre_commit_recording_scan.py
+        language: system
+        files: ^tests/fixtures/recorded/.*\.(json|jsonl)$
+        pass_filenames: true

@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** v1.11.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-03 abgeschlossen, AP-04 mit K6-Architektur-Decision-Gate ([`docs/architecture/ws-adapter-design.md`](docs/architecture/ws-adapter-design.md)) abgeschlossen, AP-05 (Logging) K1+K2 live. Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
+**Status:** v1.14.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 abgeschlossen (Logging-Backbone, Inbound-Body-Logging, CP-Wire-Log, Recording-Pre-Commit-Hook, Body-Token-Scan-Test). Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Architektur und Doku
 
@@ -26,10 +26,13 @@ Erste Anlaufstelle für neue Sessions ist `docs/02-architecture.md`. Alles weite
 python -m venv .venv
 .venv\Scripts\activate    # Windows / Git-Bash: source .venv/Scripts/activate
 pip install -e .[dev]
+pre-commit install        # einmalig pro Clone — aktiviert den Recording-Token-Scan-Hook
 pytest
 uvicorn broker_gateway.main:app --reload
 curl http://localhost:8000/v1/health
 ```
+
+Der Pre-Commit-Hook läuft automatisch bei jedem `git commit` und scannt staged JSON/JSONL unter `tests/fixtures/recorded/` auf Authorization-Header, URL-safe-Token-Strings (≥ 32 Zeichen) und Cookie-Pattern. Single Source of Truth für die Header-Liste ist `broker_gateway.cp.redaction.REDACTED_HEADERS`. Manueller Lauf über alle Recordings: `pre-commit run --all-files`.
 
 ## Authentifizierung
 
@@ -101,7 +104,7 @@ Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
 
 Service emittiert pro HTTP-Request ein **JSON-Log-Event** (structlog) mit Metadaten (`request_id`, `method`, `path`, `status`, `latency_ms`, `caller_id`, `scopes`, `idempotency_key`) plus — sofern `BG_LOG_INBOUND_BODIES=on` (Default) — Request-/Response-Headern (gefiltert via `cp/redaction.py`) und Bodies. **Token-Werte werden niemals geloggt** — nur die `caller_id` und die `scopes` aus dem aufgelösten Token; `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `X-Auth-Token`, `Proxy-Authorization` werden in jedem Strang gefiltert.
 
-`request_id` wird per `structlog.contextvars.bind_contextvars` gesetzt — damit erscheint sie automatisch in jedem nachgelagerten Event derselben Verarbeitung (z.B. `cp_wire`-Events des kommenden CP-Wire-Hooks), und Inbound- und CP-Roundtrips lassen sich darüber korrelieren.
+`request_id` wird per `structlog.contextvars.bind_contextvars` gesetzt — damit erscheint sie automatisch in jedem nachgelagerten Event derselben Verarbeitung (z.B. `cp_wire`-Events des CP-Wire-Hooks, siehe unten), und Inbound- und CP-Roundtrips lassen sich darüber korrelieren.
 
 | Feld | Inhalt |
 |---|---|
@@ -118,10 +121,14 @@ Routing per Logger-Name auf drei separate Sinks (wenn `BG_LOG_DIR` gesetzt; ohne
 | Logger-Name | Datei | Inhalt |
 |---|---|---|
 | `broker_gateway.http` | `inbound.log` | Consumer → broker-gateway HTTP-Verkehr (heute Metadaten; Bodies kommen mit Folge-Karte AP-05 #2) |
-| `broker_gateway.cp.wire` | `cp_wire.log` | broker-gateway → IBKR CP-Gateway HTTP-Roundtrip (Hook kommt mit AP-05 #3) |
+| `broker_gateway.cp.wire` | `cp_wire.log` | broker-gateway → IBKR CP-Gateway HTTP-Roundtrip — 1:1, **ohne** Normalisierung; Default an, abschaltbar via `BG_CP_WIRE_LOG=off` |
 | `broker_gateway` | `app.log` | Lifecycle, Throttle, Subscriptions, Streams, Recorder, alles übrige |
 
-`propagate=False` an den drei Strang-Loggern verhindert Cross-Talk. Header-Redaktion (Authorization, Cookie, Set-Cookie, X-API-Key, X-Auth-Token, Proxy-Authorization) lebt zentral in `broker_gateway.cp.redaction` und wird vom CP-Recorder (und künftig CP-Wire-Logger sowie Inbound-Body-Middleware) gemeinsam genutzt — Single Source of Truth.
+`propagate=False` an den drei Strang-Loggern verhindert Cross-Talk. Header-Redaktion (Authorization, Cookie, Set-Cookie, X-API-Key, X-Auth-Token, Proxy-Authorization) lebt zentral in `broker_gateway.cp.redaction` und wird vom CP-Recorder, vom CP-Wire-Logger (`broker_gateway.cp.wire_log.CPWireLogger`) und von der Inbound-Body-Middleware gemeinsam genutzt — Single Source of Truth.
+
+#### CP-Wire-Log
+
+Der `CPWireLogger` hängt sich als httpx-Hook an den CP-Gateway-Client und schreibt pro Roundtrip genau ein `cp_wire`-Event mit `method`, `path`, `query`, `request_headers`, `request_body`, `status`, `response_headers`, `response_body`, `latency_ms`. Bodies werden **nicht** durch `cp.normalize.normalize_response` geschickt — Order-IDs, Timestamps und Session-IDs erscheinen also wie tatsächlich gesendet/empfangen (forensische Treue). Der parallel laufende `CPRecorder` bleibt der einzige Pfad für deterministische Test-Fixtures.
 
 | ENV | Default | Wirkung |
 |---|---|---|
@@ -133,6 +140,7 @@ Routing per Logger-Name auf drei separate Sinks (wenn `BG_LOG_DIR` gesetzt; ohne
 | `BG_LOG_CP_WIRE_MAX_BYTES`, `BG_LOG_CP_WIRE_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `cp_wire.log`. |
 | `BG_LOG_APP_MAX_BYTES`, `BG_LOG_APP_BACKUP_COUNT` | _Global-Wert_ | Pro-Strang-Override für `app.log`. |
 | `BG_LOG_INBOUND_BODIES` | `on` | `off` (oder `0`/`false`/`no`) deaktiviert Body- und Header-Felder im `http_request`-Event; Metadaten bleiben unverändert. Notfall-Schalter, falls Bodies zu groß werden. |
+| `BG_CP_WIRE_LOG` | `on` | `off` (oder `0`/`false`/`no`) deaktiviert den `CPWireLogger`-Hook am CP-Gateway-Client. Der `CPRecorder` (siehe `BG_CP_RECORD_DIR`) bleibt davon unberührt. |
 
 ### Prometheus-Metrics
 
@@ -241,4 +249,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.11.0*
+*Version 1.14.0*

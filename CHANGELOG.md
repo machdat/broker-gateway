@@ -4,6 +4,125 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.14.0] — 2026-05-02 (AP-05 K5 — Body-Token-Scan-Test, AP-05 abgeschlossen)
+
+Letzte Karte des AP-05: automatischer Test, dass kein Bearer-Token-Wert
+versehentlich als JSON-String in einem Read-Endpunkt-Body oder einem
+Response-Header auftaucht. Schliesst die offene Sicherheits-Frage 12.2
+in `docs/04-security.md`. Mit dieser Karte ist AP-05
+(Logging-Infrastruktur) vollstaendig erledigt.
+
+### Hinzugefuegt
+- `tests/test_no_token_leak_in_bodies.py` — erzeugt via
+  `POST /v1/auth/token` einen frischen Bearer-Token mit allen Scopes,
+  faehrt damit gegen 10 Read-Endpunkte (`/v1/health`,
+  `/v1/internal/health`, `/v1/instruments/search`,
+  `/v1/instruments/{conid}`, `/v1/quotes/snapshot`,
+  `/v1/portfolio/{accountId}` Summary/Positions/Ledger,
+  `/v1/orders/{order_id}` mit synthetischer ID -> 404,
+  `/v1/trades`) und verifiziert, dass der Token-Wert weder im
+  Response-Body noch in einem Response-Header auftaucht. Zweiter
+  Test sichert die explizite Auslassung von `POST /v1/auth/token`
+  (Token-Echo ist dort designiertes Verhalten, gegen Drift). SSE-
+  Stream-Endpunkte sind out-of-scope dieser Karte.
+- Negativ-Smoke (manuell verifiziert): wenn `/v1/health` kuenstlich
+  so manipuliert wird, dass es den ``Authorization``-Header in den
+  Response-Body echo't, schlaegt der Test fehl. Damit ist die
+  Test-Wirkung belegt.
+
+### Geaendert
+- `docs/04-security.md` Sektion 4.3 — "nicht automatisch geprueft"-
+  Aussage durch Verweis auf `tests/test_no_token_leak_in_bodies.py`
+  ersetzt; Endpunkt-Liste plus Auslassungs-Begruendung
+  dokumentiert. Sektion 12.2 — Body-Token-Scan-Frage als geklaert
+  markiert (Bezug AP-05 K5). Zusaetzliche Aufraeum-Edits:
+  Sektion 3 Recording-Leak-Zeile (Pre-Commit-Hook AP-05 K4
+  erwaehnt); Sektion 4.2 (CPWireLogger statt "kommend"); Sektion
+  5.1 Tabelle (cp_wire.log mit ENV-Schalter statt "Hook kommt").
+
+## [1.13.0] — 2026-05-02 (AP-05 K4 — Pre-Commit-Hook fuer Recordings)
+
+Automatische Leak-Praevention fuer eingecheckte Recordings: Pre-Commit-
+Hook scannt staged JSON/JSONL unter `tests/fixtures/recorded/` auf
+Authorization-Header, URL-safe-Token-Strings (>=32 Zeichen) und
+Cookie-Patterns. Schliesst die offene Sicherheits-Frage 12.2 in
+`docs/04-security.md`.
+
+### Hinzugefuegt
+- `scripts/pre_commit_recording_scan.py` — Skript scannt staged
+  Recording-Dateien auf REDACTED_HEADERS-Namen (importiert aus
+  `broker_gateway.cp.redaction` als SSOT), URL-safe-Strings >= 32
+  Zeichen (mit Allowlist fuer bekannte Hash-/Identifier-Felder wie
+  `MAC`, `hardware_info`, `etag`, `server-timing`, `x-request-id`,
+  `request_id`, `user-agent`, Manifest-`files`-Listen,
+  whatif-`warns`/`warning_code`/`warning_message`) und Cookie-Patterns
+  (`sess=`, `X-XSRF-TOKEN=`, `_csrf=`, `JSESSIONID=`). WS-Recordings
+  unter `tests/fixtures/recorded/ws/` skippen die URL-safe-Heuristik
+  (Frame-/Session-IDs sind dort strukturell URL-safe-32-stellig);
+  Header- und Cookie-Patterns bleiben aktiv. Exit-Codes: 0 sauber, 1
+  Verdacht, 2 JSON-Parse-Fehler.
+- `.pre-commit-config.yaml` — lokaler Hook (`recording-token-scan`),
+  triggert auf `^tests/fixtures/recorded/.*\.(json|jsonl)$`,
+  ruft das Skript mit `pass_filenames: true`.
+- `tests/test_pre_commit_recording_scan.py` — 12 Tests:
+  Clean-Recording -> 0; Authorization/Cookie-Header -> 1;
+  URL-safe-Token im Body -> 1; kurze Tokens (<32) -> 0;
+  SHA256-Hash in Allowlist-Feld (`MAC`) -> 0;
+  Cookie-Pattern-Substring im Body -> 1;
+  Pfad ausserhalb `tests/fixtures/recorded/` -> 0;
+  No-Args -> 0; WS-Recording mit 32-Hex-Frame-IDs -> 0;
+  WS-Recording mit Authorization-Header -> 1;
+  invalid-JSON -> 2.
+
+### Geaendert
+- `pyproject.toml` — `dev`-Extras um `pre-commit>=3.0`
+  ergaenzt.
+- `README.md` — `pre-commit install` als einmaliger Setup-Schritt
+  nach `pip install -e .[dev]`. Kurzbeschreibung des Hooks und der
+  SSOT-Konvention (REDACTED_HEADERS).
+- `docs/04-security.md` Sektion 6.3 — manuelle-Sichtpruefung-
+  Aussage durch Verweis auf `scripts/pre_commit_recording_scan.py`
+  ersetzt; vollstaendige Beschreibung der drei Heuristiken plus
+  WS-Pfad-Sonderbehandlung. Sektion 12.2 — Pre-Commit-Hook-Frage
+  als geklaert markiert (Bezug AP-05 K4).
+- `docs/cp-recordings.md` — neue Unter-Sektion "Pre-Commit-Hook
+  gegen Token-Leaks" unter "Was NICHT gespeichert wird".
+
+## [1.12.0] — 2026-05-02 (AP-05 K3 — CP-Wire-Log)
+
+Forensisches IBKR-Wire-Log: jeder broker-gateway → CP-Gateway-Roundtrip
+landet 1:1 in `cp_wire.log`, korreliert per `request_id` mit den
+Consumer-Inbound-Events. Letzte Karte des AP-05.
+
+### Hinzugefuegt
+- `src/broker_gateway/cp/wire_log.py` — `CPWireLogger`-Klasse mit
+  request- und response-event_hooks an `httpx.AsyncClient`.
+  Schreibt pro Roundtrip ein `cp_wire`-Event mit `method`, `path`,
+  `query`, `request_headers`, `request_body`, `status`,
+  `response_headers`, `response_body`, `latency_ms`. Header werden
+  ueber `cp.redaction.filter_headers` gefiltert (Authorization,
+  Cookie, Set-Cookie, X-API-Key, X-Auth-Token, Proxy-Authorization).
+  Bodies werden **nicht** durch `cp.normalize.normalize_response`
+  geschickt — forensische Treue, Order-IDs/Timestamps/Session-IDs
+  erscheinen wie tatsaechlich uebertragen.
+- `tests/test_cp_wire_log.py` — 9 Tests: GET-/POST-Roundtrip,
+  request_id-Korrelation via structlog-ContextVars, Token-Redaktion
+  (Header und Body-Substring-Check), POST-Body 1:1 ohne Normalisierung,
+  4xx/5xx-Pfad, `BG_CP_WIRE_LOG=off`-Pfad, Default-on-Pfad,
+  Fault-Tolerance bei Logger-Exception, Koexistenz mit `CPRecorder`.
+- ENV `BG_CP_WIRE_LOG` (Default `on`); `off`/`0`/`false`/`no`
+  deaktiviert den Hook komplett. Recorder bleibt davon unberuehrt.
+
+### Geaendert
+- `src/broker_gateway/cp/client.py` — `CPGatewayClient.__init__`
+  installiert per Default einen `CPWireLogger` zusaetzlich zum
+  `CPRecorder`. Konstruktor-Parameter `wire_logger` erlaubt
+  Test-Injection. Beide Hooks koexistieren am selben
+  `httpx.AsyncClient`.
+- `README.md` — Observability-Sektion erweitert: CP-Wire-Log-
+  Beschreibung als Unter-Abschnitt, ENV-Tabelle um `BG_CP_WIRE_LOG`
+  ergaenzt, Strang-Routing-Hinweis aktualisiert.
+
 ## [1.11.0] — Nachtrag 2026-05-01 (AP-04 K6 rev. 2 nach User-Review)
 
 AP-04 K6 Architektur-Doku in der zweiten Iteration: vier

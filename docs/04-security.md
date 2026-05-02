@@ -41,7 +41,7 @@ heute schützt — und welche bewusst aus dem Scope sind.
 | **Token-Diebstahl in Logs / Recordings** | `Authorization`/`Cookie`/`Set-Cookie`/`X-API-Key`/`X-Auth-Token`/`Proxy-Authorization` werden vor jedem Sink (Recorder, Inbound-Log, kommender CP-Wire-Hook) gefiltert. Tokens stehen niemals in Bodies. | Eintrag eines Tokens als Klartext in einen Body durch Programmierfehler — wird durch SSOT [`src/broker_gateway/cp/redaction.py`](../src/broker_gateway/cp/redaction.py) und Tests in [`tests/test_cp_redaction.py`](../tests/test_cp_redaction.py) abgesichert, aber nicht durch einen automatischen Body-Scan. |
 | **Replay von Schreiboperationen** (Order-Resubmit nach Netz-Retry) | Idempotency-Key-Pflicht für Schreiboperationen, In-Memory-Map mit konfigurierbarer TTL (Default 24 h). | Replay nach Service-Restart (Memory-Map ist transient, siehe Sektion 9). |
 | **Compromise des CP-Gateway-Containers** (Eskalation aus Java-Prozess) | `cpgateway`-Container läuft als non-root-User `cpgw`, kein extern publizierter Port, eingegangener Traffic ausschließlich über internes Compose-Netzwerk. | Schwachstelle in der IBKR-Java-Komponente selbst — keine Mitigation außer Tarball-SHA256-Pinning. |
-| **Recording-Leak** (Tarballs/Fixtures wandern in Issues, PRs, Sharing) | Recorder filtert Header und normalisiert nicht-deterministische Felder (Timestamps, Order-IDs, Session-IDs) vor dem Schreiben. | Nicht-redacted Recording wird von Hand erstellt und committed — wird nicht automatisch geprüft (offene Frage in Sektion 12). |
+| **Recording-Leak** (Tarballs/Fixtures wandern in Issues, PRs, Sharing) | Recorder filtert Header und normalisiert nicht-deterministische Felder (Timestamps, Order-IDs, Session-IDs) vor dem Schreiben. Pre-Commit-Hook `scripts/pre_commit_recording_scan.py` (AP-05 K4) scannt staged Recording-Dateien zusätzlich auf Token-Heuristiken. | Hook ist erst aktiv nach `pre-commit install` pro Clone — Operator-Disziplin bleibt nötig. |
 | **Tarball-Tampering** (CP-Gateway-Tarball aus IBKR ausgetauscht) | SHA256-Verifikation des Tarballs im Image-Build, hard fail. | Wenn der ursprünglich vertraute SHA selbst kompromittiert ist (Supply-Chain). |
 
 Aus dem Scope: DDoS-Schutz auf Transport-Ebene (Tailscale-Reach genügt),
@@ -179,7 +179,7 @@ wo er filtert — typisch unmittelbar vor `JsonRenderer`/`json.dump`.
 |---|---|
 | [`cp/recorder.py`](../src/broker_gateway/cp/recorder.py) | filtert Request- und Response-Header vor dem Schreiben einer Recording-Fixture |
 | `middleware/observability.py` (Inbound-Body-Logging, AP-05 K2) | filtert Request-/Response-Header vor dem `inbound.log`-Event |
-| (kommend) CP-Wire-Hook (AP-05 K3) | filtert vor `cp_wire.log` |
+| `broker_gateway.cp.wire_log.CPWireLogger` (AP-05 K3) | filtert vor `cp_wire.log` |
 
 ### 4.3 Test-Disziplin
 
@@ -189,10 +189,17 @@ und [`tests/test_observability.py`](../tests/test_observability.py)
 prüfen, dass die jeweiligen Sinks die SSOT verwenden — d.h. `Authorization`
 & Co. tatsächlich nicht in geschriebenen Bodies/Events landen.
 
-Was **nicht** automatisch geprüft ist: dass kein Token-Wert versehentlich
-als Klartext in einem JSON-**Body** landet (z.B. wenn ein zukünftiger
-Endpunkt einen Token zurückgibt). Hier hilft heute nur Disziplin und
-Code-Review — als offene Frage in Sektion 12 markiert.
+[`tests/test_no_token_leak_in_bodies.py`](../tests/test_no_token_leak_in_bodies.py)
+(AP-05 K5) erzeugt einen frischen Bearer-Token und prüft, dass dessen
+value in keinem Body und keinem Response-Header der Read-Endpunkte
+auftaucht. Abgedeckt sind `/v1/health`, `/v1/internal/health`,
+`/v1/instruments/search`, `/v1/instruments/{conid}`,
+`/v1/quotes/snapshot`, `/v1/portfolio/{accountId}` (Summary,
+Positions, Ledger), `/v1/orders/{order_id}` und `/v1/trades`.
+`POST /v1/auth/token` ist explizit ausgenommen — der Token-Echo ist
+dort designiertes Verhalten, ein zweiter Test schützt diese
+Auslassung gegen Drift. Stream-Endpunkte (SSE) sind out-of-scope
+dieser Karte und brauchen eine separate Mechanik (siehe AP-05-Notiz).
 
 ---
 
@@ -203,7 +210,7 @@ Code-Review — als offene Frage in Sektion 12 markiert.
 | Strang | Bodies geloggt? | Notation |
 |---|---|---|
 | `inbound.log` (Consumer → Gateway) | **Ja**, 1:1 (keine Redaction, keine Truncation), ENV-Schalter `BG_LOG_INBOUND_BODIES` | JSON-Struktur als `request_body`/`response_body` Dict (bei `application/json`), sonst UTF-8-String, sonst `null` mit `_b64`-Fallback |
-| `cp_wire.log` (Gateway → IBKR) | (Hook kommt mit AP-05 K3) — geplant 1:1 wie inbound | analog |
+| `cp_wire.log` (Gateway → IBKR) | **Ja**, 1:1 (keine Normalisierung), ENV-Schalter `BG_CP_WIRE_LOG` (Default `on`) | analog inbound |
 | `app.log` (Lifecycle, Throttle, Streams) | nur Metadaten | strukturierte Felder pro Logger |
 | Recordings (`tests/fixtures/recorded/`) | **Ja**, 1:1, durchläuft `cp.normalize.normalize_response` (Timestamps/IDs werden zu Platzhaltern) | JSON pro Roundtrip |
 
@@ -261,15 +268,29 @@ Implementierung: [`src/broker_gateway/cp/recorder.py`](../src/broker_gateway/cp/
 
 `tests/fixtures/recorded/live/` ist eingecheckt — die Dateien sind die
 kanonische Mock-Quelle (Architektur-Sektion 9.1, 9.2). Damit sie das
-**bleiben**, muss vor jedem `git add` geprüft werden:
+**bleiben**, scannt der Pre-Commit-Hook
+[`scripts/pre_commit_recording_scan.py`](../scripts/pre_commit_recording_scan.py)
+jede staged JSON/JSONL unter `tests/fixtures/recorded/` auf:
 
-- Header-Redaktion hat gegriffen (`grep -i 'authorization' …` muss leer
-  sein).
-- Keine 32+-stelligen URL-safe-Strings im Body (Token-Heuristik).
-- Account-IDs / Session-IDs sind durch Platzhalter ersetzt.
+- Header-Namen aus `REDACTED_HEADERS` (Single Source of Truth in
+  [`src/broker_gateway/cp/redaction.py`](../src/broker_gateway/cp/redaction.py)) —
+  `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `X-Auth-Token`,
+  `Proxy-Authorization`, case-insensitive.
+- URL-safe-Strings ≥ 32 Zeichen aus `[A-Za-z0-9_-]` (Token-Heuristik).
+  Allowlist für bekannte Hash-/Identifier-Felder (`MAC`,
+  `hardware_info`, `etag`, `server-timing`, `x-request-id`,
+  `request_id`, `user-agent`, Manifest-`files`-Listen,
+  whatif-`warns`/`warning_code`/`warning_message`).
+- Cookie-Patterns als Substring (`sess=`, `X-XSRF-TOKEN=`, `_csrf=`,
+  `JSESSIONID=`).
 
-Heute ist das **kein automatischer Pre-Commit-Hook**. Bei Recording-
-Sessions ist es Teil der manuellen Verifikation.
+Aktivierung pro Clone einmalig: `pip install -e .[dev] && pre-commit install`.
+Manueller Voll-Lauf: `pre-commit run --all-files`. WS-Recordings unter
+`tests/fixtures/recorded/ws/` skippen die URL-safe-Heuristik (Frame-
+und Session-IDs sind dort strukturell URL-safe-32-stellig); Header-
+und Cookie-Patterns bleiben aktiv. Bei Recording-Sessions ist die
+Sichtprüfung dadurch automatisiert; manuelle Verifikation bleibt
+empfehlenswert, ersetzt den Hook aber nicht.
 
 ### 6.4 WebSocket-Recordings
 
@@ -449,15 +470,15 @@ forensische Rekonstruktion läuft über `inbound.log` (Body 1:1) und
 
 ### 12.2 Offene Sicherheits-Fragen
 
-- **Pre-Commit-Hook für Recordings.** Heute manuelle Sichtprüfung. Eine
-  Hook, die `tests/fixtures/recorded/**.json` auf bekannte Header-Namen,
-  Cookie-Patterns oder lange URL-safe-Strings scannt, würde die
-  Recording-Disziplin automatisieren. Karte ist nicht angelegt.
-- **Body-Token-Scan.** Heute kein Schutz dagegen, dass ein Token-Wert
-  versehentlich als JSON-String in einem Response-Body landet (z.B.
-  durch einen falschen `model_dump`-Pfad). Ein Test, der jeden Endpunkt
-  durchprobiert und auf `BG_BOOTSTRAP_ADMIN_TOKEN`-Substring im Body
-  prüft, wäre ein Ansatz.
+- ~~**Pre-Commit-Hook für Recordings.**~~ Geklärt mit AP-05 K4
+  (v1.13.0): Hook in `scripts/pre_commit_recording_scan.py`, aktiviert
+  über `pre-commit install`, siehe Sektion 6.3.
+- ~~**Body-Token-Scan.**~~ Geklärt mit AP-05 K5 (v1.14.0): Test
+  `tests/test_no_token_leak_in_bodies.py` erzeugt einen Bearer-Token
+  und prüft pro Read-Endpunkt, dass der Wert weder im Body noch in
+  Response-Headern auftaucht. SSE-Stream-Endpunkte sind out-of-scope
+  dieser Karte (separate Karte falls Token-Echo dort relevant wird).
+  Siehe Sektion 4.3.
 - **Permissions auf `tokens.json`.** Service-Code erzwingt heute nicht,
   dass die Datei `chmod 0600` hat. Operator-Aufgabe — könnte als
   Startup-Check implementiert werden.
@@ -469,6 +490,6 @@ forensische Rekonstruktion läuft über `inbound.log` (Body 1:1) und
 
 ---
 
-*Stand: v1.11.0 (2026-04-30). Karten mit Auth-, Logging-, Recording-
+*Stand: v1.14.0 (2026-05-02). Karten mit Auth-, Logging-, Recording-
 oder Tokenmodell-Wirkung aktualisieren dieses Dokument oder verweisen
 explizit auf die Sektion, die zu pflegen ist.*

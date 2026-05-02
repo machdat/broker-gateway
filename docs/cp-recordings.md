@@ -96,6 +96,20 @@ Realitaet darstellen, gegen die Tests laufen sollen. Wer fuer einen
 bestimmten Endpunkt anders entscheidet, ruft den Recorder mit
 `normalize_prices=True` auf bzw. setzt das Flag im Recording-Skript.
 
+### Pre-Commit-Hook gegen Token-Leaks
+
+Zusaetzlich zur Recorder-Filterung scannt
+[`scripts/pre_commit_recording_scan.py`](../scripts/pre_commit_recording_scan.py)
+jede staged JSON/JSONL unter `tests/fixtures/recorded/` auf
+Authorization-Header, URL-safe-Strings >= 32 Zeichen
+(Token-Heuristik) und Cookie-Patterns (`sess=`, `X-XSRF-TOKEN=`,
+`_csrf=`, `JSESSIONID=`). REDACTED_HEADERS aus
+`broker_gateway.cp.redaction` sind die Single-Source-of-Truth-Liste,
+die der Hook importiert - keine duplizierte Liste im Skript.
+Aktivierung pro Clone einmalig: `pip install -e .[dev] && pre-commit
+install`. Manueller Voll-Lauf: `pre-commit run --all-files`. Details
+in [`docs/04-security.md`](04-security.md) Sektion 6.3.
+
 ## Diff-Bewertung
 
 Wenn `git diff tests/fixtures/recorded/...` Aenderungen zeigt, gibt es

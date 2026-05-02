@@ -10,6 +10,11 @@ Optionaler Recorder (Karte AP-02 #02): wenn die Umgebungsvariable
 injiziert wurde, wird ein :class:`CPRecorder` automatisch an die
 httpx-event-hooks angehaengt. Tests bleiben davon unbeeindruckt - sie
 bringen ihren eigenen Client mit und setzen die ENV nicht.
+
+Forensisches Wire-Log (AP-05 #03): zusaetzlich wird per Default ein
+:class:`CPWireLogger` installiert, der jeden Roundtrip 1:1 als
+``cp_wire``-Event nach ``cp_wire.log`` schreibt (gefiltert um Token-
+Header). Abschaltbar ueber ``BG_CP_WIRE_LOG=off``.
 """
 from __future__ import annotations
 
@@ -19,12 +24,14 @@ from typing import Any, Awaitable, Callable
 import httpx
 
 from broker_gateway.cp.recorder import CPRecorder
+from broker_gateway.cp.wire_log import CPWireLogger
 from broker_gateway.throttle.manager import ThrottleManager
 
 
 _DEFAULT_BASE_URL = "http://cpgateway:5000/v1/api"
 _DEFAULT_TIMEOUT_S = 10.0
 _RECORD_DIR_ENV = "BG_CP_RECORD_DIR"
+_WIRE_LOG_ENV = "BG_CP_WIRE_LOG"
 
 
 PacingHook = Callable[[str, str], Awaitable[None]]
@@ -39,6 +46,11 @@ und das Pacing-Hook bleibt no-op.
 
 async def _noop_pacing(_method: str, _path: str) -> None:
     return None
+
+
+def _wire_log_enabled() -> bool:
+    raw = (os.environ.get(_WIRE_LOG_ENV) or "on").strip().lower()
+    return raw not in ("off", "0", "false", "no")
 
 
 class CPGatewayClient:
@@ -59,6 +71,7 @@ class CPGatewayClient:
         throttle: ThrottleManager | None = None,
         http_client: httpx.AsyncClient | None = None,
         recorder: CPRecorder | None = None,
+        wire_logger: CPWireLogger | None = None,
     ) -> None:
         self.base_url = (base_url or os.environ.get("BG_CP_BASE_URL") or _DEFAULT_BASE_URL).rstrip("/")
         self._pacing = pacing_hook or _noop_pacing
@@ -74,6 +87,15 @@ class CPGatewayClient:
         self._recorder = recorder
         if self._recorder is not None:
             self._recorder.install_into(self._client)
+
+        # Wire-Logger-Aktivierung: explizit injiziert > ENV > Default 'on'.
+        # Recorder und Wire-Logger koexistieren - Recorder normalisiert,
+        # Wire-Logger schreibt 1:1; beide haengen sich an die httpx-Hooks.
+        if wire_logger is None and _wire_log_enabled():
+            wire_logger = CPWireLogger()
+        self._wire_logger = wire_logger
+        if self._wire_logger is not None:
+            self._wire_logger.install_into(self._client)
 
     async def aclose(self) -> None:
         if self._owns_client:
