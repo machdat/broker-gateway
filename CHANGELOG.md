@@ -4,6 +4,47 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.16.0] — 2026-05-02 (AP-11 K1 — SmdTopicAdapter, AP-11 Phase A startet)
+
+Neue `cp/topics`-Schicht mit dem ersten Topic-Adapter fuer `smd`
+(Single-Market-Data). Der Adapter parst rohe IBKR-WebSocket-Frames in
+semantisch normierte `SmdFrame`-Voll-Snapshots, dekodiert Mixed-Types
+gemaess `docs/architecture/ws-adapter-design.md` Anhang B
+(String-Preise zu `Decimal`, String-Sizes zu `int`, Float-Change-Pct
+zu `float`), merged Delta-Frames in den pro-`conid` gehaltenen
+Snapshot-State, dedupliziert via `(conid, _updated)` und ignoriert
+unbekannte Field-IDs forward-compat. Tradeability- und
+`exchange_id`-Felder bleiben in dieser Karte konstant `None` und
+werden in K4 (`CalendarService`) bzw. K5 (Tradeability) gefuellt.
+Karte ist reine Frame-Transformation — kein REST-Call, kein
+SSE-Endpoint angefasst (das ist K3 `WSPushSource`).
+
+### Hinzugefuegt
+- `src/broker_gateway/cp/topics/__init__.py` als Modul-Marker.
+- `src/broker_gateway/cp/topics/smd.py` mit `SmdFrame`-`dataclass` und
+  `SmdTopicAdapter`. Stateful pro-`conid`-Snapshot-Cache, Dedup-Map
+  `(conid -> last_updated)`, defensive Konversion (`C271.55`-Praefix
+  bei "Close-Last" wird gestrippt, ungueltige Werte werden zu `None`
+  ohne Adapter-Crash).
+- `tests/test_topic_adapter_smd.py` mit 11 Tests: Mixed-Type-
+  Dekodierung, Voll-Snapshot beim ersten Frame, Delta-Merge mit Erhalt
+  alter Werte, Dedup via `(conid, _updated)`, Replay gegen
+  `tests/fixtures/recorded/ws/spike-baseline.jsonl` (Negativ-Garantie:
+  keine `SmdFrame`s aus reinem Lifecycle-Recording), Forward-Compat
+  fuer unbekannte Field-IDs, non-`smd`-Topics werden ignoriert,
+  conid-Extraktion aus dem Topic-Suffix als Fallback,
+  `C`-Praefix-Decimal-Robustheit, zwei `conid`s halten unabhaengige
+  Snapshots.
+
+### Naechste Schritte (AP-11 Phase A)
+- K2 `SubscriptionRegistry` mit Replay nach `connect()` (parallel zu
+  K1 umsetzbar).
+- K3 `WSPushSource` haengt Adapter und Registry in den vorhandenen
+  `SubscriptionManager`-Refcount ein und schaltet `/v1/quotes/stream`
+  via `BG_QUOTES_SOURCE=ws` auf den WS-Push-Pfad.
+
+---
+
 ## [1.15.0] — 2026-05-02 (AP-10 K1 — tokens.json Permission-Check, AP-10 abgeschlossen)
 
 `FileTokenStore` haertet die persistente Token-Datei: beim Init wird
