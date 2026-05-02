@@ -2,7 +2,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** v1.22.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 + AP-10 abgeschlossen, AP-11 Phase A komplett (K1..K5), Phase B in Arbeit (K6+K7: `/v1/orders/stream` SSE, `/v1/quotes/ws` + `/v1/orders/ws` WebSocket-Egress). Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
+**Status:** v1.23.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 + AP-10 abgeschlossen, AP-11 Phase A+B Code-komplett (K1..K8). Live-Aktivierung des WS-Pfads (CPWebSocketClient im Lifespan + Live-Smoke gegen U25235077) bleibt als K3-Folgekarte offen. Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Architektur und Doku
 

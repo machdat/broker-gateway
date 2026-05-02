@@ -161,6 +161,10 @@ class CPWebSocketClient:
         self._reader_task: asyncio.Task[None] | None = None
         self._pinger_task: asyncio.Task[None] | None = None
         self._on_connected_callbacks: list[Callable[[], Awaitable[None]]] = []
+        # Public fuer den /v1/status-Endpoint (AP-11 K8): zaehlt
+        # waehrend des Backoff-Loops hoch und wird auf 0 zurueckgesetzt,
+        # sobald ein Reconnect-Versuch erfolgreich war.
+        self.reconnect_attempt: int = 0
 
     @property
     def connected(self) -> bool:
@@ -368,6 +372,7 @@ class CPWebSocketClient:
         for attempt in range(1, self.max_reconnect_attempts + 1):
             if self._closing:
                 return False
+            self.reconnect_attempt = attempt
             try:
                 await self._open_and_authenticate(
                     auth_timeout_s=_DEFAULT_AUTH_TIMEOUT_S
@@ -385,6 +390,7 @@ class CPWebSocketClient:
                 delay *= self.backoff_factor
                 continue
             logger.info("WS-Reconnect erfolgreich nach Versuch %s", attempt)
+            self.reconnect_attempt = 0
             await self._fire_on_connected()
             return True
         return False

@@ -22,6 +22,7 @@ from broker_gateway.api.v1.orders_stream import (
     OrdersBootstrapLoader,
     get_orders_bootstrap_loader,
 )
+from broker_gateway.api.v1.status import StatusProbe, get_status_probe
 from broker_gateway.api.v1.orders import (
     get_idempotency_store,
     get_orders_portfolio_invalidator,
@@ -157,6 +158,11 @@ def create_app(
         orders_bootstrap = OrdersBootstrapLoader(
             cast(CPGatewayClient, services_client), sor_adapter
         )
+        # StatusProbe ohne SubscriptionRegistry / WS-Client - die werden
+        # erst in der Lifespan-Wiring-Folgekarte (AP-11 K3a) instanziiert.
+        # Bis dahin liefert der Endpoint eine konservative Sicht: keine
+        # aktiven Subscriptions, kein Reconnect-Counter.
+        status_probe = StatusProbe()
         pf_service = (
             portfolio_service
             if portfolio_service is not None
@@ -190,6 +196,7 @@ def create_app(
         app.state.calendar_service = cal_service
         app.state.orders_broadcaster = orders_broadcaster
         app.state.orders_bootstrap_loader = orders_bootstrap
+        app.state.status_probe = status_probe
         app.state.portfolio_service = pf_service
         app.state.orders_service = ord_service
         app.state.idempotency_store = idem_store
@@ -219,6 +226,9 @@ def create_app(
             lambda: cast(
                 OrdersBootstrapLoader, app.state.orders_bootstrap_loader
             )
+        )
+        app.dependency_overrides[get_status_probe] = (
+            lambda: cast(StatusProbe, app.state.status_probe)
         )
         app.dependency_overrides[get_portfolio_service] = (
             lambda: cast(PortfolioService, app.state.portfolio_service)

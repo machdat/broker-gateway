@@ -4,6 +4,55 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.23.0] — 2026-05-02 (AP-11 K8 — /v1/status + 150-Symbol-Stresstest-Skelett, AP-11 Code-komplett)
+
+Status-Endpoint plus Stresstest-Skelett. Damit ist AP-11 (WS-Adapter
+Implementation) Code-seitig komplett - alle 8 Karten der Phasen A
+und B sind gemerged und auf cma-pi-1 deployed. Die Live-Aktivierung
+des WS-Pfads (CPWebSocketClient im FastAPI-Lifespan + Default-Flip
+auf `BG_QUOTES_SOURCE=ws` + Live-Smoke gegen U25235077) bleibt als
+einzelne K3-Folgekarte offen; bis dahin laeuft `/v1/quotes/stream`
+weiter ueber den Polling-Pfad und der Status-Endpoint zeigt
+``last_frame_age_seconds=null`` plus ``subscriptions_active=0``.
+
+### Hinzugefuegt
+- `src/broker_gateway/api/v1/status.py` mit ``GET /v1/status``,
+  Scope ``instruments:read``. Felder: ``cp_gateway_connected``,
+  ``last_frame_age_seconds``, ``reconnect_attempt``,
+  ``subscriptions_active``. Klasse ``StatusProbe`` haelt einen
+  monotonischen Last-Frame-Marker (``mark_frame()``) und liest die
+  drei anderen Felder ueber Lifecycle-/Registry-/Reconnect-
+  Callbacks.
+- `src/broker_gateway/cp/ws_client.py` ``CPWebSocketClient``
+  bekommt ein public ``reconnect_attempt: int``-Attribut, das im
+  Backoff-Loop hochgezaehlt und nach erfolgreichem Reconnect auf
+  0 zurueckgesetzt wird.
+- `src/broker_gateway/main.py` instanziiert ``StatusProbe`` im
+  Lifespan und registriert den Dependency-Override.
+- `tests/test_status_endpoint.py` mit 6 Tests: Endpoint-Schema,
+  Cold-Start-Werte (None / 0 / 0), Scope-403 ohne
+  ``instruments:read``, Probe-Mark-Frame, Probe-Registry-Count,
+  Probe-Reconnect-Callback.
+- `tests/integration/test_smd_stresstest_150.py` als Skelett mit
+  Markern ``live`` + ``stresstest`` (default deselected).
+- `docs/runbooks/smd-stresstest.md` als Runbook fuer den manuellen
+  Stresstest gegen U25235077.
+- `pyproject.toml` ``[tool.pytest.ini_options]`` deselected
+  default ``live`` und ``stresstest`` Marker, registriert die drei
+  Marker (``live``, ``stresstest``, ``integration``) ohne
+  PytestUnknownMarkWarning.
+
+### AP-11 Status nach K8
+- Phase A: K1 (SmdTopicAdapter), K2 (SubscriptionRegistry +
+  Reconnect-Hook), K3 (WSPushSource + ENV-Schalter), K4
+  (CalendarService + /v1/exchanges), K5 (Tradeability-Felder).
+- Phase B: K6 (sor-Adapter + /v1/orders/stream), K7 (WS-Egress
+  /v1/quotes/ws + /v1/orders/ws), K8 (/v1/status + Stresstest-
+  Skelett).
+- Offen: K3-Folgekarte (Lifespan-Wiring + Live-Smoke).
+
+---
+
 ## [1.22.0] — 2026-05-02 (AP-11 K7 — WS-Egress /v1/quotes/ws + /v1/orders/ws)
 
 WebSocket-Egress als zweites Ziel-Tier neben SSE. Beide Endpunkte
