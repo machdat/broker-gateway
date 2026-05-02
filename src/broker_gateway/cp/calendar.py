@@ -163,9 +163,10 @@ class CalendarService:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="trsrv/secdef/schedule lieferte unerwartetes Schema",
             )
-        # IBKR liefert ein Listen-Element pro Boerse; bei einer einzelnen
-        # exchange_id kommt eine 1-elementige Liste.
-        primary = payload[0]
+        # IBKR liefert ein Listen-Element pro Boerse, an der das Symbol
+        # gehandelt wird. Wir suchen nach unserem konkreten exchange_id;
+        # Fallback auf das erste Element, wenn keine Match.
+        primary = _select_exchange_entry(payload, exchange_id)
         if not isinstance(primary, dict):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -178,16 +179,37 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _select_exchange_entry(
+    payload: list[Any], exchange_id: str
+) -> dict[str, Any]:
+    """Sucht in der vom CP-Gateway zurueckgegebenen Liste nach dem
+    Eintrag, dessen ``exchange``-Feld zur gewuenschten ``exchange_id``
+    passt. Fallback: erstes Listenelement."""
+    target = exchange_id.upper()
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        if (entry.get("exchange") or "").upper() == target:
+            return entry
+    return payload[0] if isinstance(payload[0], dict) else {}
+
+
 def _normalise(
     payload: dict[str, Any],
     *,
     fallback_exchange: str,
 ) -> ExchangeCalendar:
-    time_zone_id = payload.get("timeZoneId") or payload.get("timeZone")
+    # IBKR-Live-Schema: ``timezone`` (lowercase). Karten-Anhang nennt
+    # ``timeZoneId``/``timeZone`` als alternative Schluessel.
+    time_zone_id = (
+        payload.get("timezone")
+        or payload.get("timeZoneId")
+        or payload.get("timeZone")
+    )
     if not time_zone_id:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="trsrv/secdef/schedule lieferte keine timeZoneId",
+            detail="trsrv/secdef/schedule lieferte keine timezone",
         )
     try:
         tz = ZoneInfo(time_zone_id)
@@ -226,7 +248,13 @@ def _normalise_day(raw: dict[str, Any], *, tz: ZoneInfo) -> CalendarDay:
             detail="schedule-Eintrag ohne tradingScheduleDate",
         )
     parsed_date = _parse_iso_date(raw_date)
-    raw_sessions = raw.get("sessions") or []
+    # IBKR-Live-Schema: die echten Sessions liegen in ``tradingtimes``;
+    # ``sessions`` ist meist leer. Karten-Anhang nennt ``sessions``.
+    raw_sessions: list[Any] = []
+    if isinstance(raw.get("sessions"), list) and raw.get("sessions"):
+        raw_sessions = raw["sessions"]
+    elif isinstance(raw.get("tradingtimes"), list):
+        raw_sessions = raw["tradingtimes"]
     sessions = list(_collect_sessions(raw_sessions, day=parsed_date, tz=tz))
     return CalendarDay(
         date=parsed_date,

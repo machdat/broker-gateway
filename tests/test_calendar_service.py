@@ -272,6 +272,63 @@ async def test_cp_error_surfaces_as_502(cp_client) -> None:
 
 
 @respx.mock
+async def test_live_ibkr_schema_with_tradingtimes_and_lowercase_timezone(
+    cp_client,
+) -> None:
+    """Live-IBKR-Antwort hat ``timezone`` (lowercase) und Sessions in
+    ``tradingtimes``, nicht in ``sessions``. Mehrere Boersen-Eintraege
+    in der Top-Level-Liste; der Adapter muss den passenden auswaehlen."""
+    payload = [
+        {
+            "id": "p109581",
+            "exchange": "RBCCMALP",
+            "description": "RBC CMA LLC",
+            "timezone": "America/New_York",
+            "schedules": [],
+        },
+        {
+            "id": "p1",
+            "exchange": "NASDAQ",
+            "description": "NASDAQ",
+            "timezone": "America/New_York",
+            "schedules": [
+                {
+                    "tradingScheduleDate": "20260501",
+                    "sessions": [],
+                    "tradingtimes": [
+                        {
+                            "openingTime": "0930",
+                            "closingTime": "1600",
+                            "prop": "LIQUID",
+                        },
+                    ],
+                },
+                {
+                    "tradingScheduleDate": "20260525",
+                    "sessions": [],
+                    "tradingtimes": [],
+                },
+            ],
+        },
+    ]
+    respx.get(f"{_BASE_URL}/trsrv/secdef/schedule").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    service = CalendarService(cp_client)
+    calendar = await service.get("NASDAQ")
+
+    assert calendar.exchange_id == "NASDAQ"
+    assert calendar.time_zone == "America/New_York"
+    assert len(calendar.days) == 2
+    rth_day, holiday = calendar.days
+    assert rth_day.is_holiday is False
+    assert len(rth_day.sessions) == 1
+    assert rth_day.sessions[0].type == "rth"
+    assert holiday.is_holiday is True
+
+
+@respx.mock
 async def test_unknown_timezone_surfaces_as_502(cp_client) -> None:
     from fastapi import HTTPException  # noqa: PLC0415
 

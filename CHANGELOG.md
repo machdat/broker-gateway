@@ -4,6 +4,25 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.19.2] — 2026-05-02 (AP-11 K4 hotfix2 — Live-IBKR-Schema fuer trsrv/secdef/schedule)
+
+Live-Smoke nach 1.19.1 zeigte: das echte CP-Gateway-Antwortschema
+unterscheidet sich vom Karten-Anhang in zwei Punkten. (1) Die
+Time-Zone heisst ``timezone`` (lowercase), nicht ``timeZoneId``.
+(2) Die echten Trading-Slots liegen in ``tradingtimes[]``, das
+``sessions``-Array bleibt meistens leer. Zusaetzlich liefert IBKR
+mehrere Boersen-Eintraege in der Top-Level-Liste (alle Boersen, an
+denen das Symbol gehandelt wird) - der Adapter muss den passenden
+Eintrag selektieren.
+
+`CalendarService` akzeptiert jetzt beide Schema-Varianten (Karten-
+Anhang und Live), waehlt aus der Top-Level-Liste den passenden
+``exchange``-Eintrag und faellt sonst auf das erste Element zurueck.
+Tests um einen End-to-End-Smoke gegen das Live-Schema erweitert
+(insgesamt 10 Tests in test_calendar_service.py).
+
+---
+
 ## [1.19.1] — 2026-05-02 (AP-11 K4 hotfix — symbol-Pflichtparameter fuer trsrv/secdef/schedule)
 
 Live-Smoke gegen U25235077 zeigte: IBKR ``/trsrv/secdef/schedule``
