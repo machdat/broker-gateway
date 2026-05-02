@@ -17,6 +17,10 @@ letzten zwei beschreiben Subscription- und Bidask-Typ und sind aktuell
 nicht relevant. `F` ist im offiziellen 6509-Schema nicht vorgesehen,
 wird aber pragmatisch ebenfalls auf `frozen` gemappt - manche
 hartcodierten Mock-Antworten verwenden `FPB` historisch.
+
+Vollständige Sub-Code-Tabelle, Frozen-Semantik, Empirie aus den
+Live-Recordings und Restunsicherheiten:
+``docs/research/ibkr-availability-code.md`` (AP-09, Mai 2026).
 """
 from __future__ import annotations
 

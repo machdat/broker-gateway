@@ -29,22 +29,26 @@ Sektion (eingangs zitiert in Memory `project_ibkr_session_owner`).
 
 ### Availability-Code (auch: 6509-Code)
 
-Drei-Buchstaben-Code aus IBKR-Quote-Feld 6509 mit der Bedeutung
-„Wie aktuell sind diese Marktdaten?". Erstes Zeichen kennzeichnet
-Realtime/Delayed/Frozen, die zwei folgenden Zeichen ergänzen Sub-
-Information (Paid/Free, Book/Top etc.).
+String-Code (max. 3 Zeichen) aus IBKR-Quote-Feld 6509 mit der Bedeutung
+„Wie aktuell sind diese Marktdaten?". Vollständige Tabelle (inkl.
+Sub-Code-Bedeutungen, Empirie, Restunsicherheiten) in
+[`docs/research/ibkr-availability-code.md`](research/ibkr-availability-code.md).
 
-| Code | Bedeutung | Realtime / Delayed | Quelle |
-|---|---|---|---|
-| `RPB` | Realtime / Paid / Book | **Realtime** | `docs/01-context-from-bootstrap-session.md` (entkernet — Memory-Notiz `IBKR Feld 6509 Availability-Code`) |
-| `DPB` | Delayed / Paid / Book | **Delayed** | dito |
-| `D*` (allgemein, erstes Zeichen `D`) | Delayed-Familie | **Delayed** | dito |
-| `R*` (allgemein, erstes Zeichen `R`) | Realtime-Familie | **Realtime** | dito |
-| `Z*` (Frozen) | Markt geschlossen, letzter bekannter Wert | **Frozen** (weder R noch D) | `docs/research/ibkr-cpapi-doc.json`, K6-Sektion 5.2 |
-| `Y*` (Frozen Delayed) | Frozen mit Delayed-Quelle | **Frozen** | wie oben |
-| `F*` (Legacy / Mock) | historisch in fruehen Snapshots | **Frozen** | `src/broker_gateway/availability.py` |
-| `H*` (Halted) | Trading aktiv ausgesetzt (regulatorisch / volatilitaetsbedingt) | **nicht handelbar** | K6-Sektion 5.2 |
-| Andere Sub-Codes (z.B. `B`, `P`, `T`) | Top-of-Book / Paid / etc. | n/a (kombinierbar) | [OFFENE FRAGE] vollständiges Tabellen-Mapping |
+Erstes Zeichen kennzeichnet die Datenklasse:
+
+| Praefix | Bedeutung | Adapter-Mapping |
+|---------|-----------|-----------------|
+| `R` | RealTime (Subscription nötig) | `realtime` |
+| `D` | Delayed 15-20 min | `delayed` |
+| `Z` | Frozen (Markt geschlossen, Echtzeit-Lieferung des letzten Werts) | `frozen` |
+| `Y` | Frozen Delayed | `frozen` |
+| `F` | Legacy / Mock (synonym zu Frozen) | `frozen` |
+| `N` | Not Subscribed | `None` (Konsument muss defensiv reagieren) |
+| `H` | Halted (im WS-Adapter-Tradeability-Layer, nicht im OpenAPI-6509-Schema) | (Adapter `None`; WS-Adapter setzt `current_session=halted`) |
+
+Zweites Zeichen `P` = Snapshot, `p` = Consolidated. Drittes Zeichen
+`B` = Book. Empirisch in unseren Recordings (Stand 2026-05-02): nur
+`DPB` (62×), `ZB` (3×, ohne mittleres Zeichen), `RPB` (2×).
 
 **Tradeability-Verknuepfung (AP-11 K5):** Der smd-Frame im
 WS-Pfad reichert pro Frame zusaetzlich die abgeleiteten Felder
@@ -399,9 +403,12 @@ Begriffe, deren Bedeutung beim Schreiben nicht eindeutig festgestellt
 werden konnte und in der Tabelle oben mit `[OFFENE FRAGE]` markiert
 sind:
 
-- Vollständige Tabelle der Availability-Sub-Codes (zweites/drittes
-  Zeichen jenseits `P`/`B`).
-- Genauer Semantik-Block des `F` (Frozen) im Availability-Code.
+- ~~Vollständige Tabelle der Availability-Sub-Codes (zweites/drittes
+  Zeichen jenseits `P`/`B`).~~ **geklärt** in
+  [`docs/research/ibkr-availability-code.md`](research/ibkr-availability-code.md)
+  (AP-09, Mai 2026).
+- ~~Genauer Semantik-Block des `F` (Frozen) im Availability-Code.~~
+  **geklärt** im selben Research-Doku.
 - whatif-Warning-Code-Tabelle 1-99 (heute nur Warnings 4 + 21
   empirisch bekannt).
 - WebSocket-Topics jenseits von `smd`/`sor`/`str` (`spl`, `smh`,
