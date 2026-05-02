@@ -344,12 +344,10 @@ des Consumers.
 
 ### 8.2 Offene Fragen
 
-- **Drift `v1.md` ↔ Implementierung:** Implementation-Status-Tabelle
-  in `v1.md` ist auf Service-Version 1.0.0 datiert. Aktuelle Service-
-  Version ist 1.11.0; Updates seit dann sind teils nicht in der
-  Tabelle reflektiert. Reparatur ist **nicht** Scope dieser Karte (siehe
-  Karten-Constraints) — eine eigene Karte „API-Spec-Aktualisierung
-  gegen v1.11.0" ist sinnvoll.
+- **Drift `v1.md` ↔ Implementierung:** **geklärt** (AP-09, Mai 2026).
+  Implementation-Status-Tabelle in `v1.md` ist auf Service-Version
+  1.23.0 nachgezogen, inklusive AP-04..AP-11-Querschnitts-Bausteine
+  in einer separaten Sektion direkt unter der Endpunkt-Tabelle.
 - **Eindeutige Section-Nummern:** Verweise „v1.md Section 5.2.4" oben
   funktionieren nur, wenn die Spec eine entsprechende Sub-Sektion
   führt. Bei Drift werden die Verweise stumpf — Pre-Commit-Linter, der
