@@ -160,6 +160,7 @@ class CPWebSocketClient:
         )
         self._reader_task: asyncio.Task[None] | None = None
         self._pinger_task: asyncio.Task[None] | None = None
+        self._on_connected_callbacks: list[Callable[[], Awaitable[None]]] = []
 
     @property
     def connected(self) -> bool:
@@ -190,6 +191,7 @@ class CPWebSocketClient:
         self._pinger_task = asyncio.create_task(
             self._ping_loop(), name="cp-ws-pinger"
         )
+        await self._fire_on_connected()
 
     async def send(self, frame: str) -> None:
         if not self.connected or self._connection is None:
@@ -197,6 +199,32 @@ class CPWebSocketClient:
                 "CPWebSocketClient.send vor connect oder nach close"
             )
         await self._connection.send(frame)
+
+    def add_on_connected_callback(
+        self, callback: Callable[[], Awaitable[None]]
+    ) -> None:
+        """Registriert einen Async-Callback, der nach jedem erfolgreichen
+        ``connect()`` und nach jedem erfolgreichen ``_reconnect()`` feuert.
+
+        Genutzt von :class:`broker_gateway.streams.registry.SubscriptionRegistry`
+        zum Replay aller aktiven Subscriptions nach Reconnect (das
+        CP-Gateway persistiert den Subscription-State nicht). Callback-
+        Fehler werden geloggt, aber nicht weiter propagiert - ein Bug in
+        einem Callback darf den Reader/Pinger-Loop nicht abreissen.
+        """
+        self._on_connected_callbacks.append(callback)
+
+    async def _fire_on_connected(self) -> None:
+        for callback in list(self._on_connected_callbacks):
+            try:
+                await callback()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "CPWebSocketClient on-connected-Callback fehlgeschlagen: %s",
+                    exc,
+                )
 
     def __aiter__(self) -> AsyncIterator[WSIncomingFrame]:
         return self
@@ -357,6 +385,7 @@ class CPWebSocketClient:
                 delay *= self.backoff_factor
                 continue
             logger.info("WS-Reconnect erfolgreich nach Versuch %s", attempt)
+            await self._fire_on_connected()
             return True
         return False
 

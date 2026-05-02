@@ -4,6 +4,48 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.17.0] — 2026-05-02 (AP-11 K2 — SubscriptionRegistry mit Reconnect-Replay-Hook)
+
+Soll-State-Speicher fuer aktive WS-Subscriptions plus on-connected-Hook
+am `CPWebSocketClient`. Hintergrund: das CP-Gateway persistiert den
+Subscription-State nicht (K4-Reconnect-Befund) - jeder Reconnect wirft
+alle `smd`/`sor`-Abos serverseitig weg. Damit der Push-Pfad nach
+Reconnect nicht stillsteht, fuehrt die `SubscriptionRegistry` einen
+expliziten Soll-State im Service und replayt nach jedem
+`connect()`/erfolgreichem `_reconnect()` automatisch.
+
+### Hinzugefuegt
+- `src/broker_gateway/streams/registry.py` mit `SubscriptionRegistry`:
+  `add(topic, args, owner)` haelt einen Refcount pro
+  `(topic, frozenset(args))`-Schluessel; `remove` entfernt erst bei 0;
+  `replay()` ruft den injizierten `subscribe`-Callable fuer jeden
+  aktiven Eintrag (Subscribe-Fehler werden geloggt, aber geschluckt -
+  ein Reconnect-Hook darf nicht abreissen); `pause()`/`resume()` friert
+  nur `replay()` ein, `add`/`remove` bleiben funktional; `count()` fuer
+  den `/v1/status`-Endpoint (AP-11 K8). State ist rein in-memory,
+  asyncio.Lock-geschuetzt.
+- `CPWebSocketClient.add_on_connected_callback(callback)`: registriert
+  einen Async-Callback, der nach `connect()` UND nach erfolgreichem
+  `_reconnect()` feuert. Callback-Exceptions werden geloggt, nicht
+  propagiert.
+- `tests/test_subscription_registry.py` mit 13 Tests: Refcount-
+  Inkrement/Idempotenz pro Owner, Mehrfach-Owner-Zaehlung,
+  remove-bei-0-Loeschung, idempotenter Remove auf unbekannte Owner/
+  Schluessel, replay-Abdeckung aller Eintraege, pause-blockiert/
+  resume-haebt-auf, Subscribe-Fehler-Schluck-Verhalten, count()-
+  Reflektion, args-spezifische Schluesselbildung (verschiedene `conid`
+  sind verschiedene Eintraege), Listen-Args-Hashable-Normalisierung,
+  on-connected-Hook-Integration mit `CPWebSocketClient` (Replay nach
+  Connect, Callback-Fehler-Robustheit).
+
+### Naechste Schritte (AP-11 Phase A)
+- K3 `WSPushSource` haengt `SmdTopicAdapter` (K1) und
+  `SubscriptionRegistry` (K2) in den vorhandenen `SubscriptionManager`-
+  Refcount ein und schaltet `/v1/quotes/stream` via
+  `BG_QUOTES_SOURCE=ws` auf den WS-Push-Pfad um.
+
+---
+
 ## [1.16.0] — 2026-05-02 (AP-11 K1 — SmdTopicAdapter, AP-11 Phase A startet)
 
 Neue `cp/topics`-Schicht mit dem ersten Topic-Adapter fuer `smd`

@@ -14,6 +14,10 @@ from broker_gateway.streams.manager import (
     SubscriptionLimitExceeded,
     SubscriptionManager,
 )
+from broker_gateway.streams.registry import (
+    SubscribeCallable,
+    SubscriptionRegistry,
+)
 
 __all__ = [
     "ALL_EVENT_TYPES",
@@ -25,6 +29,8 @@ __all__ = [
     "PositionEvent",
     "StatusEvent",
     "StreamEvent",
+    "SubscribeCallable",
     "SubscriptionLimitExceeded",
     "SubscriptionManager",
+    "SubscriptionRegistry",
 ]
