@@ -40,14 +40,32 @@ Information (Paid/Free, Book/Top etc.).
 | `DPB` | Delayed / Paid / Book | **Delayed** | dito |
 | `D*` (allgemein, erstes Zeichen `D`) | Delayed-Familie | **Delayed** | dito |
 | `R*` (allgemein, erstes Zeichen `R`) | Realtime-Familie | **Realtime** | dito |
-| `F*` (Frozen) | letzter bekannter Wert (Markt geschlossen) | **Frozen** (weder R noch D) | [OFFENE FRAGE] genauer Semantik-Block des `F` jenseits der Empirie |
+| `Z*` (Frozen) | Markt geschlossen, letzter bekannter Wert | **Frozen** (weder R noch D) | `docs/research/ibkr-cpapi-doc.json`, K6-Sektion 5.2 |
+| `Y*` (Frozen Delayed) | Frozen mit Delayed-Quelle | **Frozen** | wie oben |
+| `F*` (Legacy / Mock) | historisch in fruehen Snapshots | **Frozen** | `src/broker_gateway/availability.py` |
+| `H*` (Halted) | Trading aktiv ausgesetzt (regulatorisch / volatilitaetsbedingt) | **nicht handelbar** | K6-Sektion 5.2 |
 | Andere Sub-Codes (z.B. `B`, `P`, `T`) | Top-of-Book / Paid / etc. | n/a (kombinierbar) | [OFFENE FRAGE] vollständiges Tabellen-Mapping |
+
+**Tradeability-Verknuepfung (AP-11 K5):** Der smd-Frame im
+WS-Pfad reichert pro Frame zusaetzlich die abgeleiteten Felder
+`is_tradeable_now: bool` und `current_session ∈ {rth, pre, post,
+closed, halted}` an. Die Wahrheits-Tabelle (siehe
+`broker_gateway.cp.tradeability.derive_tradeability`):
+
+- `R*` / `D*` plus aktive Schedule-Session (rth/pre/post)
+  ⇒ `is_tradeable_now=true`, `current_session=<session-typ>`.
+- `H*` (Halted) ⇒ `is_tradeable_now=false`, `current_session=halted`,
+  unabhaengig vom Schedule.
+- `Z*` / `Y*` ⇒ Frozen-Familie, ebenfalls `halted`.
+- Feiertag oder ausserhalb der Sessions ⇒
+  `is_tradeable_now=false`, `current_session=closed`.
 
 `broker-gateway` mappt im Quote-Response auf das Feld `availability`
 mit den Werten `realtime` / `delayed` / `frozen`; rohe Code bleibt
 zusätzlich für Debug erhalten. *Code-Quelle:*
 [`src/broker_gateway/availability.py`](../src/broker_gateway/availability.py),
-[`src/broker_gateway/cp/quotes.py`](../src/broker_gateway/cp/quotes.py).
+[`src/broker_gateway/cp/quotes.py`](../src/broker_gateway/cp/quotes.py),
+[`src/broker_gateway/cp/tradeability.py`](../src/broker_gateway/cp/tradeability.py).
 
 ### Brokerage-Session
 

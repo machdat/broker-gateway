@@ -301,3 +301,113 @@ def test_two_conids_keep_independent_snapshots() -> None:
     assert again_msft is not None
     assert again_msft.bid == Decimal("319.99")
     assert again_msft.last == Decimal("320.00")  # Snapshot-Erhalt
+
+
+# ---------------------------------------------------------------------------
+# AP-11 K5: Tradeability-Anreicherung im SmdTopicAdapter
+# ---------------------------------------------------------------------------
+
+
+async def test_adapter_with_calendar_service_enriches_tradeability_fields() -> None:
+    """End-to-End: Adapter mit Fake-CalendarService ergaenzt
+    is_tradeable_now / current_session / exchange_id pro Frame."""
+    from datetime import datetime, time, timezone  # noqa: PLC0415
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    from broker_gateway.cp.calendar import (  # noqa: PLC0415
+        CalendarDay,
+        CalendarSession,
+        ExchangeCalendar,
+    )
+
+    tz = ZoneInfo("America/New_York")
+    today = datetime(2026, 5, 1, tzinfo=tz).date()
+    sample = ExchangeCalendar(
+        exchange_id="NASDAQ",
+        time_zone="America/New_York",
+        days=[
+            CalendarDay(
+                date=today,
+                is_holiday=False,
+                sessions=[
+                    CalendarSession(
+                        type="rth",
+                        opens_at=datetime.combine(
+                            today, time(9, 30), tzinfo=tz
+                        ),
+                        closes_at=datetime.combine(
+                            today, time(16, 0), tzinfo=tz
+                        ),
+                    ),
+                ],
+            )
+        ],
+    )
+
+    class _FakeCalendarService:
+        def __init__(self, calendar):
+            self._calendar = calendar
+            self.calls: list[str] = []
+
+        async def get(self, exchange_id: str):
+            self.calls.append(exchange_id)
+            return self._calendar
+
+    fake_service = _FakeCalendarService(sample)
+
+    async def _conid_to_exchange(conid: int) -> str | None:
+        return "NASDAQ" if conid == CONID_AAPL else None
+
+    fixed_now = datetime(2026, 5, 1, 14, 0, tzinfo=timezone.utc)
+    # 14:00 UTC = 10:00 EDT -> mitten in RTH.
+
+    adapter = SmdTopicAdapter(
+        calendar_service=fake_service,  # type: ignore[arg-type]
+        conid_to_exchange=_conid_to_exchange,
+        clock=lambda: fixed_now,
+    )
+
+    await adapter.preload_for_conid(CONID_AAPL)
+    frame = adapter.feed(_smd_first_frame())
+
+    assert frame is not None
+    assert frame.exchange_id == "NASDAQ"
+    assert frame.is_tradeable_now is True
+    assert frame.current_session == "rth"
+    # Service wurde genau einmal befragt - der zweite Frame nutzt den Cache.
+    assert fake_service.calls == ["NASDAQ"]
+
+
+async def test_adapter_without_calendar_service_keeps_fields_none() -> None:
+    """Backwards-Compat: ohne CalendarService bleiben Tradeability-
+    Felder ``None`` (K1-Verhalten)."""
+    adapter = SmdTopicAdapter()
+    frame = adapter.feed(_smd_first_frame())
+    assert frame is not None
+    assert frame.is_tradeable_now is None
+    assert frame.current_session is None
+    assert frame.exchange_id is None
+
+
+async def test_preload_with_unknown_conid_leaves_tradeability_none() -> None:
+    """Wenn der conid_to_exchange-Lookup ``None`` liefert, bleibt der
+    Frame ohne Tradeability-Anreicherung."""
+
+    class _FakeCalendarService:
+        async def get(self, exchange_id: str):  # pragma: no cover
+            raise AssertionError("nicht aufrufen wenn exchange_id fehlt")
+
+    async def _none_lookup(conid: int) -> str | None:
+        return None
+
+    adapter = SmdTopicAdapter(
+        calendar_service=_FakeCalendarService(),  # type: ignore[arg-type]
+        conid_to_exchange=_none_lookup,
+    )
+    await adapter.preload_for_conid(CONID_AAPL)
+    frame = adapter.feed(_smd_first_frame())
+
+    assert frame is not None
+    assert frame.is_tradeable_now is None
+    assert frame.current_session is None
+    assert frame.exchange_id is None

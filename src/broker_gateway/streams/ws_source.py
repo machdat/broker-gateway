@@ -116,8 +116,9 @@ class WSPushSource:
     async def subscribe_quotes(self, conid: int, field_codes: set[str]) -> None:
         """Manager-seitig genutzter Callback fuer einen neuen conid.
 
-        Pflegt die Registry (Soll-State + Replay-Backbone) und schickt
-        sofort einen Subscribe-Frame an den WS-Client. Frame-Format:
+        Pflegt die Registry (Soll-State + Replay-Backbone), preloadet
+        die Tradeability-Daten (exchange_id + Schedule, AP-11 K5) und
+        schickt einen Subscribe-Frame an den WS-Client. Frame-Format:
         ``smd+<conid>+<json>`` mit ``fields``-Array aus dem
         ``field_codes``-Eingang plus den Defaults aus
         ``_DEFAULT_SMD_FIELDS``.
@@ -125,6 +126,19 @@ class WSPushSource:
         merged_fields = sorted(set(field_codes) | _DEFAULT_SMD_FIELDS)
         args = {"conid": conid, "fields": tuple(merged_fields)}
         await self._registry.add("smd", args, owner=self)
+        # Tradeability-Felder brauchen den Schedule pro Boerse - der
+        # Adapter haelt nach diesem Aufruf einen lokalen Cache und
+        # kann ``feed()`` synchron mit Tradeability-Anreicherung
+        # bedienen. Fehlende Lookups schlucken still (Adapter laeuft
+        # ohne Tradeability-Felder weiter).
+        try:
+            await self._adapter.preload_for_conid(conid)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "WSPushSource: preload_for_conid(%s) fehlgeschlagen: %s",
+                conid,
+                exc,
+            )
         await self._send_smd_subscribe(conid, merged_fields)
 
     async def unsubscribe_quotes(self, conid: int) -> None:

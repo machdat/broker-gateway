@@ -4,6 +4,61 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.20.0] — 2026-05-02 (AP-11 K5 — Tradeability-Felder im smd-Frame, Phase A komplett)
+
+`SmdTopicAdapter` reichert pro Frame zwei neue Felder an:
+`is_tradeable_now: bool` und `current_session ∈ {rth, pre, post,
+closed, halted}`. Wahrheits-Tabelle aus K6-Sektion 5.2; `exchange_id`
+ergaenzt das Tripel. Ohne Calendar-Service-Verdrahtung bleibt der
+Adapter zu 100 % rueckwaerts-kompatibel zu K1.
+
+Damit ist die smd-Phase A des WS-Adapters Code-seitig komplett.
+Live-Aktivierung (Lifespan-Wiring + Default-Flip auf `ws`) bleibt als
+K3-Folgekarte offen.
+
+### Hinzugefuegt
+- `src/broker_gateway/cp/tradeability.py` mit reiner Funktion
+  `derive_tradeability(now_utc, calendar, availability_code)`. Halted-
+  Codes (`H*`/`Z*`/`Y*`) ueberstimmen den Schedule. R/D plus aktive
+  Session liefert `is_tradeable_now=true` mit der Session als
+  `current_session`. Feiertag und ausserhalb-Sessions liefert
+  `closed`. Naive datetime wird mit TypeError abgelehnt - bewusst
+  defensiv, weil Tradeability-Logik zeitzonenkritisch ist.
+- `src/broker_gateway/cp/topics/smd.py` `SmdTopicAdapter.__init__`
+  um optionale Parameter `calendar_service`, `conid_to_exchange`
+  und `clock` erweitert. Neue Methode `preload_for_conid(conid)`
+  loest pro conid einmalig die exchange_id auf, holt den Schedule
+  aus dem CalendarService und legt beide in einem lokalen Cache.
+  `feed()` bleibt sync und greift bei vorhandenem Cache auf
+  `derive_tradeability` zurueck. Fehlt Calendar-Service oder
+  Lookup, bleiben die drei Felder None.
+- `src/broker_gateway/streams/ws_source.py` `subscribe_quotes`
+  ruft `await adapter.preload_for_conid(conid)` vor dem
+  Subscribe-Frame, damit der erste Push-Frame bereits Tradeability-
+  Felder hat. Lookup-Fehler werden geloggt, nicht propagiert.
+- `tests/test_tradeability_derivation.py` mit 13 Tests entlang der
+  Wahrheits-Tabelle: rth/pre/post + R/D liefern (true, <session>),
+  Halted/Frozen-Familie (`H*`/`Z*`/`Y*`) liefert (false, halted),
+  Feiertag und ausserhalb-Sessions liefert (false, closed),
+  Halbtages-Session-Ende greift, unbekannte Codes fallen defensiv
+  auf closed, leerer Code in RTH liefert closed (statt true),
+  naive datetime wirft TypeError, lowercase-Code wird normalisiert.
+- `tests/test_topic_adapter_smd.py` um drei End-to-End-Tests
+  erweitert: Adapter mit Fake-CalendarService befuellt die drei
+  neuen Felder; ohne CalendarService bleiben sie None;
+  None-Lookup laesst Tradeability stumm.
+- `docs/06-glossary.md` Block 6509-Code ausgebaut mit `H*`-, `Z*`-,
+  `Y*`-Praefixen plus dem Tradeability-Verknuepfungs-Block fuer
+  AP-11 K5.
+
+### Naechste Schritte
+- AP-11 Phase B: K6 (sor-Adapter + REST-Bootstrap +
+  /v1/orders/stream), K7 (WS-Egress), K8 (/v1/status + Stresstest).
+- AP-11 K3-Folge (Lifespan-Wiring + Live-Smoke des WS-Pfads) bleibt
+  parallel offen.
+
+---
+
 ## [1.19.2] — 2026-05-02 (AP-11 K4 hotfix2 — Live-IBKR-Schema fuer trsrv/secdef/schedule)
 
 Live-Smoke nach 1.19.1 zeigte: das echte CP-Gateway-Antwortschema
