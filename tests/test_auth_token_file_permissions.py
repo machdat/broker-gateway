@@ -10,6 +10,7 @@ import logging
 import os
 import stat
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,19 @@ def _write_token_file(path: Path, value: str = "demo-token-aaaaaaaaaaaaaaaaaa") 
     """Erzeugt eine kleine valide Token-Datei (Format wie FileTokenStore es schreibt)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps({"tokens": [{"value": value, "caller_id": "demo", "scopes": []}]}),
+        json.dumps(
+            {
+                "tokens": [
+                    {
+                        "value": value,
+                        "caller_id": "demo",
+                        "scopes": [],
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "expires_at": None,
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
 
