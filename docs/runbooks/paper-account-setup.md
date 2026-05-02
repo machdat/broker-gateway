@@ -55,9 +55,79 @@ Listener-Konflikt.
 Die konkrete Compose-Datei und das Build-Skript-Schalter
 (`ops/build-gateway.sh --env=paper|live`) folgen in AP-06 K2.
 
+## Initial-Login Paper-Account (AP-06 K4)
+
+Der Paper-Account braucht beim Erst-Start denselben Browser-2FA-
+Schritt wie der Live-Account; siehe ausfuehrliche Anleitung in
+[`cpgateway-login.md`](cpgateway-login.md). Hier nur die paper-
+spezifischen Abweichungen.
+
+### Voraussetzungen
+
+- `.env.paper` ist aus `.env.paper.template` befuellt (siehe AP-06 K3),
+  insbesondere `BG_BOOTSTRAP_ADMIN_TOKEN` (eigener Token, nicht den
+  Live-Wert wiederverwenden) und `BG_PAPER_ACCOUNT_ID` (DU-Praefix-
+  Konto-Nummer).
+- Compose-Stack ist mit `./ops/build-gateway.sh --env=paper` einmal
+  durchgelaufen, sodass der `broker-gateway-paper-cpgateway`-Container
+  Healthy ist (HTTP 401 vor Login = ok).
+- Paper-Login-URL: `https://<region>.interactivebrokers.com/portal`
+  bzw. die regional passende Paper-Domain. **Wichtig:** Der Username
+  beginnt mit `DU` (Demo-User), das Passwort kann sich vom Live-Account
+  unterscheiden.
+
+### Schritte
+
+1. **SSH-Tunnel auf cma-pi-1:5001** (statt 5000 wie beim Live-Stack):
+
+   ```bash
+   ssh -N -L 5001:localhost:5001 cma@cma-pi-1
+   ```
+
+   Voraussetzung: in der `compose.yaml` ist der Paper-cpgateway nicht
+   per `ports:` exponiert. Fuer den Login einmalig ein
+   `compose.login-override.yaml` mit `127.0.0.1:5001:5000` einsetzen
+   (analog Live-Variante A) oder den `socat`-Wegwerf-Container nutzen.
+
+2. **Browser-Login** im Browser an `http://localhost:5001`. Username
+   `DU<...>` plus Passwort plus 2FA. Nach `Client login succeeds`:
+
+   ```bash
+   curl -s http://localhost:5001/v1/api/iserver/auth/status | jq .
+   ```
+
+   Erwartung: `authenticated: true`, `competing: false`, `connected:
+   true`.
+
+3. **broker-gateway-paper starten**:
+
+   ```bash
+   ssh cma@cma-pi-1 'cd /mnt/ssd/broker-gateway-paper && \
+       ./ops/build-gateway.sh --env=paper'
+   ```
+
+4. **Smoke-Validierung** mit dem `paper_session_check.py`-Skript
+   (siehe unten):
+
+   ```bash
+   BG_PAPER_BASE_URL=http://cma-pi-1:4001 \
+   BG_PAPER_BOOTSTRAP_TOKEN="$(grep -E '^BG_BOOTSTRAP_ADMIN_TOKEN=' \
+       /mnt/ssd/broker-gateway-paper/.env.paper | cut -d= -f2)" \
+   python3 scripts/paper_session_check.py
+   ```
+
+   Exit-Code `0` heisst: alle drei Probes (`/v1/health`,
+   `/v1/internal/health`, `/v1/instruments/search?symbol=AAPL`) sind
+   200, und `account_id` hat den DU-Praefix. Exit-Code `1` druckt
+   eine Diagnose pro fehlgeschlagene Probe.
+
+### Wann der Login wiederholt werden muss
+
+Identisch zum Live-Stack (siehe `cpgateway-login.md`), nur dass der
+Trigger der Paper-cpgateway-Container ist. Faustregel: nach jedem
+`docker compose --env-file .env.paper restart cpgateway` oder Reboot
+des Hosts ist ein neuer Browser-Login fuer das DU-Konto faellig.
+
 ## Folge-Karten
 
-- **AP-06 K2**: `ops/build-gateway.sh` um `--env=paper|live`-Schalter erweitern.
-- **AP-06 K3**: `compose.paper.yaml` mit Port- und Volume-Override.
-- **AP-06 K4**: Initial-Login fuer Paper-Account (analog `cpgateway-login.md`).
 - **AP-07 / AP-08**: pytest-Harness und L1-Paper-Suite gegen den Stack.
