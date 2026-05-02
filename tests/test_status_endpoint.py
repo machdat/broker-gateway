@@ -160,4 +160,5 @@ class _FakeLifecycle:
             session_age_s=None,
             consecutive_reauth_failures=0,
             accounts_initialized=self._connected,
+            session_id=None,
         )

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, cast
+from typing import Any, AsyncIterator, cast
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -34,15 +36,18 @@ from broker_gateway.api.v1.trades import get_trades_service
 from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
+from broker_gateway.config import quotes_source as _read_quotes_source
 from broker_gateway.cp.calendar import CalendarService
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
-from broker_gateway.cp.topics.sor import SorTopicAdapter
-from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
+from broker_gateway.cp.lifecycle import AuthLifecycle, AuthStatus, get_cp_lifecycle
 from broker_gateway.cp.orders import OrdersService
 from broker_gateway.cp.portfolio import PortfolioService
 from broker_gateway.cp.quotes import QuotesService
+from broker_gateway.cp.topics.smd import SmdTopicAdapter
+from broker_gateway.cp.topics.sor import SorTopicAdapter
 from broker_gateway.cp.trades import TradesService
+from broker_gateway.cp.ws_client import CPWebSocketClient
 from broker_gateway.idempotency import IdempotencyStore
 from broker_gateway.logging_setup import configure_logging
 from broker_gateway.metrics import (
@@ -60,10 +65,146 @@ from broker_gateway.streams.orders import (
     OrdersBroadcaster,
     get_orders_broadcaster,
 )
+from broker_gateway.streams.registry import SubscriptionRegistry
+from broker_gateway.streams.ws_source import WSPushSource
 from broker_gateway.throttle.manager import ThrottleManager, get_throttle_manager
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
+
+_logger = logging.getLogger(__name__)
+
+
+def _format_cookie_header(client: CPGatewayClient | None) -> str:
+    """Liest httpx-Cookies aus dem REST-Client und liefert sie als
+    ``name=value; ...``-Header-Wert.
+
+    Wird vom WS-Lifespan-Init genutzt, um den Browser-Cookie-Sandbox-
+    Workflow nachzubauen, den IBKR fuer den /v1/api/ws-Handshake
+    erwartet. Defensive: leerer String wenn Jar leer oder Client None.
+    """
+    if client is None:
+        return ""
+    httpx_client = getattr(client, "_client", None)
+    cookies = getattr(httpx_client, "cookies", None)
+    if cookies is None:
+        return ""
+    parts: list[str] = []
+    try:
+        for cookie in cookies.jar:
+            parts.append(f"{cookie.name}={cookie.value}")
+    except Exception:  # noqa: BLE001
+        return ""
+    return "; ".join(parts)
+
+
+async def _build_subscription_layer(
+    *,
+    services_client: CPGatewayClient,
+    cp_lifecycle: AuthLifecycle,
+    inst_service: InstrumentsService,
+    cal_service: CalendarService,
+    override_manager: SubscriptionManager | None,
+) -> tuple[SubscriptionManager, StatusProbe, CPWebSocketClient | None, WSPushSource | None]:
+    """Baut SubscriptionManager + StatusProbe nach dem Lifecycle-Start.
+
+    Bei ``BG_QUOTES_SOURCE=ws`` und gueltiger Session wird ein
+    ``CPWebSocketClient`` geoeffnet und ueber einen ``WSPushSource`` an
+    den Manager verdrahtet. Sonst (oder bei Connect-Fehler) wird der
+    klassische Polling-Manager gebaut. ``override_manager`` hat Vorrang
+    und ueberspringt jede WS-Heuristik (Test-Pfad).
+    """
+    if override_manager is not None:
+        return override_manager, StatusProbe(), None, None
+
+    requested = _read_quotes_source()
+    if requested != "ws":
+        return SubscriptionManager(services_client), StatusProbe(), None, None
+
+    snapshot = cp_lifecycle.snapshot()
+    if snapshot.auth_status is not AuthStatus.OK or not snapshot.session_id:
+        _logger.warning(
+            "BG_QUOTES_SOURCE=ws angefordert, aber Session nicht bereit "
+            "(auth_status=%s, session_id_present=%s) - fallback polling",
+            snapshot.auth_status.value,
+            snapshot.session_id is not None,
+        )
+        return SubscriptionManager(services_client), StatusProbe(), None, None
+
+    async def _conid_to_exchange(conid: int) -> str | None:
+        try:
+            detail = await inst_service.info(conid)
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("conid_to_exchange(%s) fehlgeschlagen: %s", conid, exc)
+            return None
+        return detail.exchange_id
+
+    smd_adapter = SmdTopicAdapter(
+        calendar_service=cal_service,
+        conid_to_exchange=_conid_to_exchange,
+    )
+    ws_client = CPWebSocketClient()
+
+    async def _registry_subscribe(topic: str, args: dict[str, Any]) -> None:
+        """Subscribe-Callback fuer SubscriptionRegistry-Replay nach
+        Reconnect. Baut den IBKR-spezifischen smd-Subscribe-Frame und
+        schickt ihn ueber den WS-Client."""
+        if topic != "smd":
+            return
+        conid = args.get("conid")
+        fields = args.get("fields") or ()
+        body = json.dumps({"fields": list(fields)}, separators=(",", ":"))
+        try:
+            await ws_client.send(f"smd+{conid}+{body}")
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning(
+                "Registry-Replay-Subscribe fuer conid=%s fehlgeschlagen: %s",
+                conid,
+                exc,
+            )
+
+    registry = SubscriptionRegistry(_registry_subscribe)
+    cookies = _format_cookie_header(services_client)
+    try:
+        await ws_client.connect(snapshot.session_id, cookies)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning(
+            "CPWebSocketClient.connect fehlgeschlagen, fallback polling: %s", exc
+        )
+        try:
+            await ws_client.aclose()
+        except Exception:  # noqa: BLE001
+            pass
+        return SubscriptionManager(services_client), StatusProbe(), None, None
+
+    holder: list[WSPushSource] = []
+
+    async def _ws_subscribe(conid: int, fields: set[str]) -> None:
+        if holder:
+            await holder[0].subscribe_quotes(conid, fields)
+
+    async def _ws_unsubscribe(conid: int) -> None:
+        if holder:
+            await holder[0].unsubscribe_quotes(conid)
+
+    sub_manager = SubscriptionManager(
+        services_client,
+        quotes_source="ws",
+        ws_subscribe=_ws_subscribe,
+        ws_unsubscribe=_ws_unsubscribe,
+    )
+    ws_source = WSPushSource(ws_client, smd_adapter, registry, sub_manager)
+    holder.append(ws_source)
+    await ws_source.start()
+
+    status_probe = StatusProbe(
+        registry=registry,
+        ws_reconnect_attempt=lambda: ws_client.reconnect_attempt,
+    )
+    _logger.info(
+        "WS-Lifespan aktiv: BG_QUOTES_SOURCE=ws, session_id_present=true"
+    )
+    return sub_manager, status_probe, ws_client, ws_source
 
 
 def _ensure_bootstrap_admin(store: TokenStore) -> None:
@@ -143,11 +284,6 @@ def create_app(
             if quotes_service is not None
             else QuotesService(cast(CPGatewayClient, services_client))
         )
-        sub_manager = (
-            subscription_manager
-            if subscription_manager is not None
-            else SubscriptionManager(cast(CPGatewayClient, services_client))
-        )
         cal_service = (
             calendar_service
             if calendar_service is not None
@@ -158,11 +294,15 @@ def create_app(
         orders_bootstrap = OrdersBootstrapLoader(
             cast(CPGatewayClient, services_client), sor_adapter
         )
-        # StatusProbe ohne SubscriptionRegistry / WS-Client - die werden
-        # erst in der Lifespan-Wiring-Folgekarte (AP-11 K3a) instanziiert.
-        # Bis dahin liefert der Endpoint eine konservative Sicht: keine
-        # aktiven Subscriptions, kein Reconnect-Counter.
-        status_probe = StatusProbe()
+        # SubscriptionManager + StatusProbe werden nach cp_lifecycle.start()
+        # gebaut, damit der WS-Pfad (BG_QUOTES_SOURCE=ws, AP-11 K9) eine
+        # gueltige Session-ID + Cookies vom AuthLifecycle uebernehmen
+        # kann. Bei Polling oder nicht-OK Session faellt der Block auf
+        # den klassischen Polling-Pfad zurueck.
+        sub_manager: SubscriptionManager | None = None
+        status_probe: StatusProbe | None = None
+        ws_client: CPWebSocketClient | None = None
+        ws_source: WSPushSource | None = None
         pf_service = (
             portfolio_service
             if portfolio_service is not None
@@ -182,21 +322,12 @@ def create_app(
             else TradesService(cast(CPGatewayClient, services_client))
         )
         evt_bus = event_bus if event_bus is not None else EventBus()
-        actual_metrics.attach_live_collector(
-            make_live_collector(
-                lifecycle_snapshot=cp_lifecycle.snapshot,
-                subscription_count=lambda: len(sub_manager.active_conids),
-                throttle_metrics=actual_throttle.metrics,
-            )
-        )
 
         app.state.instruments_service = inst_service
         app.state.quotes_service = qts_service
-        app.state.subscription_manager = sub_manager
         app.state.calendar_service = cal_service
         app.state.orders_broadcaster = orders_broadcaster
         app.state.orders_bootstrap_loader = orders_bootstrap
-        app.state.status_probe = status_probe
         app.state.portfolio_service = pf_service
         app.state.orders_service = ord_service
         app.state.idempotency_store = idem_store
@@ -213,9 +344,6 @@ def create_app(
         app.dependency_overrides[get_quotes_service] = (
             lambda: cast(QuotesService, app.state.quotes_service)
         )
-        app.dependency_overrides[get_subscription_manager] = (
-            lambda: cast(SubscriptionManager, app.state.subscription_manager)
-        )
         app.dependency_overrides[get_calendar_service] = (
             lambda: cast(CalendarService, app.state.calendar_service)
         )
@@ -226,9 +354,6 @@ def create_app(
             lambda: cast(
                 OrdersBootstrapLoader, app.state.orders_bootstrap_loader
             )
-        )
-        app.dependency_overrides[get_status_probe] = (
-            lambda: cast(StatusProbe, app.state.status_probe)
         )
         app.dependency_overrides[get_portfolio_service] = (
             lambda: cast(PortfolioService, app.state.portfolio_service)
@@ -250,10 +375,50 @@ def create_app(
         )
 
         await cp_lifecycle.start()
+
+        # WS-Lifespan-Verdrahtung (AP-11 K9): opt-in via BG_QUOTES_SOURCE=ws.
+        # Setzt voraus, dass cp_lifecycle nach dem ersten Tickle eine
+        # session_id liefert und den Status auf OK gesetzt hat. Bei
+        # Fallback bleibt der Polling-Pfad unveraendert.
+        sub_manager, status_probe, ws_client, ws_source = await _build_subscription_layer(
+            services_client=cast(CPGatewayClient, services_client),
+            cp_lifecycle=cp_lifecycle,
+            inst_service=inst_service,
+            cal_service=cal_service,
+            override_manager=subscription_manager,
+        )
+
+        actual_metrics.attach_live_collector(
+            make_live_collector(
+                lifecycle_snapshot=cp_lifecycle.snapshot,
+                subscription_count=lambda: len(sub_manager.active_conids),
+                throttle_metrics=actual_throttle.metrics,
+            )
+        )
+        app.state.subscription_manager = sub_manager
+        app.state.status_probe = status_probe
+        app.state.ws_client = ws_client
+        app.state.ws_source = ws_source
+        app.dependency_overrides[get_subscription_manager] = (
+            lambda: cast(SubscriptionManager, app.state.subscription_manager)
+        )
+        app.dependency_overrides[get_status_probe] = (
+            lambda: cast(StatusProbe, app.state.status_probe)
+        )
         try:
             yield
         finally:
             await evt_bus.shutdown()
+            if ws_source is not None:
+                try:
+                    await ws_source.stop()
+                except Exception:  # noqa: BLE001
+                    _logger.warning("WSPushSource.stop fehlgeschlagen", exc_info=True)
+            if ws_client is not None:
+                try:
+                    await ws_client.aclose()
+                except Exception:  # noqa: BLE001
+                    _logger.warning("CPWebSocketClient.aclose fehlgeschlagen", exc_info=True)
             await sub_manager.shutdown()
             await cp_lifecycle.stop()
             if client is not None:

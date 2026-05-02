@@ -402,6 +402,46 @@ an `/v1/quotes/stream` und `/v1/events/stream` (Migration von
 REST-Polling auf WS-Push) wird in einem Folge-AP-05 spezifiziert,
 nicht in AP-04.
 
+### 7.4 WS-Lifespan-Aktivierung (AP-11 K9)
+
+Der WS-Push-Pfad ist Code-seitig komplett (AP-11 K1..K8: SmdTopicAdapter,
+SubscriptionRegistry, WSPushSource, OrdersBroadcaster, /v1/status).
+K9 hat das Lifespan-Wiring nachgezogen: `BG_QUOTES_SOURCE=ws` schaltet
+den `/v1/quotes/stream`-Pfad bei Service-Start vom REST-Polling auf
+WS-Push. Der Default bleibt `polling` — wer den WS-Pfad nutzen will,
+trägt den ENV-Wert in `.env` ein.
+
+Bedingungen für die Aktivierung (alle drei müssen gelten, sonst
+Fallback auf Polling mit Warning im Log):
+
+1. `BG_QUOTES_SOURCE=ws` ist gesetzt.
+2. `AuthLifecycle.snapshot().auth_status == OK` beim Start (sprich:
+   die initiale Tickle-Antwort ist `authenticated=true`).
+3. `AuthLifecycle.snapshot().session_id` ist gefüllt — die Session-ID
+   wird aus dem `session`-Key der Tickle-Antwort übernommen.
+
+**Restart-Disziplin:** Der Browser-2FA-Login auf den CP-Gateway-
+Container muss VOR dem `gateway`-Service laufen. Wenn der Lifespan
+beim Start `auth_status != OK` oder eine leere `session_id` sieht,
+fällt er auf Polling zurück und loggt eine Warnung. Ein späterer
+Login (während der Service schon läuft) hebt den Polling-Pfad nicht
+mehr auf — dafür braucht es einen Service-Restart.
+
+Cookies für den WS-Handshake werden aus dem httpx-CookieJar des
+REST-Clients gelesen und als `Cookie:`-Header beim Upgrade
+mitgeschickt. Die Session bleibt damit konsistent zu den REST-Calls
+desselben Containers.
+
+Live-Smoke nach Aktivierung:
+
+```bash
+# Auf cma-pi-1, nach Login:
+docker compose --env-file .env up -d gateway   # mit BG_QUOTES_SOURCE=ws in .env
+curl -s -H "Authorization: Bearer $TOKEN" \
+    http://localhost:4000/v1/status | jq .
+# erwartet: cp_gateway_connected=true, reconnect_attempt=0
+```
+
 ---
 
 ## 8. Logging-Architektur

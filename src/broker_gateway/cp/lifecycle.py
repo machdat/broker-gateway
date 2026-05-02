@@ -65,6 +65,7 @@ class LifecycleSnapshot:
     session_age_s: float | None
     consecutive_reauth_failures: int
     accounts_initialized: bool
+    session_id: str | None
 
 
 class AuthLifecycle:
@@ -106,6 +107,7 @@ class AuthLifecycle:
         self._session_started_at: float | None = None
         self._reauth_failures = 0
         self._accounts_initialized = False
+        self._session_id: str | None = None
 
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
@@ -115,6 +117,10 @@ class AuthLifecycle:
     @property
     def status(self) -> AuthStatus:
         return self._status
+
+    @property
+    def session_id(self) -> str | None:
+        return self._session_id
 
     def snapshot(self) -> LifecycleSnapshot:
         age: float | None
@@ -132,6 +138,7 @@ class AuthLifecycle:
             session_age_s=age,
             consecutive_reauth_failures=self._reauth_failures,
             accounts_initialized=self._accounts_initialized,
+            session_id=self._session_id,
         )
 
     # ---- Lifecycle-Steuerung ----
@@ -198,6 +205,9 @@ class AuthLifecycle:
 
         self._cp_reachable = True
         self._last_tickle_at = _utcnow()
+        session_value = payload.get("session")
+        if isinstance(session_value, str) and session_value:
+            self._session_id = session_value
         if sso_authenticated or _is_authenticated(payload):
             self._mark_session_ok()
             await self._maybe_init_accounts()
