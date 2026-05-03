@@ -20,6 +20,7 @@ from broker_gateway.cp.lifecycle import AuthLifecycle, AuthStatus
 from broker_gateway.cp.quotes import (
     FIELD_ALIASES,
     QuotesService,
+    _volume_from_field,
     resolve_fields,
 )
 from broker_gateway.main import create_app
@@ -276,3 +277,43 @@ async def test_snapshot_endpoint_with_correct_scope(
     assert response.status_code == 200
     body = response.json()
     assert body[0]["conid"] == 272093
+
+
+# ---- _volume_from_field (Field 7762 ist Volumen × 10^6) ----
+
+def test_volume_from_field_none() -> None:
+    assert _volume_from_field(None) is None
+
+
+def test_volume_from_field_scales_nvda_live_value() -> None:
+    # Live-Befund 2026-05-03: NVDA 7762=129338122634379. Erwartet ~129M Aktien.
+    assert _volume_from_field("129338122634379") == "129338122"
+
+
+def test_volume_from_field_scales_aapl_live_value() -> None:
+    # Live-Befund 2026-05-03: AAPL 7762=80972443774809. Erwartet ~81M Aktien.
+    assert _volume_from_field("80972443774809") == "80972443"
+
+
+def test_volume_from_field_zero() -> None:
+    assert _volume_from_field("0") == "0"
+
+
+def test_volume_from_field_out_of_range_returns_none(caplog: pytest.LogCaptureFixture) -> None:
+    # Wert > 10^16 ist deutlich oberhalb plausibler Aktien-Volumen-Skala
+    # und deutet auf einen IBKR-Drift hin - lieber null als Mistwert.
+    with caplog.at_level("WARNING"):
+        assert _volume_from_field("99999999999999999999") is None
+    assert any("out of range" in r.getMessage() for r in caplog.records)
+
+
+def test_volume_from_field_negative_returns_none(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level("WARNING"):
+        assert _volume_from_field("-1") is None
+
+
+def test_volume_from_field_non_numeric_returns_none(caplog: pytest.LogCaptureFixture) -> None:
+    # Field 87 hat z.B. "129338.1B" - das ist kein numerischer Wert und
+    # gehoert nicht in das volume-Feld; Mapper liefert null.
+    with caplog.at_level("WARNING"):
+        assert _volume_from_field("129338.1B") is None

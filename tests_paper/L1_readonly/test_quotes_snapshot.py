@@ -80,6 +80,31 @@ async def test_first_call_priming_returns_more_fields_on_second_call(
         Decimal(str(value))  # parsen muss klappen
 
 
+async def test_snapshot_volume_in_plausible_range(paper_http_client) -> None:
+    """Live-Volumen muss plausibel sein (nicht der alte 7762-rohe-Wert).
+
+    Hintergrund: bis v1.24.0 lieferte das volume-Feld den IBKR-7762-
+    Wert unverändert (skalierter Integer ~10^14). Ab v1.25.0 dividiert
+    der Mapper durch 10^6, sodass eine Aktien-Anzahl im Bereich
+    10^3..10^10 herauskommt. Bei geschlossenem Markt darf der Wert
+    null sein - dann skippt der Test.
+    """
+    response = await paper_http_client.get(
+        "/v1/quotes/snapshot",
+        params={"conids": str(CONID_AAPL), "fields": "volume"},
+    )
+    assert response.status_code == 200
+    entry = response.json()[0]
+    raw = entry.get("volume")
+    if raw is None:
+        pytest.skip("Markt geschlossen oder Subscription noch nicht warm")
+    value = int(raw)
+    assert 1_000 <= value <= 10_000_000_000, (
+        f"AAPL volume={value} ausserhalb plausibler Aktien-Range; "
+        f"vermutlich Field-7762-Skalierung gedriftet"
+    )
+
+
 async def test_snapshot_requires_quotes_read_scope(
     paper_base_url, paper_admin_token
 ) -> None:

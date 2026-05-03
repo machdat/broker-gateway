@@ -9,7 +9,9 @@ conid am Markt aktiv ist.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
 from fastapi import HTTPException, status
@@ -17,6 +19,20 @@ from pydantic import BaseModel, Field
 
 from broker_gateway.availability import Availability, map_availability
 from broker_gateway.cp.client import CPGatewayClient
+
+
+_logger = logging.getLogger(__name__)
+
+# IBKR-Field 7762 liefert das Tagesvolumen als skalierter Integer-String:
+# der rohe Wert ist Anzahl gehandelter Aktien × 10^6. Empirie 2026-05-03
+# gegen Live-Paper-DUP799747: NVDA 7762=129338122634379 → /1e6 = 129.34M
+# Aktien (plausibel); AAPL 7762=80972443774809 → /1e6 = 80.97M Aktien.
+# Field 87 ist eine Display-Variante mit "B"-Suffix derselben Zahl und
+# wird nicht ausgewertet, weil sie nicht numerisch parsbar ist.
+_VOLUME_RAW_SCALE = Decimal(1_000_000)
+# Sanity-Bound für den rohen 7762-Wert (vor Division). Werte ausserhalb
+# 0..10^16 deuten auf einen IBKR-Drift hin und werden auf null gemappt.
+_VOLUME_RAW_MAX = Decimal(10) ** 16
 
 
 # Public-API-Feldname -> IBKR-CP-Gateway-Code.
@@ -173,7 +189,7 @@ def _quote_from_entry(entry: dict[str, Any]) -> Quote:
         last=_str_or_none(entry.get(FIELD_ALIASES["last"])),
         bid=_str_or_none(entry.get(FIELD_ALIASES["bid"])),
         ask=_str_or_none(entry.get(FIELD_ALIASES["ask"])),
-        volume=_str_or_none(entry.get(FIELD_ALIASES["volume"])),
+        volume=_volume_from_field(entry.get(FIELD_ALIASES["volume"])),
         change_pct=_str_or_none(entry.get(FIELD_ALIASES["change_pct"])),
         high=_str_or_none(entry.get(FIELD_ALIASES["high"])),
         low=_str_or_none(entry.get(FIELD_ALIASES["low"])),
@@ -187,3 +203,17 @@ def _str_or_none(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _volume_from_field(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        raw = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        _logger.warning("CP volume value not numeric: %r", value)
+        return None
+    if raw < 0 or raw > _VOLUME_RAW_MAX:
+        _logger.warning("CP volume value out of range: %r", value)
+        return None
+    return str(int(raw / _VOLUME_RAW_SCALE))
