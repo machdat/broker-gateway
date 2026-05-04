@@ -42,6 +42,22 @@ class InternalHealthResponse(BaseModel):
         description="True, sobald GET /iserver/accounts nach Login einmal "
         "erfolgreich ausgeloest wurde",
     )
+    iserver_bridge_ok: bool | None = Field(
+        default=None,
+        description="Letztes Resultat der iserver-Bridge-Probe via "
+        "GET /iserver/auth/status: True wenn das Trio "
+        "(authenticated/established/connected) gesund war, False bei "
+        "Bridge-Drift, None solange noch kein Probe gelaufen ist",
+    )
+    last_bridge_probe_at: datetime | None = Field(
+        default=None,
+        description="Zeitpunkt des letzten iserver-Bridge-Probes",
+    )
+    consecutive_bridge_failures: int = Field(
+        default=0,
+        description="Aufeinanderfolgende Bridge-Drift-Befunde; reset auf 0 "
+        "nach erfolgreichem Probe oder erfolgreicher Recovery",
+    )
 
 
 @router.get("/health", response_model=InternalHealthResponse, summary="Detail-Health (admin:*)")
@@ -60,4 +76,7 @@ def internal_health(
         session_age_s=snap.session_age_s,
         consecutive_reauth_failures=snap.consecutive_reauth_failures,
         accounts_initialized=snap.accounts_initialized,
+        iserver_bridge_ok=snap.iserver_bridge_ok,
+        last_bridge_probe_at=snap.last_bridge_probe_at,
+        consecutive_bridge_failures=snap.consecutive_bridge_failures,
     )

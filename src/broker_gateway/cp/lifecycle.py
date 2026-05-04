@@ -35,6 +35,14 @@ _DEFAULT_TICKLE_INTERVAL_S = 60.0
 _DEFAULT_REAUTH_MAX_RETRIES = 3
 _DEFAULT_REAUTH_BACKOFF_S = 2.0
 _RETRY_AFTER_S = 30
+# iserver-Backend-Bridge-Probe (Karte 81e3c818): zusaetzlicher Health-Pfad,
+# der ueber GET /iserver/auth/status das Trio (authenticated/established/
+# connected) prueft. Ein gefallener iserver-Bridge laesst SSO-Tickle und
+# sso/validate weiterhin gruen, bricht aber jeden iserver-Call mit
+# "Bad Request: no bridge". Recovery: einmaliger force-reauth + 15s warmup.
+_DEFAULT_BRIDGE_PROBE_INTERVAL_S = 120.0
+_DEFAULT_BRIDGE_REAUTH_WARMUP_S = 15.0
+_DEFAULT_BRIDGE_MAX_FAILURES = 3
 
 
 def _interval_from_env(name: str, default: float) -> float:
@@ -66,6 +74,12 @@ class LifecycleSnapshot:
     consecutive_reauth_failures: int
     accounts_initialized: bool
     session_id: str | None
+    # iserver-Bridge-Probe-Felder (Karte 81e3c818):
+    # `iserver_bridge_ok=None` heisst "noch nie probet", `True/False`
+    # spiegelt das letzte GET /iserver/auth/status-Resultat.
+    iserver_bridge_ok: bool | None
+    last_bridge_probe_at: datetime | None
+    consecutive_bridge_failures: int
 
 
 class AuthLifecycle:
@@ -88,6 +102,9 @@ class AuthLifecycle:
         tickle_interval_s: float | None = None,
         reauth_max_retries: int = _DEFAULT_REAUTH_MAX_RETRIES,
         reauth_backoff_s: float = _DEFAULT_REAUTH_BACKOFF_S,
+        bridge_probe_interval_s: float | None = None,
+        bridge_reauth_warmup_s: float = _DEFAULT_BRIDGE_REAUTH_WARMUP_S,
+        bridge_max_failures: int = _DEFAULT_BRIDGE_MAX_FAILURES,
     ) -> None:
         self._client = client
         self.tickle_interval_s = (
@@ -97,6 +114,15 @@ class AuthLifecycle:
         )
         self.reauth_max_retries = reauth_max_retries
         self.reauth_backoff_s = reauth_backoff_s
+        self.bridge_probe_interval_s = (
+            bridge_probe_interval_s
+            if bridge_probe_interval_s is not None
+            else _interval_from_env(
+                "BG_CP_BRIDGE_PROBE_INTERVAL_S", _DEFAULT_BRIDGE_PROBE_INTERVAL_S
+            )
+        )
+        self.bridge_reauth_warmup_s = bridge_reauth_warmup_s
+        self.bridge_max_failures = bridge_max_failures
 
         self._status = AuthStatus.OK
         self._cp_reachable = True
@@ -108,6 +134,10 @@ class AuthLifecycle:
         self._reauth_failures = 0
         self._accounts_initialized = False
         self._session_id: str | None = None
+        self._iserver_bridge_ok: bool | None = None
+        self._last_bridge_probe_at: datetime | None = None
+        self._last_bridge_probe_monotonic: float | None = None
+        self._consecutive_bridge_failures = 0
 
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
@@ -139,6 +169,9 @@ class AuthLifecycle:
             consecutive_reauth_failures=self._reauth_failures,
             accounts_initialized=self._accounts_initialized,
             session_id=self._session_id,
+            iserver_bridge_ok=self._iserver_bridge_ok,
+            last_bridge_probe_at=self._last_bridge_probe_at,
+            consecutive_bridge_failures=self._consecutive_bridge_failures,
         )
 
     # ---- Lifecycle-Steuerung ----
@@ -149,6 +182,11 @@ class AuthLifecycle:
         self._stop_event = asyncio.Event()
         # Erster Tickle synchron, damit der Status beim Startup sinnvoll ist.
         await self.tick_once()
+        # Initialer Bridge-Probe nur, wenn die SSO-Session steht; sonst
+        # wuerde GET /iserver/auth/status sowieso die volle no-bridge-Antwort
+        # liefern und unnoetig den Failure-Counter beruehren.
+        if self._status is AuthStatus.OK:
+            await self.bridge_probe_once()
         self._task = asyncio.create_task(self._run(), name="cp-tickle-loop")
 
     async def stop(self) -> None:
@@ -174,8 +212,23 @@ class AuthLifecycle:
                 if self._stop_event.is_set():
                     break
                 await self.tick_once()
+                # Bridge-Probe laeuft mit eigenem Intervall (Default 120s),
+                # also typischerweise jeden zweiten Tickle. Nur wenn die
+                # SSO-Session steht; bei AUTH_LOST/CP_DOWN bringt der Probe
+                # nichts und der Tickle-Loop kuemmert sich um Recovery.
+                if (
+                    self._status is AuthStatus.OK
+                    and self._should_probe_bridge_now()
+                ):
+                    await self.bridge_probe_once()
         except asyncio.CancelledError:
             raise
+
+    def _should_probe_bridge_now(self) -> bool:
+        if self._last_bridge_probe_monotonic is None:
+            return True
+        elapsed = time.monotonic() - self._last_bridge_probe_monotonic
+        return elapsed >= self.bridge_probe_interval_s
 
     # ---- ein Tickle-Zyklus ----
 
@@ -265,6 +318,74 @@ class AuthLifecycle:
             self._reauth_failures = attempt
         self._status = AuthStatus.AUTH_LOST
 
+    async def bridge_probe_once(self) -> bool | None:
+        """Pruefe via GET /iserver/auth/status, ob der iserver-Bridge zu IBKR
+        steht. Im no-bridge-Zustand liefert das Trio
+        (authenticated/connected/established) drei false-Werte; SSO-Tickle
+        bleibt davon unberuehrt.
+
+        Bei Drift: einmaliger force-reauth + 15s warmup + erneuter Probe.
+        Nach `bridge_max_failures` (Default 3) aufeinanderfolgenden Drift-
+        Befunden eskaliert der Status pragmatisch auf ``AUTH_LOST`` -
+        Business-Endpunkte antworten dann mit 503 + Retry-After.
+
+        Returns:
+            ``True`` / ``False`` aus dem letzten Probe-Resultat,
+            ``None`` wenn der Probe selbst (Network) fehlschlug und der
+            bisherige Bridge-State unveraendert blieb.
+        """
+        try:
+            payload = await self._client.auth_status()
+        except httpx.HTTPError as exc:
+            logger.debug("bridge_probe: auth_status fehlgeschlagen: %s", exc)
+            # Probe konnte nicht laufen; den bisherigen Bridge-State
+            # bewusst nicht modifizieren (keine False-Negative).
+            return None
+        self._record_probe_timestamp()
+        if _is_bridge_ok(payload):
+            self._iserver_bridge_ok = True
+            self._consecutive_bridge_failures = 0
+            return True
+        # Drift erkannt: SSO-Session steht (sonst waere tick_once schon im
+        # Reauth-Loop), aber das iserver-Backend hat die Bruecke verloren.
+        # Einmalige Recovery: force-reauth + warmup + recheck.
+        self._iserver_bridge_ok = False
+        recovered = await self._try_bridge_recover()
+        if recovered:
+            self._iserver_bridge_ok = True
+            self._consecutive_bridge_failures = 0
+            return True
+        self._consecutive_bridge_failures += 1
+        if self._consecutive_bridge_failures >= self.bridge_max_failures:
+            # Pragmatische Eskalation: AUTH_LOST mappt direkt auf das
+            # bestehende 503-Verhalten (`require_session_ok`). Wir setzen
+            # den Status hier ohne nochmaligen Reauth-Loop, weil der erste
+            # Reauth-Versuch im _try_bridge_recover gerade fehlgeschlagen ist.
+            self._status = AuthStatus.AUTH_LOST
+        return False
+
+    async def _try_bridge_recover(self) -> bool:
+        """Einmaliger force-reauth + warmup + recheck. Returns True nur,
+        wenn der recheck wieder das gesunde Trio sieht."""
+        self._last_reauth_at = _utcnow()
+        try:
+            await self._client.reauthenticate()
+        except httpx.HTTPError as exc:
+            logger.warning("bridge-recover: reauth fehlgeschlagen: %s", exc)
+            return False
+        await self._sleep(self.bridge_reauth_warmup_s)
+        try:
+            recheck = await self._client.auth_status()
+        except httpx.HTTPError as exc:
+            logger.warning("bridge-recover: recheck-auth_status fehlgeschlagen: %s", exc)
+            return False
+        self._record_probe_timestamp()
+        return _is_bridge_ok(recheck)
+
+    def _record_probe_timestamp(self) -> None:
+        self._last_bridge_probe_at = _utcnow()
+        self._last_bridge_probe_monotonic = time.monotonic()
+
     def _mark_session_ok(self) -> None:
         # Wir wechseln in OK, wenn entweder der Status vorher nicht OK
         # war ODER es noch keinen Session-Start gibt - der initial-State
@@ -334,6 +455,18 @@ def _is_sso_validated(payload: dict[str, object]) -> bool:
     Session valide; alles andere wird als ``not authenticated``
     behandelt."""
     return bool(payload.get("RESULT"))
+
+
+def _is_bridge_ok(payload: dict[str, object]) -> bool:
+    """iserver/auth/status meldet die iserver-Bridge als gesund, wenn das
+    Trio ``authenticated/established/connected`` alle drei true sind. Im
+    no-bridge-Zustand sind alle drei false, waehrend sso/validate
+    weiterhin ``RESULT=true`` zurueckgeben kann."""
+    return bool(
+        payload.get("authenticated")
+        and payload.get("established")
+        and payload.get("connected")
+    )
 
 
 # ---- FastAPI-Dependencies ----
