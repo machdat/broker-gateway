@@ -161,4 +161,7 @@ class _FakeLifecycle:
             consecutive_reauth_failures=0,
             accounts_initialized=self._connected,
             session_id=None,
+            iserver_bridge_ok=self._connected,
+            last_bridge_probe_at=None,
+            consecutive_bridge_failures=0,
         )

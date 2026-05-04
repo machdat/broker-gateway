@@ -56,6 +56,10 @@ async def lifecycle(cp_client: CPGatewayClient) -> AuthLifecycle:
         tickle_interval_s=0.05,
         reauth_max_retries=3,
         reauth_backoff_s=0.0,
+        # Bridge-Probe in Tests aggressiver konfigurieren als in
+        # Production: kurzes Intervall fuer Loop-Probe-Tests, kein Warmup.
+        bridge_probe_interval_s=0.05,
+        bridge_reauth_warmup_s=0.0,
     )
     yield lc
     await lc.stop()
@@ -347,3 +351,139 @@ async def test_require_session_ok_passes_when_status_ok(
             headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
         )
     assert response.status_code == 200
+
+
+# ---- iserver-Bridge-Probe (Karte 81e3c818) ----
+
+
+async def test_bridge_probe_marks_bridge_ok_on_healthy_response(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Gesundes /iserver/auth/status (Trio alle true) -> bridge_ok=True."""
+    result = await lifecycle.bridge_probe_once()
+    assert result is True
+    snap = lifecycle.snapshot()
+    assert snap.iserver_bridge_ok is True
+    assert snap.last_bridge_probe_at is not None
+    assert snap.consecutive_bridge_failures == 0
+
+
+async def test_bridge_probe_triggers_recovery_on_drift(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Drift -> einmaliger reauth via Hook geheilt -> bridge_ok zurueck auf True."""
+    cp_gateway_mock.bridge_drift = True
+
+    async def heal_on_reauth(method: str, path: str) -> None:
+        if path == "/reauthenticate":
+            cp_gateway_mock.bridge_drift = False
+
+    lifecycle._client._pacing = heal_on_reauth  # type: ignore[attr-defined]
+
+    result = await lifecycle.bridge_probe_once()
+    assert result is True
+    snap = lifecycle.snapshot()
+    assert snap.iserver_bridge_ok is True
+    assert snap.consecutive_bridge_failures == 0
+    assert snap.last_reauth_at is not None
+    assert lifecycle.status is AuthStatus.OK
+
+
+async def test_bridge_probe_three_drifts_escalate_to_auth_lost(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Persistenter Drift: 3x Probe ohne Recovery -> auth_status=AUTH_LOST."""
+    cp_gateway_mock.bridge_drift = True
+    for expected_failures in (1, 2, 3):
+        result = await lifecycle.bridge_probe_once()
+        assert result is False
+        snap = lifecycle.snapshot()
+        assert snap.iserver_bridge_ok is False
+        assert snap.consecutive_bridge_failures == expected_failures
+    assert lifecycle.status is AuthStatus.AUTH_LOST
+
+
+async def test_bridge_probe_returns_none_when_call_raises(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Network-Fehler beim Probe -> bisheriger Bridge-State unveraendert."""
+    # Erst einen erfolgreichen Probe, damit bridge_ok=True gesetzt ist.
+    await lifecycle.bridge_probe_once()
+    assert lifecycle.snapshot().iserver_bridge_ok is True
+
+    original = lifecycle._client.auth_status
+
+    async def fail_once() -> dict:
+        raise httpx.ConnectError("simulated network failure")
+
+    lifecycle._client.auth_status = fail_once  # type: ignore[assignment]
+    try:
+        result = await lifecycle.bridge_probe_once()
+    finally:
+        lifecycle._client.auth_status = original  # type: ignore[assignment]
+    # Kein State-Change: bridge_ok bleibt True, kein Failure-Increment.
+    assert result is None
+    snap = lifecycle.snapshot()
+    assert snap.iserver_bridge_ok is True
+    assert snap.consecutive_bridge_failures == 0
+
+
+async def test_background_loop_runs_bridge_probe(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Hintergrund-Loop ruft bridge_probe_once mit eigenem Intervall."""
+    await lifecycle.start()
+    # Initialer Probe ist schon durch (im start()), warte auf mindestens
+    # einen weiteren Loop-Tick mit Bridge-Probe.
+    await asyncio.sleep(lifecycle.tickle_interval_s * 3.5)
+    await lifecycle.stop()
+    snap = lifecycle.snapshot()
+    assert snap.iserver_bridge_ok is True
+    assert snap.last_bridge_probe_at is not None
+
+
+async def test_bridge_probe_skipped_in_initial_start_when_auth_lost(
+    cp_client: CPGatewayClient, cp_gateway_mock
+) -> None:
+    """Wenn der erste Tickle in AUTH_LOST endet, soll start() den initialen
+    Bridge-Probe ueberspringen (sonst zaehlt der Counter unnoetig hoch)."""
+    cp_gateway_mock.auth_lost = True
+    lc = AuthLifecycle(
+        cp_client,
+        tickle_interval_s=10.0,
+        reauth_max_retries=1,
+        reauth_backoff_s=0.0,
+        bridge_probe_interval_s=10.0,
+        bridge_reauth_warmup_s=0.0,
+    )
+    try:
+        await lc.start()
+    finally:
+        await lc.stop()
+    snap = lc.snapshot()
+    assert lc.status is AuthStatus.AUTH_LOST
+    # Kein initialer Probe -> bridge_ok bleibt None
+    assert snap.iserver_bridge_ok is None
+    assert snap.last_bridge_probe_at is None
+
+
+async def test_internal_health_includes_bridge_fields(
+    store: InMemoryTokenStore,
+    lifecycle: AuthLifecycle,
+    cp_gateway_mock,
+) -> None:
+    """/v1/internal/health spiegelt iserver_bridge_ok, last_bridge_probe_at,
+    consecutive_bridge_failures aus dem Snapshot."""
+    await lifecycle.tick_once()
+    await lifecycle.bridge_probe_once()
+    application = create_app(store=store, lifecycle=lifecycle)
+    with TestClient(application) as client:
+        response = client.get(
+            "/v1/internal/health",
+            headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["iserver_bridge_ok"] is True
+    assert body["last_bridge_probe_at"] is not None
+    assert body["consecutive_bridge_failures"] == 0

@@ -62,12 +62,17 @@ class ReplayCPGatewayMock:
         base_url: str = "http://cpgateway:5000/v1/api",
         *,
         auth_lost: bool = False,
+        bridge_drift: bool = False,
         slow_response_ms: int = 0,
         pacing_violation_after_n: int | None = None,
         reply_warnings: list[dict[str, Any]] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.auth_lost = auth_lost
+        # bridge_drift simuliert den "no bridge"-Zustand (Karte 81e3c818):
+        # SSO/Tickle bleiben gruen, nur iserver/auth/status liefert das
+        # Trio mit allen drei false.
+        self.bridge_drift = bridge_drift
         self.slow_response_ms = slow_response_ms
         self.pacing_violation_after_n = pacing_violation_after_n
         self.reply_warnings: list[dict[str, Any]] = list(reply_warnings or [])
@@ -119,6 +124,15 @@ class ReplayCPGatewayMock:
         if self.auth_lost:
             body["authenticated"] = False
             body["fail"] = "session-lost"
+        if self.bridge_drift:
+            # Karte 81e3c818: no-bridge-Zustand laut Live-Befund 2026-05-03 -
+            # alle drei Trio-Felder false, fail-message gefuellt, serverInfo
+            # fehlt im realen Body.
+            body["authenticated"] = False
+            body["established"] = False
+            body["connected"] = False
+            body["fail"] = "no bridge"
+            body.pop("serverInfo", None)
         return httpx.Response(status, json=body)
 
     def _h_tickle(self, request: httpx.Request) -> httpx.Response:

@@ -89,6 +89,9 @@ class _FakeAuthLifecycle:
             consecutive_reauth_failures=0,
             accounts_initialized=True,
             session_id=self._session_id,
+            iserver_bridge_ok=True,
+            last_bridge_probe_at=None,
+            consecutive_bridge_failures=0,
         )
 
 
