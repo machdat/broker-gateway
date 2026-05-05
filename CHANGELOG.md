@@ -4,6 +4,24 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.29.2] — 2026-05-05 (Phase-B-Hotfix — Chromium-Container-Args)
+
+Live-Smoke 3 nach v1.29.1 hat den Sidecar erstmals tatsaechlich
+gestartet — Chromium crashed dann beim Form-Submit mit
+"Page crashed". Klassischer Container-Pattern: das Default
+`/dev/shm` im Container ist 64MB, Chromium-Renderer braucht mehr und
+schiesst sich beim Allokieren.
+
+### Geaendert
+- `ops/auto-login/auto_login.py` ergaenzt die Chromium-Launch-Args
+  um `--disable-dev-shm-usage`, `--disable-gpu` und
+  `--disable-software-rasterizer`. Das erzwingt `/tmp` als Shared-
+  Memory-Verzeichnis (etwas langsamer, aber stabil) und vermeidet
+  den ueberfluessigen GPU/Rasterizer-Pfad auf dem Pi.
+- `compose.paper.auto-login.yaml` hebt den Default-Image-Tag fuer
+  den Sidecar auf `:1.29.2` an, damit Build und Aufruf wieder
+  konsistent sind.
+
 ## [1.29.1] — 2026-05-05 (Phase-B-Hotfix — docker-CLI im gateway-Image)
 
 Live-Smoke 3 auf cma-pi-1 hat einen Bug aufgedeckt: das gateway-Image

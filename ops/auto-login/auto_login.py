@@ -81,7 +81,23 @@ async def run_login(
 ) -> tuple[int, str | None]:
     """Vollstaendiger Login-Flow. Keine Klartext-Credentials in Logs."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        # Chromium-Args fuer Container/Pi-Umgebung:
+        # --no-sandbox: Sidecar laeuft als nicht-root, aber Chromium-
+        #   Sandbox braucht entweder /proc/self/loginuid oder CAP_SYS_ADMIN.
+        # --disable-dev-shm-usage: Default /dev/shm im Container ist 64MB;
+        #   Chromium-Renderer crashed dann beim Form-Submit. Erzwingt
+        #   /tmp als Shared-Memory-Verzeichnis (langsamer, aber stabil).
+        # --disable-gpu: Pi hat keinen GPU-Pfad fuer headless Chromium.
+        # --disable-software-rasterizer: spart Renderer-Ressourcen.
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+            ],
+        )
         context = await browser.new_context()
         page = await context.new_page()
         try:
