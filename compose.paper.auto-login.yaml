@@ -1,0 +1,38 @@
+# Override fuer den Paper-Stack: Auto-Login-Sidecar bekommt Zugriff
+# auf den Docker-Socket, damit `broker-gateway-paper` per
+# `docker run --rm broker-gateway-paper-auto-login:<version>` einen
+# Sidecar-Container starten kann.
+#
+# Aufruf:
+#   docker compose --env-file .env.paper \
+#     -f compose.yaml -f compose.paper.auto-login.yaml \
+#     up -d gateway
+#
+# Wird automatisch von ops/build-gateway.sh --env=paper eingebunden.
+#
+# WICHTIG (Hard-Guard 3): dieser Override darf NIEMALS im Live-Stack
+# benutzt werden. ops/build-gateway.sh haengt ihn ausschliesslich bei
+# `--env=paper` an. Im Live-Stack bleibt der gateway-Container ohne
+# docker.sock-Mount und ohne Auto-Login-relevante Env.
+
+services:
+  gateway:
+    volumes:
+      # docker.sock-Mount: erlaubt dem Hauptcontainer, einen
+      # Auto-Login-Sidecar zu starten. Bewusste Akzeptanz des
+      # Container-Escape-Risikos im Paper-Stack — dort laeuft kein
+      # echtes Geld. Live-Compose hat diesen Mount NICHT.
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    environment:
+      # Schaltet den Auto-Login-Trigger im Lifespan an. Default 0
+      # in .env.paper.template.
+      BG_PAPER_AUTO_LOGIN: "${BG_PAPER_AUTO_LOGIN:-0}"
+      # Image-Tag des Sidecars; Update muss synchron mit der
+      # Service-Version laufen (Memory: image-Tag = Service-Version).
+      BG_AUTO_LOGIN_IMAGE: "${BG_AUTO_LOGIN_IMAGE:-broker-gateway-paper-auto-login:1.29.0}"
+      # Compose-Netz, in dem der Sidecar nach broker-gateway-paper-
+      # cpgateway connected. Beachte den Project-Prefix.
+      BG_AUTO_LOGIN_NETWORK: "${BG_AUTO_LOGIN_NETWORK:-broker-gateway-paper_default}"
+      BG_AUTO_LOGIN_TARGET_URL: "${BG_AUTO_LOGIN_TARGET_URL:-http://broker-gateway-paper-cpgateway:5000/}"
+      BG_PAPER_USERNAME: "${BG_PAPER_USERNAME:-}"
+      BG_PAPER_PASSWORD: "${BG_PAPER_PASSWORD:-}"

@@ -4,6 +4,76 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.29.0] — 2026-05-05 (Karte ece90a8e Phase B — Sidecar-Image + Verdrahtung)
+
+Phase B der Karte ece90a8e (*Paper-Stack Auto-Login via Headless-
+Chromium-Sidecar*) liefert das Sidecar-Image, den echten
+Subprocess-Runner, die Lifecycle-Verdrahtung und den Admin-Endpoint
+zur manuellen Aktivierung. Damit ist der Auto-Login-Pfad funktional —
+Phase 1 (HAR + SRP-6-Befund) und Phase A (Skeleton + Hard-Guards)
+sind bereits gemerged.
+
+### Neu
+- ``ops/auto-login/Dockerfile`` (basiert auf
+  ``mcr.microsoft.com/playwright/python``, ARM64-faehig),
+  ``requirements.txt``, ``auto_login.py`` (Playwright-Flow auf
+  Basis der HAR-Befunde aus Phase 1 — wartet auf
+  ``POST /sso/Dispatcher`` mit Body ``Client login succeeds``) und
+  ``auto_login_logic.py`` (browser-unabhaengige Hilfen:
+  ``mask_username``, ``is_paper_target``, ``classify_dispatcher``,
+  ``emit_log``).
+- ``broker_gateway.cp.auto_login_runner.DockerSubprocessAutoLoginRunner``:
+  echter ``AutoLoginRunner`` via ``docker run --rm`` als
+  ``asyncio.create_subprocess_exec``-Aufruf. Reicht
+  ``BG_PAPER_USERNAME``/``_PASSWORD`` als ``-e VAR``-Form (ohne
+  Wert) weiter, sodass der Klartext NICHT in ``ps``-Listings landet.
+  Timeout-, FileNotFoundError- und nicht-null-Exit-Behandlung sind
+  abgedeckt.
+- ``AuthLifecycle.attach_auto_login_trigger(trigger)`` + interne
+  ``_maybe_invoke_auto_login``-Hook. Wird in ``_handle_auth_loss``
+  (Reauth-Loop erschoepft → ``AUTH_LOST``) und im CP_DOWN-Branch
+  von ``tick_once`` aufgerufen. Trigger-Exceptions werden geloggt,
+  brechen aber den Tickle-Loop nicht ab.
+- ``main.py`` haengt im Lifespan einen ``AutoLoginTrigger`` an, wenn
+  ``BG_STACK_KIND=paper`` UND ``BG_PAPER_AUTO_LOGIN=1``. Image-Tag,
+  Network und Target-URL sind ueber ``BG_AUTO_LOGIN_*``-Env-Vars
+  konfigurierbar.
+- ``POST /v1/admin/auto-login/trigger`` (Scope ``admin:*``):
+  manueller Anstoss, respektiert dieselben Hard-Guards und Throttle.
+  Liefert HTTP 503 ``auto_login_disabled``, wenn der Trigger nicht
+  attached ist.
+- ``compose.paper.auto-login.yaml`` als Compose-Override fuer den
+  Paper-Stack: mountet ``/var/run/docker.sock`` und reicht die
+  Auto-Login-Vars in den ``gateway``-Service. Wird automatisch von
+  ``ops/build-gateway.sh --env=paper`` eingehaengt; Live-Compose
+  bleibt unveraendert (Hard-Guard 3).
+- ``ops/build-gateway.sh`` baut bei ``--env=paper`` zusaetzlich das
+  Sidecar-Image (``--platform linux/arm64``) und liest
+  ``/etc/default/broker-gateway-paper`` ein.
+- ``docs/runbooks/auto-login-paper-setup.md``: Schritt-fuer-Schritt-
+  Runbook fuer Pi-Setup, Smoke-Tests, Aktivierung und Rollback.
+
+### Tests
+- ``tests/test_auto_login_sidecar_logic.py``: 17 Tests fuer die
+  browser-unabhaengige Sidecar-Logik (Username-Maskierung,
+  Hard-Guard-URL-Check, Dispatcher-Classification, JSON-Logger).
+- ``tests/test_auto_login_runner.py``: 12 Tests fuer
+  Subprocess-Argument-Aufbau, Env-Mapping, Exit-Code-Mapping,
+  Timeout-Handling.
+- ``tests/test_admin_auto_login.py``: 5 Tests fuer den neuen
+  Admin-Endpoint (Auth-Schutz, Scope-Check, Skipped/Success-
+  Outcome).
+- ``tests/test_cp_lifecycle.py``: 3 zusaetzliche Tests fuer die
+  Trigger-Verdrahtung (greift bei ``AUTH_LOST``, greift NICHT bei
+  ``OK``, schluckt Exceptions).
+
+### Bewusst noch nicht enthalten
+- Live-Smokes 2 + 3 auf cma-pi-1 (zwingend nach dem Merge dieses PR;
+  Runbook in ``docs/runbooks/auto-login-paper-setup.md``).
+- AppArmor- bzw. Seccomp-Profil fuer den ``docker.sock``-Mount —
+  dokumentierte Restrisiko-Akzeptanz im Paper-Stack
+  (``docs/04-security.md`` Sektion 7.4).
+
 ## [1.28.0] — 2026-05-05 (Karte ece90a8e Phase A — Auto-Login-Skeleton fuer Paper-Stack)
 
 Phase A der Karte ece90a8e (*Paper-Stack Auto-Login via Headless-
