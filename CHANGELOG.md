@@ -4,6 +4,20 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.29.1] — 2026-05-05 (Phase-B-Hotfix — docker-CLI im gateway-Image)
+
+Live-Smoke 3 auf cma-pi-1 hat einen Bug aufgedeckt: das gateway-Image
+hat zwar den `docker.sock`-Mount, aber kein `docker`-CLI-Binary. Der
+Auto-Login-Trigger schlug deswegen mit Exit-Code 9 (`docker binary
+not found`) fehl, ohne dass je ein Sidecar startete.
+
+### Geaendert
+- `Dockerfile` zieht via Multi-Stage-Copy das `docker`-Binary aus
+  `docker:27-cli`. Das Image wird damit ca. 50 MB groesser, hat aber
+  keinen dockerd-Daemon (nur das CLI-Binary). Im Live-Stack bleibt
+  der Pfad ohnehin unbenutzt (Hard-Guard 3 verhindert den
+  `docker.sock`-Mount).
+
 ## [1.29.0] — 2026-05-05 (Karte ece90a8e Phase B — Sidecar-Image + Verdrahtung)
 
 Phase B der Karte ece90a8e (*Paper-Stack Auto-Login via Headless-
