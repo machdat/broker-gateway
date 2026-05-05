@@ -1,0 +1,351 @@
+{
+  "total_entries": 25,
+  "stats": {
+    "entries": 25,
+    "cookies_redacted": 0,
+    "headers_redacted": 0,
+    "body_user_hits": 8,
+    "body_pwd_hits": 0,
+    "resp_user_hits": 0,
+    "resp_pwd_hits": 0
+  },
+  "entries": [
+    {
+      "method": "POST",
+      "url": "http://localhost:5001/sso/Authenticator",
+      "status": 200,
+      "request_content_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "response_content_type": "application/json;charset=ISO-8859-1",
+      "post_field_names": [
+        "ACTION",
+        "USER",
+        "A",
+        "RESP_TYPE",
+        "LOGIN_TYPE",
+        "SERVICE"
+      ],
+      "post_mime_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "post_size": 200,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5001/sso/Authenticator",
+      "status": 200,
+      "request_content_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "response_content_type": "application/json;charset=ISO-8859-1",
+      "post_field_names": [
+        "ACTION",
+        "USER",
+        "A",
+        "RESP_TYPE",
+        "LOGIN_TYPE",
+        "SERVICE"
+      ],
+      "post_mime_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "post_size": 200,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/sso/Login?forwardTo=22&RL=1&ip2loc=US",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "text/html;charset=UTF-8",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/css/bootstrap-5.2.2/bootstrap.min.css",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "text/css",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/css/fontawesome-6.4.2/all.min.css",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "text/css",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/css/bootstrap-switch-3.3.2/bootstrap-switch.min.css",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "text/css",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/css/reg-am/login.min.css",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "text/css",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/css/ibkr/theme-ibkr-portal.min.css",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "text/css",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/scripts/common/js/jquery-3.7.0/jquery.min.js",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "application/javascript",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/scripts/common/js/bootstrap-5.2.2/bootstrap.bundle.min.js",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "application/javascript",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/sso/lib/xyz.bundle.min.js",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "application/javascript",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "https://s.go-mpulse.net/boomerang/CGJ34-S5RKA-7ZQ8F-AJER9-TWWVG",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "application/javascript; charset=utf-8",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/images/common/logos/ibkr/interactive-brokers.svg",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "image/svg+xml",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 7046,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/fonts/proxima-nova/Proxima-Nova-Regular.woff2",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "font/woff2",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/fonts/fontawesome-6.4.2/webfonts/fa-solid-900.woff2",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "font/woff2",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/fonts/fontawesome-6.4.2/webfonts/fa-brands-400.woff2",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "font/woff2",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/fonts/proxima-nova/Proxima-Nova-Semibold.woff2",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "font/woff2",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5001/sso/report",
+      "status": 200,
+      "request_content_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "response_content_type": "application/json;charset=ISO-8859-1",
+      "post_field_names": [
+        "LEVEL",
+        "MODULE",
+        "URL",
+        "MESSAGE"
+      ],
+      "post_mime_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "post_size": 173,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5001/portal.proxy/v1/gstat/bulletins",
+      "status": 200,
+      "request_content_type": "application/json; charset=UTF-8",
+      "response_content_type": "text/html; charset=utf-8",
+      "post_field_names": [],
+      "post_mime_type": "application/json; charset=UTF-8",
+      "post_size": 52,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/images/web/favicons/home-screen-icon-128x128.png",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "image/png",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 6676,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/fonts/proxima-nova/proximanova-extrabold.woff2",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "font/woff2",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:5001/images/common/logos/ibkr/interactive-brokers-inverse.svg",
+      "status": 200,
+      "request_content_type": null,
+      "response_content_type": "image/svg+xml",
+      "post_field_names": [],
+      "post_mime_type": null,
+      "post_size": 0,
+      "response_size": 7029,
+      "set_cookies": []
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5001/sso/Authenticator",
+      "status": 200,
+      "request_content_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "response_content_type": "application/json;charset=ISO-8859-1",
+      "post_field_names": [
+        "ACTION",
+        "USER",
+        "A",
+        "RESP_TYPE",
+        "LOGIN_TYPE",
+        "SERVICE"
+      ],
+      "post_mime_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "post_size": 200,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5001/sso/Authenticator",
+      "status": 200,
+      "request_content_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "response_content_type": "application/json;charset=ISO-8859-1",
+      "post_field_names": [
+        "ACTION",
+        "USER",
+        "M1",
+        "EKX",
+        "RESP_TYPE",
+        "VERSION",
+        "LOGIN_TYPE"
+      ],
+      "post_mime_type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "post_size": 375,
+      "response_size": 0,
+      "set_cookies": []
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5001/sso/Dispatcher",
+      "status": 200,
+      "request_content_type": "application/x-www-form-urlencoded",
+      "response_content_type": null,
+      "post_field_names": [
+        "loginType",
+        "forwardTo"
+      ],
+      "post_mime_type": "application/x-www-form-urlencoded",
+      "post_size": 24,
+      "response_size": 21,
+      "set_cookies": []
+    }
+  ]
+}
