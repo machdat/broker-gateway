@@ -4,6 +4,32 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.29.3] — 2026-05-05 (Phase-B-Hotfix — Live/Paper-Toggle vor Submit)
+
+Live-Smoke 3 nach v1.29.2 hat den Sidecar 32s laufen lassen, dann
+Timeout mit "no /sso/Dispatcher response within timeout". Diagnose-
+Lauf zeigte den eigentlichen Grund: cpgateway hat nach Container-
+Recreate den Default-Mode auf "Live" stehen, auch wenn der
+konfigurierte User ein Paper-Account ist. Server lehnt mit Banner
+"You have selected the Live Account Mode, but the specified user is
+a Paper Trading user. Please select the correct Login mode." ab,
+ohne `/sso/Dispatcher` zu triggern.
+
+Die ursprueengliche HAR-Aufzeichnung aus Phase 1.b zeigt diesen
+Wechsel als `LOGIN_TYPE=1 -> LOGIN_TYPE=2` zwischen den
+`/sso/Authenticator`-Calls — der manuelle Login hatte zwischendrin
+den Toggle geklickt.
+
+### Geaendert
+- `ops/auto-login/auto_login.py` klickt vor Username/Password-Fill
+  den Live/Paper-Toggle (`.loginformWrapper .toggle-label:has-text(
+  "Paper")`) und wartet 800 ms, damit das xyz-Bundle den naechsten
+  `/sso/Authenticator`-Init mit `LOGIN_TYPE=2` rausschicken kann.
+  Toggle-Klick ist defensiv: wenn das Element nicht da ist (z.B.
+  paper-only-Build), bleibt der Login wie bisher.
+- `compose.paper.auto-login.yaml` hebt den Default-Image-Tag fuer
+  den Sidecar auf `:1.29.3` an.
+
 ## [1.29.2] — 2026-05-05 (Phase-B-Hotfix — Chromium-Container-Args)
 
 Live-Smoke 3 nach v1.29.1 hat den Sidecar erstmals tatsaechlich

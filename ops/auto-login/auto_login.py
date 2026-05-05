@@ -121,6 +121,30 @@ async def run_login(
             if await _detect_2fa(page):
                 return EXIT_2FA, "2fa indicator detected before submit"
 
+            # Live/Paper-Toggle: nach einem cpgateway-Container-Recreate
+            # ist der Default-Mode "Live", auch wenn der konfigurierte
+            # User ein Paper-Account ist. Ohne Toggle-Klick lehnt der
+            # Server den Login mit "You have selected the Live Account
+            # Mode, but the specified user is a Paper Trading user" ab,
+            # ohne /sso/Dispatcher zu triggern. In der Phase-1.b-HAR ist
+            # der Wechsel an LOGIN_TYPE=1 -> LOGIN_TYPE=2 sichtbar.
+            try:
+                paper_label = page.locator(
+                    '.loginformWrapper .toggle-label:has-text("Paper")'
+                ).first
+                if await paper_label.count() > 0 and await paper_label.is_visible():
+                    await paper_label.click()
+                    # Toggle-JS muss INIT (LOGIN_TYPE=2) abschicken; 800ms
+                    # geben dem Bundle Zeit, den naechsten Authenticator-
+                    # Call rauszuschicken, bevor wir die Felder fuellen.
+                    await page.wait_for_timeout(800)
+            except Exception as exc:  # noqa: BLE001 - defensive
+                # Toggle nicht vorhanden oder anderer Fehler: Login
+                # weitermachen — wenn der Default-Mode bereits Paper ist
+                # (z.B. weil der cpgateway in einer paper-only-Build
+                # laeuft), klappt der Login auch ohne Klick.
+                logger = None  # nichts loggen, kein Klartext
+
             try:
                 await page.locator(
                     '.loginformWrapper input[type="text"]'
