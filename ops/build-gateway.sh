@@ -54,6 +54,8 @@ for arg in "$@"; do
     esac
 done
 
+COMPOSE_FILES=(-f compose.yaml)
+
 case "$ENV_NAME" in
     live)
         export COMPOSE_PROJECT_NAME="broker-gateway"
@@ -65,6 +67,10 @@ case "$ENV_NAME" in
         # Container, dieser Export deckt den Fall ab, in dem die
         # env_file-Variable noch fehlt.
         export BG_STACK_KIND="live"
+        # Hard-Guard 3: Live-Stack bekommt KEINEN Auto-Login-Override
+        # und damit keinen docker.sock-Mount. Wer hier compose.paper.
+        # auto-login.yaml einhaengen wuerde, bekaeme ohnehin beim
+        # Service-Startup einen ConfigError (Hard-Guard 1).
         ;;
     paper)
         export COMPOSE_PROJECT_NAME="broker-gateway-paper"
@@ -72,6 +78,19 @@ case "$ENV_NAME" in
         export BG_GATEWAY_HOST_PORT="${BG_GATEWAY_HOST_PORT:-4001}"
         export BG_CPGATEWAY_VOLUME="${BG_CPGATEWAY_VOLUME:-/mnt/ssd/broker-gateway-paper/var/cpgateway-paper/logs}"
         export BG_STACK_KIND="paper"
+        # Auto-Login-Override haengt den docker.sock-Mount und die
+        # BG_PAPER_*/BG_AUTO_LOGIN_*-Vars an den gateway-Service.
+        # Bewusst nur fuer Paper.
+        COMPOSE_FILES+=(-f compose.paper.auto-login.yaml)
+        # Optional: /etc/default/broker-gateway-paper auf dem Pi
+        # haelt BG_PAPER_USERNAME/_PASSWORD/_AUTO_LOGIN. Wenn die
+        # Datei existiert, in das aktuelle Env laden (set -a / source).
+        if [[ -f /etc/default/broker-gateway-paper ]]; then
+            set -a
+            # shellcheck disable=SC1091
+            . /etc/default/broker-gateway-paper
+            set +a
+        fi
         ;;
     *)
         echo "build-gateway.sh: --env=$ENV_NAME unbekannt (erlaubt: live | paper)" >&2
@@ -94,19 +113,30 @@ BASE_URL="${CPGATEWAY_BASE_URL:-http://localhost:5000/v1/api}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 echo "[env] $ENV_NAME (project=$COMPOSE_PROJECT_NAME, env_file=$BG_ENV_FILE, port=$BG_GATEWAY_HOST_PORT)"
-echo "[1/3] docker compose build gateway"
-docker compose --env-file "$BG_ENV_FILE" build gateway
+echo "[1/4] docker compose build gateway"
+docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" build gateway
+
+if [[ "$ENV_NAME" == "paper" ]]; then
+    echo "[2/4] docker build broker-gateway-paper-auto-login (linux/arm64)"
+    docker build \
+        --platform linux/arm64 \
+        -t "${BG_AUTO_LOGIN_IMAGE:-broker-gateway-paper-auto-login:latest}" \
+        -f ops/auto-login/Dockerfile \
+        ops/auto-login/
+else
+    echo "[2/4] SKIP: --env=$ENV_NAME, Auto-Login-Sidecar wird nicht gebaut."
+fi
 
 if [[ "${SKIP_ACCEPTANCE}" == "1" ]]; then
-    echo "[2/3] SKIP: SKIP_ACCEPTANCE=1 gesetzt - Drift-Check uebersprungen."
+    echo "[3/4] SKIP: SKIP_ACCEPTANCE=1 gesetzt - Drift-Check uebersprungen."
 else
-    echo "[2/3] check_mock_drift --build-acceptance (commit ${GIT_COMMIT})"
+    echo "[3/4] check_mock_drift --build-acceptance (commit ${GIT_COMMIT})"
     GIT_COMMIT="${GIT_COMMIT}" "${PYTHON_BIN}" scripts/check_mock_drift.py \
         --base-url "${BASE_URL}" \
         --build-acceptance
 fi
 
-echo "[3/3] docker compose up -d gateway"
-docker compose --env-file "$BG_ENV_FILE" up -d gateway
+echo "[4/4] docker compose up -d gateway"
+docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" up -d gateway
 
 echo "[done] gateway-Container ist live ($ENV_NAME)."

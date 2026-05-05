@@ -154,6 +154,10 @@ class AuthLifecycle:
 
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
+        # Auto-Login (Karte ece90a8e Phase B): optionaler Trigger,
+        # wird per ``attach_auto_login_trigger`` gesetzt. Wenn None,
+        # bleibt das Bestand-Verhalten (kein Auto-Login).
+        self._auto_login_trigger = None
 
     # ---- öffentliche Status-Sicht ----
 
@@ -190,6 +194,16 @@ class AuthLifecycle:
             auto_login_failures_total=self._auto_login_failures_total,
             auto_login_throttle_state=self._auto_login_throttle_state,
         )
+
+    def attach_auto_login_trigger(self, trigger) -> None:
+        """Verknuepft einen AutoLoginTrigger mit diesem Lifecycle.
+
+        Nach diesem Call ruft ``_handle_auth_loss`` und der
+        CP_DOWN-Branch ``trigger.maybe_trigger()`` auf, sobald die
+        SSO-Heilung nicht mehr greift. ``None`` setzt den Hook zurueck
+        (z.B. fuer Tests, die ohne Trigger laufen wollen).
+        """
+        self._auto_login_trigger = trigger
 
     def update_auto_login(
         self,
@@ -288,6 +302,7 @@ class AuthLifecycle:
             if not sso_authenticated:
                 self._cp_reachable = False
                 self._status = AuthStatus.CP_DOWN
+                await self._maybe_invoke_auto_login()
                 return self._status
             # sso/validate hat geantwortet, also CP erreichbar - aber
             # ohne Tickle koennen wir den authenticated-Wert nicht aus
@@ -358,6 +373,7 @@ class AuthLifecycle:
                 return
             self._reauth_failures = attempt
         self._status = AuthStatus.AUTH_LOST
+        await self._maybe_invoke_auto_login()
 
     async def bridge_probe_once(self) -> bool | None:
         """Pruefe via GET /iserver/auth/status, ob der iserver-Bridge zu IBKR
@@ -473,6 +489,21 @@ class AuthLifecycle:
         else:
             self._reauth_failures += 1
         return self._status
+
+    async def _maybe_invoke_auto_login(self) -> None:
+        """Stoesst den Auto-Login-Trigger an, wenn einer attached ist.
+
+        Bewusst defensiv: alle Exceptions werden geloggt, aber NIEMALS
+        weitergereicht. Der Tickle-Loop muss weiterlaufen, auch wenn
+        der Sidecar krasht.
+        """
+        trigger = self._auto_login_trigger
+        if trigger is None:
+            return
+        try:
+            await trigger.maybe_trigger()
+        except Exception:  # noqa: BLE001 — top-level guard
+            logger.exception("auto-login trigger raised, ignoring")
 
     async def _sleep(self, seconds: float) -> None:
         if seconds <= 0:

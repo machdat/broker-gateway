@@ -542,3 +542,55 @@ async def test_internal_health_reflects_auto_login_state(
     assert body["last_auto_login_success_at"] is not None
     assert body["auto_login_failures_total"] == 2
     assert body["auto_login_throttle_state"] == "cooldown_15min"
+
+
+# ---- Auto-Login-Verdrahtung in den Tickle-Loop ----
+
+
+class _RecordingTrigger:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def maybe_trigger(self):
+        self.calls += 1
+        from broker_gateway.cp.auto_login_trigger import TriggerOutcome
+
+        return TriggerOutcome(skipped=True, reason="ok-noop-test")
+
+
+async def test_auto_login_trigger_invoked_on_auth_lost(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    trigger = _RecordingTrigger()
+    lifecycle.attach_auto_login_trigger(trigger)
+    cp_gateway_mock.auth_lost = True
+    await lifecycle.tick_once()  # Status wird auf AUTH_LOST gehen
+    assert lifecycle.status is AuthStatus.AUTH_LOST
+    assert trigger.calls == 1
+
+
+async def test_auto_login_trigger_not_invoked_on_ok(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    trigger = _RecordingTrigger()
+    lifecycle.attach_auto_login_trigger(trigger)
+    await lifecycle.tick_once()
+    assert lifecycle.status is AuthStatus.OK
+    assert trigger.calls == 0
+
+
+async def test_auto_login_trigger_exception_does_not_break_lifecycle(
+    lifecycle: AuthLifecycle, cp_gateway_mock
+) -> None:
+    """Wenn der Trigger eine Exception wirft, muss tick_once trotzdem
+    sauber zurueckkehren — der Tickle-Loop darf nicht stehen bleiben."""
+
+    class _ExplodingTrigger:
+        async def maybe_trigger(self):
+            raise RuntimeError("boom")
+
+    lifecycle.attach_auto_login_trigger(_ExplodingTrigger())
+    cp_gateway_mock.auth_lost = True
+    # Darf NICHT raisen.
+    await lifecycle.tick_once()
+    assert lifecycle.status is AuthStatus.AUTH_LOST

@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from broker_gateway.api.v1.admin import router as admin_router
 from broker_gateway.api.v1.auth import router as auth_router
 from broker_gateway.api.v1.events_stream import router as events_stream_router
 from broker_gateway.api.v1.exchanges import router as exchanges_router
@@ -32,3 +33,4 @@ router.include_router(orders_ws_router)
 router.include_router(trades_router)
 router.include_router(status_router)
 router.include_router(events_stream_router)
+router.include_router(admin_router)

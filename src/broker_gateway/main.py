@@ -36,8 +36,12 @@ from broker_gateway.api.v1.trades import get_trades_service
 from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
-from broker_gateway.config import quotes_source as _read_quotes_source
-from broker_gateway.config import validate_runtime_config
+from broker_gateway.config import (
+    paper_auto_login_enabled,
+    quotes_source as _read_quotes_source,
+    stack_kind,
+    validate_runtime_config,
+)
 from broker_gateway.cp.calendar import CalendarService
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
@@ -73,7 +77,61 @@ from broker_gateway.throttle.manager import ThrottleManager, get_throttle_manage
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
 
+_DEFAULT_AUTO_LOGIN_IMAGE = "broker-gateway-paper-auto-login:latest"
+_DEFAULT_AUTO_LOGIN_NETWORK = "broker-gateway-paper_default"
+_DEFAULT_AUTO_LOGIN_TARGET = "http://broker-gateway-paper-cpgateway:5000/"
+
 _logger = logging.getLogger(__name__)
+
+
+def _maybe_attach_auto_login(cp_lifecycle: AuthLifecycle, app: FastAPI) -> None:
+    """Verdrahtet den Auto-Login-Trigger, wenn der Stack-Modus passt.
+
+    Stille no-op-Branche, wenn ``BG_PAPER_AUTO_LOGIN`` nicht gesetzt
+    oder der Stack nicht ``paper`` ist. ``validate_runtime_config``
+    hat zuvor schon Hard-Guard 1 gegen die ungueltigen Kombinationen
+    gepruef, hier reicht eine schmale Doppel-Pruefung.
+
+    Beim erfolgreichen Attach wird der Trigger zusaetzlich an
+    ``app.state.auto_login_trigger`` gehaengt — der Admin-Endpoint
+    ``POST /v1/admin/auto-login/trigger`` greift darauf zu.
+    """
+    if not paper_auto_login_enabled():
+        return
+    if stack_kind() != "paper":
+        return
+    # Lazy-Imports verhindern, dass die Auto-Login-Module bei jedem
+    # Service-Start ohne Auto-Login geladen werden.
+    from broker_gateway.cp.auto_login_runner import (
+        DockerSubprocessAutoLoginRunner,
+        DockerSubprocessConfig,
+    )
+    from broker_gateway.cp.auto_login_throttle import AutoLoginThrottle
+    from broker_gateway.cp.auto_login_trigger import AutoLoginTrigger
+
+    runner = DockerSubprocessAutoLoginRunner(
+        DockerSubprocessConfig(
+            image_tag=os.environ.get(
+                "BG_AUTO_LOGIN_IMAGE", _DEFAULT_AUTO_LOGIN_IMAGE
+            ),
+            network=os.environ.get(
+                "BG_AUTO_LOGIN_NETWORK", _DEFAULT_AUTO_LOGIN_NETWORK
+            ),
+            target_url=os.environ.get(
+                "BG_AUTO_LOGIN_TARGET_URL", _DEFAULT_AUTO_LOGIN_TARGET
+            ),
+        )
+    )
+    trigger = AutoLoginTrigger(
+        lifecycle=cp_lifecycle,
+        throttle=AutoLoginThrottle(),
+        runner=runner,
+        enabled=True,
+        stack_kind="paper",
+    )
+    cp_lifecycle.attach_auto_login_trigger(trigger)
+    app.state.auto_login_trigger = trigger
+    _logger.info("auto-login trigger attached (stack=paper)")
 
 
 def _format_cookie_header(client: CPGatewayClient | None) -> str:
@@ -263,6 +321,7 @@ def create_app(
             client = None
             cp_lifecycle = lifecycle
 
+        _maybe_attach_auto_login(cp_lifecycle, app)
         app.state.cp_lifecycle = cp_lifecycle
         app.dependency_overrides[get_cp_lifecycle] = lambda: cast(AuthLifecycle, app.state.cp_lifecycle)
 
