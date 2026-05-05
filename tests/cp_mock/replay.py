@@ -45,31 +45,41 @@ _BY_CONID: dict[int, dict[str, Any]] = {
     info["conid"]: {"symbol": sym, **info} for sym, info in _INSTRUMENTS.items()
 }
 
-# ISIN -> Cross-Listing-Liste fuer den name=true-Pfad. Synthetisch
-# zusammengestellt aus dem SAP-symbol-Recording (NYSE-ADR + IBIS Heimat-
-# Listing); echte Live-Recordings folgen, sobald der Pi-Stack wieder
-# Auth hat (Karte 12e04c98).
+# ISIN -> Cross-Listing-Liste fuer den name=true-Pfad. Schema gegen
+# Live-CP-Antwort (2026-05-05) kalibriert: companyHeader traegt das
+# Exchange-Kuerzel in Klammern, description ist null, secType auf
+# Top-Level. Karte 12e04c98 + Drift-Fix.
 _ISIN_LISTINGS: dict[str, list[dict[str, Any]]] = {
     "DE0007164600": [
-        # NYSE-ADR (XNYS) - bei IBKR meist primaer geliefert
-        {
-            "conid": "3804335",
-            "companyHeader": "SAP SE-SPONSORED ADR - NYSE",
-            "companyName": "SAP SE-SPONSORED ADR",
-            "symbol": "SAP",
-            "description": "NYSE",
-            "restricted": "CFD",
-            "sections": [{"secType": "STK"}],
-        },
-        # XETRA / IBIS Heimat-Listing
         {
             "conid": "14204",
-            "companyHeader": "SAP SE - IBIS",
-            "companyName": "SAP SE",
+            "companyHeader": "SAP SE (IBIS)",
+            "companyName": None,
             "symbol": "SAP",
-            "description": "IBIS",
+            "description": None,
+            "restricted": "WAR",
+            "sections": [],
+            "secType": "STK",
+        },
+        {
+            "conid": "11979285",
+            "companyHeader": "SAP SE (EBS)",
+            "companyName": None,
+            "symbol": "SAP",
+            "description": None,
             "restricted": None,
-            "sections": [{"secType": "STK"}],
+            "sections": [],
+            "secType": "STK",
+        },
+        {
+            "conid": "458591970",
+            "companyHeader": "SAP SE (MEXI)",
+            "companyName": None,
+            "symbol": "SAP1N",
+            "description": None,
+            "restricted": "STK",
+            "sections": [],
+            "secType": "STK",
         },
     ],
 }
@@ -203,10 +213,12 @@ class ReplayCPGatewayMock:
         symbol = request.url.params.get("symbol", "").upper()
         # name=true signalisiert Such-String (Name oder ISIN). Karte
         # 12e04c98: ISIN-Pfad nutzt /iserver/secdef/search?symbol=<ISIN>&name=true.
+        # Live-CP liefert bei No-Match einen Error-Wrapper statt leerer Liste -
+        # das wird im Adapter normalisiert.
         if request.url.params.get("name", "").lower() == "true":
             listings = _ISIN_LISTINGS.get(symbol)
             if listings is None:
-                return httpx.Response(200, json=[])
+                return httpx.Response(200, json={"error": "No contracts found"})
             return httpx.Response(200, json=listings)
         if symbol not in _INSTRUMENTS:
             return httpx.Response(200, json=[])

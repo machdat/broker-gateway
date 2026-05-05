@@ -224,9 +224,9 @@ async def test_search_by_isin_happy_path_returns_cross_listings(
     instruments: InstrumentsService, cp_gateway_mock
 ) -> None:
     result = await instruments.search_by_isin("DE0007164600")
-    assert len(result) == 2  # NYSE-ADR + IBIS
+    assert len(result) == 3  # IBIS, EBS, MEXI - Live-Cross-Listings
     conids = {item.conid for item in result}
-    assert conids == {3804335, 14204}
+    assert conids == {14204, 11979285, 458591970}
     assert all(item.isin == "DE0007164600" for item in result)
     assert all(item.sec_type == "STK" for item in result)
 
@@ -244,6 +244,7 @@ async def test_search_by_isin_caches_subsequent_calls(
 async def test_search_by_isin_unknown_returns_empty(
     instruments: InstrumentsService, cp_gateway_mock
 ) -> None:
+    """Live-CP liefert {error: 'No contracts found'}; Adapter normalisiert auf []."""
     result = await instruments.search_by_isin("US0000000001")
     assert result == []
 
@@ -265,7 +266,7 @@ async def test_search_by_isin_lowercase_is_normalized(
 ) -> None:
     """Lowercase wird durch .upper() normalisiert und ist gueltig."""
     result = await instruments.search_by_isin("de0007164600")
-    assert len(result) == 2
+    assert len(result) == 3
     assert all(item.isin == "DE0007164600" for item in result)
 
 
@@ -293,7 +294,7 @@ async def test_search_endpoint_with_isin(client: TestClient) -> None:
     )
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 2
+    assert len(body) == 3
     assert all(item["isin"] == "DE0007164600" for item in body)
 
 
