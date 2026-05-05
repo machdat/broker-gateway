@@ -1,4 +1,4 @@
-"""Instruments-Adapter: Symbol-Lookup gegen das interne CP-Gateway.
+"""Instruments-Adapter: Symbol- und ISIN-Lookup gegen das interne CP-Gateway.
 
 Mappt CP-Gateway-Antworten auf die public API-Schemas (Section 4 in
 docs/api/v1.md) und cached die Ergebnisse. CP-Gateway-Calls sind teuer
@@ -6,6 +6,7 @@ und ratelimitiert; conid-Mapping ändert sich praktisch nie.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -17,6 +18,18 @@ from broker_gateway.cp.client import CPGatewayClient
 
 _DEFAULT_TTL_S = 7 * 24 * 60 * 60  # 7 Tage
 
+# ISO 6166: 2 Buchstaben Country-Code + 9 alphanumerische Zeichen + 1 Ziffer Pruefsumme.
+_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
+
+
+def is_valid_isin(value: str) -> bool:
+    """Validiert ISIN-Format (12-Zeichen ISO 6166).
+
+    Pruefsummen-Validierung absichtlich nicht hier: IBKR akzeptiert sie selbst,
+    und ein Format-Check reicht, um echte Tippfehler/falsche Eingaben zu blocken.
+    """
+    return bool(_ISIN_RE.match(value))
+
 
 class Instrument(BaseModel):
     conid: int
@@ -24,6 +37,14 @@ class Instrument(BaseModel):
     company_name: str | None = None
     currency: str | None = None
     sec_type: str | None = Field(default=None, description="STK, OPT, FUT, ...")
+    isin: str | None = Field(
+        default=None,
+        description=(
+            "ISO 6166 ISIN, falls beim Lookup angegeben oder von IBKR mitgeliefert. "
+            "Symbol-Pfad: heute None (CP-Gateway liefert keine ISIN). "
+            "ISIN-Pfad: Echo des Query-Werts."
+        ),
+    )
 
 
 class InstrumentDetail(Instrument):
@@ -41,7 +62,7 @@ class InstrumentDetail(Instrument):
     )
 
 
-def _map_search_entry(entry: dict[str, Any]) -> Instrument:
+def _map_search_entry(entry: dict[str, Any], *, isin: str | None = None) -> Instrument:
     # Live-Schema (AP-02 #04): secType liegt in sections[0].secType, nicht
     # direkt am Top-Level. seed-Schema hatte secType am Top-Level.
     sec_type = entry.get("secType")
@@ -57,7 +78,24 @@ def _map_search_entry(entry: dict[str, Any]) -> Instrument:
         company_name=entry.get("companyName"),
         currency=entry.get("description"),  # CP-Gateway packt currency in description
         sec_type=sec_type,
+        isin=isin,
     )
+
+
+def _entry_exchange_code(entry: dict[str, Any]) -> str | None:
+    """Liefert das Exchange-Kuerzel aus dem CP-Search-Eintrag.
+
+    IBKR codiert die Heimat-Boerse beim search-Endpunkt im `description`-Feld
+    (z.B. "NYSE", "TSE", "IBIS"). Fallback: erstes Token aus dem
+    `companyHeader` ("SAP SE - IBIS").
+    """
+    desc = entry.get("description")
+    if isinstance(desc, str) and desc.strip():
+        return desc.strip().upper()
+    header = entry.get("companyHeader")
+    if isinstance(header, str) and " - " in header:
+        return header.rsplit(" - ", 1)[-1].strip().upper() or None
+    return None
 
 
 def _map_info(payload: dict[str, Any]) -> InstrumentDetail:
@@ -99,11 +137,16 @@ class InstrumentsService:
     ) -> None:
         self._client = client
         self._search_cache: TTLCache[tuple[str, str | None], list[Instrument]] = TTLCache(ttl_seconds)
+        self._isin_cache: TTLCache[tuple[str, str | None], list[Instrument]] = TTLCache(ttl_seconds)
         self._info_cache: TTLCache[int, InstrumentDetail] = TTLCache(ttl_seconds)
 
     @property
     def search_cache(self) -> TTLCache[tuple[str, str | None], list[Instrument]]:
         return self._search_cache
+
+    @property
+    def isin_cache(self) -> TTLCache[tuple[str, str | None], list[Instrument]]:
+        return self._isin_cache
 
     @property
     def info_cache(self) -> TTLCache[int, InstrumentDetail]:
@@ -143,6 +186,69 @@ class InstrumentsService:
             instruments = [primary_stk]
         self._search_cache.set(key, instruments)
         return instruments
+
+    async def search_by_isin(
+        self, isin: str, mic: str | None = None
+    ) -> list[Instrument]:
+        """ISIN-Lookup gegen IBKR. Liefert STK-Cross-Listings als Liste.
+
+        Reihenfolge der CP-Antwort wird unveraendert uebernommen (IBKR sortiert
+        nach interner Liquiditaets-Heuristik). Optionaler MIC-Filter (ISO 10383,
+        z.B. "XETR", "XNYS") wird gegen den Exchange-Code aus
+        ``description``/``companyHeader`` angewendet.
+        """
+        isin_norm = isin.strip().upper()
+        if not is_valid_isin(isin_norm):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "isin muss dem ISO-6166-Format entsprechen (12 Zeichen: "
+                    "2 Land + 9 alphanumerisch + 1 Pruefziffer)"
+                ),
+            )
+        mic_norm = mic.strip().upper() if mic else None
+        key = (isin_norm, mic_norm)
+        cached, hit = self._isin_cache.get(key)
+        if hit:
+            return cached or []
+
+        # IBKR-CP-API: name=true signalisiert, dass `symbol` als Such-String
+        # (Name oder ISIN) statt als Ticker zu interpretieren ist. secType=STK
+        # filtert auf Aktien-Listings; weitere SecTypes per Folge-Karten, falls
+        # noetig.
+        params: dict[str, Any] = {
+            "symbol": isin_norm,
+            "name": "true",
+            "secType": "STK",
+        }
+        response = await self._client.get("/iserver/secdef/search", params=params)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    f"CP-Gateway-Fehler bei secdef/search (ISIN): HTTP "
+                    f"{response.status_code}"
+                ),
+            )
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="CP-Gateway lieferte unerwartetes Schema bei secdef/search (ISIN)",
+            )
+
+        results: list[Instrument] = []
+        for entry in payload:
+            if "conid" not in entry:
+                continue
+            if mic_norm is not None:
+                exch = _entry_exchange_code(entry)
+                if exch != mic_norm:
+                    continue
+            results.append(_map_search_entry(entry, isin=isin_norm))
+
+        self._isin_cache.set(key, results)
+        return results
 
     async def info(self, conid: int) -> InstrumentDetail:
         cached, hit = self._info_cache.get(conid)

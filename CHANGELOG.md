@@ -4,6 +4,44 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.27.0] — 2026-05-05 (Karte 12e04c98 — ISIN-Filter auf /v1/instruments/search)
+
+Marktneutraler Instrumenten-Lookup per ISIN. Trigger ist Karte
+dc9577d0 in trading_robot, die einen ISIN-basierten Conid-Resolver
+einfuehrt; mit dem Server-seitigen Filter kann der Bot den Stub +
+preload_isin-Cache abloesen und exchange-blind die richtige IBKR-conid
+finden.
+
+### Hinzugefuegt
+- `GET /v1/instruments/search` akzeptiert zusaetzlich zum bisherigen
+  ``?symbol=&exchange=`` jetzt auch ``?isin=&mic=`` (mutually
+  exclusive). Format-Validation ueber ISO-6166-Regex (12 Zeichen:
+  2 Land + 9 alphanumerisch + 1 Pruefziffer); ungueltiges Format -> 422.
+- Antwort-Items im Schema ``Instrument`` um Feld ``isin: str | null``
+  ergaenzt. Symbol-Pfad: ``null`` (CP liefert keine ISIN). ISIN-Pfad:
+  Echo des Query-Werts in jedem Cross-Listing-Eintrag.
+- ``InstrumentsService.search_by_isin(isin, mic=None)`` mit eigenem
+  TTL-Cache (Default 7 Tage), Cache-Key ``(isin, mic)``. Mappt intern
+  auf ``/iserver/secdef/search?symbol={isin}&name=true&secType=STK``.
+- Optionaler ``?mic=`` (ISO 10383, z.B. ``XETR``/``XNYS``) filtert
+  Cross-Listings auf eine Boerse. Ohne MIC bleibt die CP-Reihenfolge
+  unveraendert (IBKR sortiert nach interner Liquiditaets-Heuristik).
+- ``ReplayCPGatewayMock`` erkennt ``name=true`` und liefert
+  Cross-Listings aus einer ISIN-Tabelle (synthetisch aus dem
+  bestehenden SAP-Recording zusammengestellt; echte Live-Recordings
+  folgen, sobald die IBKR-Session wieder verfuegbar ist).
+- 14 neue Tests in ``tests/test_instruments.py``: Happy-Path,
+  Caching, MIC-Filter, ungueltiges Format, Lowercase-Normalisierung,
+  Mutual-Exclusion symbol/isin, MIC-ohne-ISIN, exchange-mit-ISIN.
+- ``docs/api/v1.md`` Section 4.1 dokumentiert beide Pfade inkl.
+  Cross-Listing-Hinweis und MIC-Disambiguation.
+
+### Bekannte offene Punkte
+- Live-Smoke gegen ``http://cma-pi-1:4000/v1/instruments/search?isin=DE0007164600``
+  steht noch aus; beide Pi-Stacks waren beim Implementieren auf
+  ``auth_status=cp_down``. Karte ist als ``partial`` markiert, der
+  Live-Test wird nach Wiederherstellung der IBKR-Session nachgezogen.
+
 ## [1.23.0] — 2026-05-02 (AP-11 K8 — /v1/status + 150-Symbol-Stresstest-Skelett, AP-11 Code-komplett)
 
 Status-Endpoint plus Stresstest-Skelett. Damit ist AP-11 (WS-Adapter

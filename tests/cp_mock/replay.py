@@ -45,6 +45,35 @@ _BY_CONID: dict[int, dict[str, Any]] = {
     info["conid"]: {"symbol": sym, **info} for sym, info in _INSTRUMENTS.items()
 }
 
+# ISIN -> Cross-Listing-Liste fuer den name=true-Pfad. Synthetisch
+# zusammengestellt aus dem SAP-symbol-Recording (NYSE-ADR + IBIS Heimat-
+# Listing); echte Live-Recordings folgen, sobald der Pi-Stack wieder
+# Auth hat (Karte 12e04c98).
+_ISIN_LISTINGS: dict[str, list[dict[str, Any]]] = {
+    "DE0007164600": [
+        # NYSE-ADR (XNYS) - bei IBKR meist primaer geliefert
+        {
+            "conid": "3804335",
+            "companyHeader": "SAP SE-SPONSORED ADR - NYSE",
+            "companyName": "SAP SE-SPONSORED ADR",
+            "symbol": "SAP",
+            "description": "NYSE",
+            "restricted": "CFD",
+            "sections": [{"secType": "STK"}],
+        },
+        # XETRA / IBIS Heimat-Listing
+        {
+            "conid": "14204",
+            "companyHeader": "SAP SE - IBIS",
+            "companyName": "SAP SE",
+            "symbol": "SAP",
+            "description": "IBIS",
+            "restricted": None,
+            "sections": [{"secType": "STK"}],
+        },
+    ],
+}
+
 _SNAPSHOT_VALUES: dict[int, dict[str, str]] = {
     265598: {"31": "150.50", "84": "150.45", "86": "150.55", "6509": "DPB"},
     272093: {"31": "320.10", "84": "320.05", "86": "320.15", "6509": "DPB"},
@@ -172,6 +201,13 @@ class ReplayCPGatewayMock:
         if (resp := self._pre()) is not None:
             return resp
         symbol = request.url.params.get("symbol", "").upper()
+        # name=true signalisiert Such-String (Name oder ISIN). Karte
+        # 12e04c98: ISIN-Pfad nutzt /iserver/secdef/search?symbol=<ISIN>&name=true.
+        if request.url.params.get("name", "").lower() == "true":
+            listings = _ISIN_LISTINGS.get(symbol)
+            if listings is None:
+                return httpx.Response(200, json=[])
+            return httpx.Response(200, json=listings)
         if symbol not in _INSTRUMENTS:
             return httpx.Response(200, json=[])
         status, body = self._recorded(

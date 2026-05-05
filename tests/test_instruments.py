@@ -208,6 +208,173 @@ async def test_get_instrument_unknown_returns_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+async def test_search_response_has_isin_field_default_none(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    """Symbol-Pfad: isin-Feld ist im Response-Schema vorhanden, aber None."""
+    result = await instruments.search("AAPL")
+    assert len(result) == 1
+    assert result[0].isin is None
+
+
+# ---- ISIN-Pfad ----
+
+
+async def test_search_by_isin_happy_path_returns_cross_listings(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    result = await instruments.search_by_isin("DE0007164600")
+    assert len(result) == 2  # NYSE-ADR + IBIS
+    conids = {item.conid for item in result}
+    assert conids == {3804335, 14204}
+    assert all(item.isin == "DE0007164600" for item in result)
+    assert all(item.sec_type == "STK" for item in result)
+
+
+async def test_search_by_isin_caches_subsequent_calls(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    await instruments.search_by_isin("DE0007164600")
+    before = cp_gateway_mock.request_count
+    await instruments.search_by_isin("DE0007164600")
+    await instruments.search_by_isin("DE0007164600")
+    assert cp_gateway_mock.request_count == before
+
+
+async def test_search_by_isin_unknown_returns_empty(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    result = await instruments.search_by_isin("US0000000001")
+    assert result == []
+
+
+async def test_search_by_isin_invalid_format_raises_422(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    from fastapi import HTTPException
+
+    # Pruefsumme muss Ziffer sein, Country-Code zwei Buchstaben, Gesamtlaenge 12.
+    for bad in ["nope", "DE000716460X", "0E0007164600", "DE000716460"]:
+        with pytest.raises(HTTPException) as exc:
+            await instruments.search_by_isin(bad)
+        assert exc.value.status_code == 422
+
+
+async def test_search_by_isin_lowercase_is_normalized(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    """Lowercase wird durch .upper() normalisiert und ist gueltig."""
+    result = await instruments.search_by_isin("de0007164600")
+    assert len(result) == 2
+    assert all(item.isin == "DE0007164600" for item in result)
+
+
+async def test_search_by_isin_with_mic_filters_to_single_listing(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    result = await instruments.search_by_isin("DE0007164600", mic="IBIS")
+    assert len(result) == 1
+    assert result[0].conid == 14204
+    assert result[0].isin == "DE0007164600"
+
+
+async def test_search_by_isin_with_unknown_mic_returns_empty(
+    instruments: InstrumentsService, cp_gateway_mock
+) -> None:
+    result = await instruments.search_by_isin("DE0007164600", mic="XAMS")
+    assert result == []
+
+
+async def test_search_endpoint_with_isin(client: TestClient) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        params={"isin": "DE0007164600"},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 2
+    assert all(item["isin"] == "DE0007164600" for item in body)
+
+
+async def test_search_endpoint_isin_with_mic(client: TestClient) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        params={"isin": "DE0007164600", "mic": "IBIS"},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["conid"] == 14204
+    assert body[0]["isin"] == "DE0007164600"
+
+
+async def test_search_endpoint_isin_invalid_format_returns_422(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        params={"isin": "DE000716460X"},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_search_endpoint_isin_unknown_returns_empty(client: TestClient) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        params={"isin": "US0000000001"},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_search_endpoint_requires_symbol_or_isin(client: TestClient) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_search_endpoint_symbol_and_isin_mutually_exclusive(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        params={"symbol": "SAP", "isin": "DE0007164600"},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_search_endpoint_mic_without_isin_returns_422(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        params={"symbol": "SAP", "mic": "IBIS"},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_search_endpoint_exchange_with_isin_returns_422(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/v1/instruments/search",
+        params={"isin": "DE0007164600", "exchange": "IBIS"},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 422
+
+
+# ---- Auth/Session-Edge-Cases (unverändert) ----
+
+
 async def test_endpoint_returns_503_when_session_lost(
     store: InMemoryTokenStore,
     instruments: InstrumentsService,
