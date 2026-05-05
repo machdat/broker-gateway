@@ -257,6 +257,7 @@ sed -i '/^BG_BOOTSTRAP_ADMIN_TOKEN=$/d' .env
 
 | Variable | Default | Live | Paper (geplant) |
 |---|---|---|---|
+| `BG_STACK_KIND` | (Pflicht, kein Default) | `live` | `paper` |
 | `BG_BOOTSTRAP_ADMIN_TOKEN` | leer | Pflicht (32-Byte URL-safe) | Pflicht, eigener Wert |
 | `BG_CP_BASE_URL` | `http://cpgateway:5000` | Default OK | `http://cpgateway-paper:5001` (geplant) |
 | `BG_CP_TICKLE_INTERVAL_S` | `60` | Default | Default |
@@ -265,12 +266,42 @@ sed -i '/^BG_BOOTSTRAP_ADMIN_TOKEN=$/d' .env
 | `BG_LOG_DIR` | leer (stdout) | gesetzt für File-Sinks | analog |
 | `BG_LOG_LEVEL`, `BG_LOG_ROTATE_*`, `BG_LOG_INBOUND_BODIES` | siehe README | optional | optional |
 | `BG_CP_RECORD_DIR` | leer | leer im Default; setzen für Recording-Sessions | gesetzt fest auf `var/recordings-paper/` (geplant AP-06) |
-| `BG_PAPER_TESTS_DISABLED` | (existiert nicht) | n/a | Kill-Switch für Paper-Test-Suiten (geplant AP-07) |
+| `BG_PAPER_TESTS_DISABLED` | `false` | n/a (Hard-Guard 1 verbietet Paper-Vars im Live-Stack) | Kill-Switch für Paper-Test-Suiten |
+| `BG_PAPER_AUTO_LOGIN` | `0` | **muss leer / `0` sein** (Hard-Guard 1 → Startup-Fail) | `0` (Default) oder `1` (Phase B aktivieren) |
+| `BG_PAPER_USERNAME` | leer | **muss leer sein** (Hard-Guard 1b) | Paper-Account, z.B. `cborlm399` |
+| `BG_PAPER_PASSWORD` | leer | **muss leer sein** | Paper-Passwort |
+
+`BG_STACK_KIND` ist **Pflicht** seit v1.28.0. Fehlt der Wert oder
+enthält er etwas anderes als `live`/`paper`, bricht der Lifespan-Start
+mit `ConfigError` ab. `ops/build-gateway.sh` exportiert ihn defensiv
+abhängig vom `--env=`-Schalter, sodass auch eine `.env`-Datei ohne
+expliziten `BG_STACK_KIND`-Eintrag funktioniert.
 
 Compose-Project-Name unterscheidet die Stacks im selben Host-Docker-
 Daemon. Paper-Plan: `COMPOSE_PROJECT_NAME=broker-gateway-paper` in der
 Paper-`.env`, dann `docker compose --env-file .env up -d` schreibt
 einen separaten Container-Namespace.
+
+### 9.1 Auto-Login-Credentials auf cma-pi-1
+
+**Pfad:** `/etc/default/broker-gateway-paper` (Mode `0600`, root:root).
+
+```bash
+# Auf dem Pi, einmalig nach v1.28.0-Deploy:
+sudo install -m 0600 -o root -g root /dev/null /etc/default/broker-gateway-paper
+sudo tee /etc/default/broker-gateway-paper >/dev/null <<'EOF'
+BG_PAPER_USERNAME=cborlm399
+BG_PAPER_PASSWORD=<aus passwort-manager>
+BG_PAPER_AUTO_LOGIN=0
+EOF
+```
+
+`BG_PAPER_AUTO_LOGIN=0` als Default lässt das Trigger-Skeleton im
+no-op-Modus — Phase B aktiviert es per Update auf `1` zusammen mit
+dem Sidecar-Image-Build. Das build-gateway.sh-Skript (Phase B) liest
+diese Datei und reicht die Werte als Env-File an
+`docker compose up gateway` weiter; im Live-Stack wird die Datei
+nicht eingelesen (Hard-Guard 3).
 
 ## 10. Rollback
 

@@ -487,3 +487,58 @@ async def test_internal_health_includes_bridge_fields(
     assert body["iserver_bridge_ok"] is True
     assert body["last_bridge_probe_at"] is not None
     assert body["consecutive_bridge_failures"] == 0
+
+
+async def test_internal_health_includes_auto_login_fields(
+    store: InMemoryTokenStore,
+    lifecycle: AuthLifecycle,
+    cp_gateway_mock,
+) -> None:
+    """/v1/internal/health spiegelt die Auto-Login-Felder.
+
+    Default-Werte (kein Versuch gelaufen): None / 0 / "ready" — auch
+    im Live-Stack, wo Auto-Login nie aktiv ist.
+    """
+    await lifecycle.tick_once()
+    application = create_app(store=store, lifecycle=lifecycle)
+    with TestClient(application) as client:
+        response = client.get(
+            "/v1/internal/health",
+            headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["last_auto_login_attempt_at"] is None
+    assert body["last_auto_login_success_at"] is None
+    assert body["auto_login_failures_total"] == 0
+    assert body["auto_login_throttle_state"] == "ready"
+
+
+async def test_internal_health_reflects_auto_login_state(
+    store: InMemoryTokenStore,
+    lifecycle: AuthLifecycle,
+    cp_gateway_mock,
+) -> None:
+    """Nach update_auto_login muss /v1/internal/health die neuen Werte zeigen."""
+    from datetime import datetime, timezone
+
+    await lifecycle.tick_once()
+    now = datetime(2026, 5, 5, 14, 30, 0, tzinfo=timezone.utc)
+    lifecycle.update_auto_login(
+        attempted_at=now,
+        succeeded_at=now,
+        throttle_state="cooldown_5min",
+    )
+    lifecycle.update_auto_login(failure_increment=2, throttle_state="cooldown_15min")
+
+    application = create_app(store=store, lifecycle=lifecycle)
+    with TestClient(application) as client:
+        response = client.get(
+            "/v1/internal/health",
+            headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
+        )
+    body = response.json()
+    assert body["last_auto_login_attempt_at"] is not None
+    assert body["last_auto_login_success_at"] is not None
+    assert body["auto_login_failures_total"] == 2
+    assert body["auto_login_throttle_state"] == "cooldown_15min"

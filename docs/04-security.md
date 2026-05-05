@@ -352,6 +352,60 @@ Browser-2FA. Voller Ablauf:
 Bei `auth_lost` antworten alle Business-Endpunkte mit `503` +
 `Retry-After: 30`.
 
+### 7.4 Auto-Login für Paper-Stack (Karte ece90a8e)
+
+Seit v1.28.0 hat der Paper-Stack einen optionalen Auto-Login-Pfad,
+der den Browser-2FA-Schritt für den Paper-Account `cborlm399`
+ablöst. Wichtig für die Sicherheits-Bilanz:
+
+**Hard-Guards (mehrschichtig, defensive depth):**
+
+| Schicht | Mechanismus | Konsequenz bei Verletzung |
+|---|---|---|
+| App-Level (Hard-Guard 1) | `validate_runtime_config` beim Lifespan-Start | `ConfigError` → Lifespan bricht ab, Service kommt nicht hoch |
+| App-Level (Hard-Guard 1b) | wie Hard-Guard 1, prüft zusätzlich auf `BG_PAPER_USERNAME`/`BG_PAPER_PASSWORD` im Live-Stack | wie oben |
+| Trigger-Level | `AutoLoginTrigger.maybe_trigger` skipped bei `stack_kind != "paper"` | reason `stack_kind_live` ohne Sidecar-Aufruf |
+| Sidecar-Level (Phase B) | `auto_login.py` prüft Ziel-URL gegen `paper-cpgateway` | Exit-Code 5 vor Form-Submit |
+| Compose-Level (Hard-Guard 3) | Live-Compose hat keinen `docker.sock`-Mount, keine `BG_PAPER_*`-Vars | Trigger kann auf Live nichts starten, selbst wenn Code-Pfade umgangen würden |
+
+**Credential-Lagerung:** `BG_PAPER_USERNAME` und `BG_PAPER_PASSWORD`
+liegen ausschließlich auf dem Pi unter `/etc/default/broker-gateway-
+paper` (Mode 0600 root:root) und werden vom Compose-Stack als
+Environment in den `gateway`-Container hineingereicht. Der Sidecar
+bekommt sie ebenfalls per Env (niemals als CLI-Argument, niemals in
+einer Image-Layer). Die globale Header-/Body-Redaktion (Sektion 4+5)
+filtert alle bekannten Credential-Strings; Phase B ergänzt zusätzlich
+einen Username-Maskierer (`cborlm399` → `cb***99`) im Sidecar-eigenen
+Logger.
+
+**2FA-Failure-Mode:** Erkennt der Sidecar plötzlich ein 2FA-Element
+(zusätzliches Eingabefeld, Redirect auf `/sso/2fa`), beendet er sich
+mit Exit-Code 4. `AutoLoginTrigger` setzt den Throttle-Status auf
+`2fa_required_manual_intervention` (sticky), und jeder weitere
+Trigger-Aufruf wird gestoppt — bis ein Mensch die Service-Instanz neu
+startet und den manuellen Browser-2FA-Login durchführt. Damit ist
+ausgeschlossen, dass ein verändertes IBKR-Login-Verhalten unbemerkt
+zu Lockout-Schaden führt.
+
+**Docker-Socket-Risiko (Phase B):** Der Paper-Stack mountet
+`/var/run/docker.sock` in den `gateway`-Container, damit der
+Auto-Login-Sidecar via `docker run --rm` gestartet werden kann. Das
+ist **bewusst akzeptiert**, weil im Paper-Stack kein Live-Geld läuft.
+Mitigations:
+
+- AppArmor- bzw. Seccomp-Profil auf dem Pi-Host beschränkt die
+  zulässigen `docker`-Calls auf `run --rm broker-gateway-paper-auto-
+  login*`. Falls AppArmor zu komplex zu betreiben ist, wird das
+  Restrisiko explizit dokumentiert (hier).
+- Live-Stack mountet den Socket **nie** — Hard-Guard 3.
+
+**Konservative Throttle-Begründung:** IBKR publiziert keine
+offiziellen Lockout-Schwellen. Forum-Berichte deuten auf ~3-5
+fehlgeschlagene Logins → temp-Lockout 15 min, ~5-10 → Account-Sperre
+mit Support-Ticket. Die Throttle-Defaults (max 1/5min, 3/h, 5/Tag,
+Backoff 5/15/45min) bleiben deutlich unter diesen Werten und
+vermeiden bot-typisches Hammering-Pattern.
+
 ---
 
 ## 8. Netzwerk-Sicherheit

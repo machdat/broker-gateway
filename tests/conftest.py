@@ -20,6 +20,23 @@ import respx
 from tests.cp_mock import ReplayCPGatewayMock
 
 
+@pytest.fixture(autouse=True)
+def _default_stack_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Setzt ``BG_STACK_KIND=paper`` und entfernt Auto-Login-Vars als
+    Default, damit Tests den globalen ``validate_runtime_config``-Hard-
+    Guard nicht versehentlich triggern.
+
+    Tests in ``test_config.py``, die einen anderen Wert oder eine andere
+    Konstellation pruefen wollen, setzen die Env-Vars per
+    ``monkeypatch.setenv`` selbst — die haben Vorrang vor diesem
+    Default, weil pytest die monkeypatch-Reihenfolge so einhaelt.
+    """
+    monkeypatch.setenv("BG_STACK_KIND", "paper")
+    monkeypatch.delenv("BG_PAPER_AUTO_LOGIN", raising=False)
+    monkeypatch.delenv("BG_PAPER_USERNAME", raising=False)
+    monkeypatch.delenv("BG_PAPER_PASSWORD", raising=False)
+
+
 @pytest.fixture
 def cp_gateway_mock():
     """Liefert ein konfigurierbares CP-Gateway-Mock und haengt es an httpx.
