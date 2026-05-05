@@ -158,59 +158,184 @@ muss diese URL whitelisted sein, sonst hängt das Login-Widget evtl. im
    gleichen Container. Cookie-Verwaltung im Sidecar muss das mitnehmen
    (Playwright handhabt das automatisch).
 
-## 4. Offen — Phase 1.b (HAR-Aufzeichnung beim nächsten manuellen Login)
+## 4. Phase 1.b — HAR-Aufzeichnung (durchgeführt 2026-05-05)
 
-Beim nächsten Browser-Login (z.B. nach dem nächsten Container-Recreate
-beim Deploy) ist Folgendes zu erfassen:
+Aufzeichnung am 2026-05-05 vom Laptop aus, mit SSH-Tunnel
+`localhost:5001 → cma-pi-1:5001 → broker-gateway-paper-cpgateway:5000`
+und einem socat-Forwarder (`alpine/socat`). Der `cpgateway`-Container
+wurde unmittelbar vor der Aufzeichnung mit `docker compose ... up -d
+--force-recreate cpgateway` neu erstellt, damit die Aufzeichnung
+einen vollständigen Login-Flow zeigt (vorher: leerer Session-State,
+HTTP-Listener antwortet mit 401).
 
-1. Chromium → DevTools → Network-Tab → "Preserve log" aktivieren.
-2. Login durchführen (Username/Passwort eingeben, Submit).
-3. Sobald die "Client login succeeds"-Seite erscheint:
-   Network-Tab → Rechtsklick → **"Save all as HAR with content"**.
-4. HAR-Datei (mit Credentials redacten — Username teilweise, Passwort
-   vollständig) ablegen unter
-   `docs/research/cpgateway-login-flow.har` oder im Karten-Anhang.
-5. Aus dem HAR extrahieren:
-   - Echte POST-URL der Login-Form (vermutlich
-     `https://www.interactivebrokers.com/sso/Login` oder ein
-     cpgateway-internes `/sso/login`-Forward).
-   - Echte Feldnamen (`USER`, `username`, `j_username`, ...).
-   - Eventuelle CSRF-/`xyzab`-Hidden-Felder.
-   - Response-Code und Redirect-URL bei Erfolg.
-   - DOM-Selektoren: per "Inspect" auf das Username-Feld gehen, ID/class
-     notieren.
+**Artefakte im Repo:**
+
+- `docs/research/cpgateway-login-flow.har` — HAR-Export, Username
+  per `cb***99` maskiert, keine Cookies (Chromium-DevTools-Default
+  exportiert sie nicht in HARs), kein Passwort-Material (siehe
+  Section 4.2).
+- `docs/research/cpgateway-login-flow.summary.json` — strukturelle
+  Zusammenfassung pro Request (Method, URL, Status, Field-Names,
+  Set-Cookies-Namen, Größen).
+- `scripts/redact_har.py` — Redaktions-Werkzeug, das aus einer
+  Roh-HAR Username + Passwort + sensible Cookies entfernt; Aufruf
+  per `BG_REDACT_USERNAME` / `BG_REDACT_PASSWORD`-Env, niemals als
+  CLI-Argument.
+
+### 4.1 Beobachtete Request-Reihenfolge (25 Entries)
+
+| # | Methode + Pfad | Body-Bytes | Bedeutung |
+|---|----------------|------------|-----------|
+| 0, 1 | `POST /sso/Authenticator` | 200 | SRP-`INIT`, `LOGIN_TYPE=1` (Page-Bootstrap) |
+| 2 | `GET /sso/Login?...` | — | Login-Page-HTML (vgl. Section 2) |
+| 3-16 | Assets + Fonts | — | Bootstrap, jQuery, `xyz.bundle.min.js`, Fonts |
+| 17 | `POST /sso/report` | 173 | Telemetry (kann für Sidecar ignoriert werden) |
+| 18 | `POST /portal.proxy/v1/gstat/bulletins` | 52 | Maintenance-Banner-Probe |
+| 19-21 | Logo + Fonts | — | Last-Mile-Assets |
+| 22 | `POST /sso/Authenticator` | 200 | SRP-`INIT`, **`LOGIN_TYPE=2`** (zweiter Bootstrap nach Form-Render) |
+| **23** | **`POST /sso/Authenticator`** | **377** | **SRP-`COMPLETEAUTH`**, `LOGIN_TYPE=2` — der eigentliche Login-Submit |
+| **24** | **`POST /sso/Dispatcher`** | **24** | Erfolgs-Forwarder, Response-Body **`"Client login succeeds"`** |
+
+### 4.2 Login-Protokoll: SRP-6 mit `SERVICE=AM.LOGIN`
+
+Der Login läuft als **Secure Remote Password (SRP-6)** ab —
+**das Klartext-Passwort verlässt den Browser nie**. Daraus folgt
+direkt, dass eine plain-HTTP-Variante ausgeschlossen ist; der
+Sidecar muss das JS-Bundle in einem echten Browser ausführen lassen
+(Playwright/Chromium).
+
+**INIT-Body (Form-encoded, `application/x-www-form-urlencoded`):**
+
+```
+ACTION=INIT
+USER=<username>
+A=<128-Hex SRP-Client-Public-Key>
+RESP_TYPE=JSON
+LOGIN_TYPE={1|2}
+SERVICE=AM.LOGIN
+```
+
+**COMPLETEAUTH-Body:**
+
+```
+ACTION=COMPLETEAUTH
+USER=<username>
+M1=<40-Hex SHA-1-Client-Proof>
+EKX=<252-Hex Session-Key-Exchange>
+RESP_TYPE=JSON
+VERSION=1
+LOGIN_TYPE=2
+```
+
+`M1` und `EKX` werden vom IBKR-Bundle aus dem Passwort + dem
+Server-`B` + `salt` abgeleitet — siehe SRP-6-Spezifikation, RFC 5054
+und IBKR-`AM.LOGIN`-Implementierung.
+
+**Dispatcher-Body (Erfolgsweiche):**
+
+```
+loginType=2&forwardTo=22
+```
+
+Response: HTTP 200, Body `Client login succeeds` (21 Bytes, plain
+text). Das ist der **Erfolgs-Marker**, den der Auto-Login-Sidecar
+abwarten muss.
+
+### 4.3 Sidecar-Implementations-Implikationen
+
+1. **Browser-Pfad alternativlos.** Eigener SRP-Client wäre möglich,
+   aber: brüchig (IBKR kann Konstanten ändern), benötigt das genaue
+   Hash-Schema, und müsste das `xyz.bundle.min.js`-Verhalten
+   1:1 nachbauen. Playwright nutzt einfach das echte Bundle.
+2. **Selektoren bleiben offen.** HAR liefert keinen DOM. Beim
+   Sidecar-Bau müssen die Eingabefeld-Selektoren entweder live per
+   `page.locator('.loginformWrapper input[type="text"]').first` /
+   `... input[type="password"]` ermittelt werden, oder per
+   `page.fill('input[name="USER"]', …)` falls das injizierte JS die
+   `name`-Attribute setzt (im COMPLETEAUTH-Body steht `USER` — das
+   legt nahe, dass das DOM-Feld auch `name="USER"` hat).
+3. **Erfolgs-Marker im Sidecar.** Drei Optionen, von schnell nach
+   robust:
+   - `page.wait_for_url('**/sso/Dispatcher')` direkt nach Submit.
+   - `page.wait_for_response(lambda r: r.url.endswith('/sso/Dispatcher') and r.status == 200)`.
+   - DOM-Text: `page.wait_for_selector('text=Client login succeeds')`.
+4. **Maintenance-Banner-Endpunkt nicht blocken.** `POST
+   /portal.proxy/v1/gstat/bulletins` muss erreichbar bleiben, sonst
+   bleibt das Login-Widget evtl. im "Initialize"-State (vgl.
+   Section 2.6).
+5. **Telemetry-Endpoint `/sso/report`** ist unkritisch und kann
+   ignoriert oder geblockt werden.
+6. **Mehrere INIT-Calls vor dem COMPLETEAUTH.** Der erste `INIT`
+   passiert bereits beim Bootstrap, der zweite (`LOGIN_TYPE=2`) erst
+   nach Form-Render — der Sidecar muss diese Calls dem Browser
+   überlassen (passiert automatisch durch das `xyz.bundle`).
+
+### 4.4 Was im HAR-Artefakt NICHT enthalten ist
+
+- **Cookies / Set-Cookie-Header** — Chromium-DevTools schreibt sie
+  per Default nicht in HAR-Exports. Die Cookie-Mechanik ist über
+  den `curl -i`-Snapshot in Section 2.3 dokumentiert.
+- **Passwort-Material** — selbst nicht in `M1` oder `EKX`, weil SRP
+  ephemer arbeitet. Replay des HAR-Bodies funktioniert nicht (der
+  Server kennt das aktuelle `B` aus dem `INIT` nicht mehr).
+- **DOM-Selektoren** — siehe oben.
 
 ## 5. Konsequenzen für die Sidecar-Skript-Logik
 
-Folgende Schritte sollte das Sidecar-Skript abarbeiten:
+Mit den Erkenntnissen aus Phase 1.b konkretisiert sich der Ablauf:
 
 ```
 1. Goto http://broker-gateway-paper-cpgateway:5000/
-2. Warte auf Redirect zu /sso/Login? ...
-3. Warte auf .loginformWrapper input[type="password"] (Form fertig injiziert)
-4. Tippe Username in das Feld (Selektor noch zu ermitteln)
-5. Tippe Passwort in das Feld
-6. Klick auf Submit-Button (Selektor noch zu ermitteln)
-7. Warte auf Erfolgs-Marker (URL-Wechsel ODER DOM-Text "Client login succeeds")
-   - Timeout 30s -> Exit-1 (Form/Selector-Drift)
-8. Cross-Check: GET http://broker-gateway-paper:8000/v1/internal/health
+   - Hard-Guard: target-URL enthält "broker-gateway-paper-cpgateway"
+     sonst Exit-5
+2. Erwartet Redirect zu /sso/Login?forwardTo=22&RL=1&ip2loc=US
+3. Polling: warte bis .loginformWrapper input[type="password"] sichtbar
+   (Form via xyz.bundle.min.js injiziert) — Timeout 20s -> Exit-1
+4. Hard-Stop bei 2FA-Indikator: zusätzliches Feld
+   .loginformWrapper input[name="code"|"otp"] oder Redirect auf
+   /sso/2fa -> Exit-4
+5. fill('input[name="USER"]', BG_PAPER_USERNAME) — Fallback-Selector
+   '.loginformWrapper input[type="text"]:visible'
+6. fill('input[name="PASSWORD"]', BG_PAPER_PASSWORD) — Fallback-Selector
+   '.loginformWrapper input[type="password"]:visible'
+7. Submit (Klick oder press Enter) — der xyz.bundle übernimmt SRP-Init,
+   Mehrere /sso/Authenticator-Calls (INIT LOGIN_TYPE=1, LOGIN_TYPE=2,
+   COMPLETEAUTH) folgen automatisch. Sidecar muss NICHTS davon manuell
+   triggern.
+8. Erfolgs-Marker: page.wait_for_response(
+       lambda r: r.url.endswith("/sso/Dispatcher") and r.status == 200,
+       timeout=30000)
+   und Body == "Client login succeeds"
+   - Timeout/anderer Body -> Exit-1
+9. Cross-Check: GET http://broker-gateway-paper:8000/v1/internal/health
+   mit Admin-Token
    - Falls auth_status != "ok" innerhalb 10s -> Exit-2 (Login abgelehnt)
-9. Exit-0
+10. Exit-0
 ```
+
+Allowlist für Browser-Routen (falls der Sidecar auf
+Bandbreiten-Optimierung setzt): Schriften und Bilder dürfen geblockt
+werden, aber `*.css`, `*.js`, `/sso/Authenticator`, `/sso/Dispatcher`
+und `/portal.proxy/v1/gstat/bulletins` müssen passieren.
 
 Sonderfälle:
 
-- 2FA-Pflicht: Erkennung über zusätzliches `code`-Feld in der Form oder
-  Redirect auf `/sso/2fa` o.ä. → Exit-4.
+- 2FA-Pflicht: siehe Schritt 4 → Exit-4.
 - CP-down: erste `goto` liefert ECONNREFUSED → Exit-3.
-- Fremde Ziel-URL: Hard-Guard prüft, dass die Goto-URL
-  `broker-gateway-paper-cpgateway` enthält → sonst Exit-5.
+- Fremde Ziel-URL: Hard-Guard in Schritt 1 → Exit-5.
+- Dispatcher liefert nicht `Client login succeeds` (z.B. abgewiesen
+  wegen Captcha oder gesperrtem Account) → Exit-2.
 
 ## 6. Quellen / Belege
 
 - HTML-Snapshot 2026-05-04: Auszug oben (Section 2.4) ist 1:1 aus dem
   Live-Response des Paper-cpgateway.
+- HAR-Aufzeichnung 2026-05-05: `cpgateway-login-flow.har` und
+  `cpgateway-login-flow.summary.json` (in diesem Verzeichnis). Quelle
+  des Section-4-Inhalts.
 - Karten-Memory: `project_paper_login_no_2fa.md`,
   `project_container_recreate_kills_session.md`.
 - IBSSO-XYZ-Library lebt im cpgateway-JAR; kein offizieller Ankerpunkt
   in der IBKR-CP-API-Doku (`docs/research/ibkr-cpapi-doc.json`).
+- SRP-6-Spezifikation: RFC 5054 (TLS-SRP) / Wu, "The SRP
+  Authentication and Key Exchange System".
