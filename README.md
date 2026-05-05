@@ -4,7 +4,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** v1.26.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 + AP-10 abgeschlossen, AP-11 Phase A+B vollständig (K1..K9). WS-Lifespan-Verdrahtung (BG_QUOTES_SOURCE=ws opt-in) ist drin; Live-Smoke gegen U25235077 als nächster Schritt nach Pi-Deploy. Quote-Volume-Bugfix (IBKR-Field 7762 ÷ 10⁶) in v1.25.0. iserver-Bridge-Health-Probe + Auto-Reauth bei `no bridge`-Drift in v1.26.0. Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
+**Status:** v1.27.0 — Service deployed auf cma-pi-1 (Port 4000), AP-01..AP-05 + AP-10 abgeschlossen, AP-11 Phase A+B vollständig (K1..K9). WS-Lifespan-Verdrahtung (BG_QUOTES_SOURCE=ws opt-in) ist drin; Live-Smoke gegen U25235077 als nächster Schritt nach Pi-Deploy. Quote-Volume-Bugfix (IBKR-Field 7762 ÷ 10⁶) in v1.25.0. iserver-Bridge-Health-Probe + Auto-Reauth bei `no bridge`-Drift in v1.26.0. ISIN-Filter auf `/v1/instruments/search` (Karte 12e04c98) inkl. optionalem MIC-Disambiguator in v1.27.0. Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Architektur und Doku
 
