@@ -82,19 +82,30 @@ def _map_search_entry(entry: dict[str, Any], *, isin: str | None = None) -> Inst
     )
 
 
+_HEADER_PAREN_RE = re.compile(r"\(([A-Z0-9.]+)\)\s*$")
+
+
 def _entry_exchange_code(entry: dict[str, Any]) -> str | None:
     """Liefert das Exchange-Kuerzel aus dem CP-Search-Eintrag.
 
-    IBKR codiert die Heimat-Boerse beim search-Endpunkt im `description`-Feld
-    (z.B. "NYSE", "TSE", "IBIS"). Fallback: erstes Token aus dem
-    `companyHeader` ("SAP SE - IBIS").
+    Schema-Drift zwischen den beiden CP-Pfaden (verifiziert 2026-05-05 live):
+    - symbol-Pfad: ``description="NYSE"``, ``companyHeader="SAP SE - IBIS"``
+    - ISIN-Pfad (``name=true``): ``description=null``, ``companyHeader="SAP SE (IBIS)"``
+    Wir versuchen drei Quellen in dieser Reihenfolge:
+      1) ``description`` (symbol-Pfad)
+      2) Klammer-Suffix in ``companyHeader`` ``(IBIS)`` (ISIN-Pfad)
+      3) Bindestrich-Suffix in ``companyHeader`` ``- IBIS`` (symbol-Pfad-Fallback)
     """
     desc = entry.get("description")
     if isinstance(desc, str) and desc.strip():
         return desc.strip().upper()
     header = entry.get("companyHeader")
-    if isinstance(header, str) and " - " in header:
-        return header.rsplit(" - ", 1)[-1].strip().upper() or None
+    if isinstance(header, str):
+        match = _HEADER_PAREN_RE.search(header)
+        if match:
+            return match.group(1).strip().upper() or None
+        if " - " in header:
+            return header.rsplit(" - ", 1)[-1].strip().upper() or None
     return None
 
 
@@ -231,6 +242,13 @@ class InstrumentsService:
                 ),
             )
         payload = response.json()
+        # Live-Befund 2026-05-05: bei unbekannter ISIN liefert IBKR-CP einen
+        # Error-Wrapper {"error": "No contracts found"} statt einer leeren
+        # Liste. Der Karten-Vertrag verlangt fuer den ISIN-Pfad explizit
+        # leeres Array + HTTP 200, also normalisieren wir den No-Match-Fall.
+        if isinstance(payload, dict) and payload.get("error"):
+            self._isin_cache.set(key, [])
+            return []
         if not isinstance(payload, list):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

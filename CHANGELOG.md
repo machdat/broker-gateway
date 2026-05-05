@@ -4,6 +4,25 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.27.1] — 2026-05-05 (Karte 12e04c98 Drift-Fix — Live-Schema-Anpassung ISIN-Pfad)
+
+Zwei Schema-Drifts zwischen Mock und Live, die der Live-Smoke gegen
+U25235077 aufgedeckt hat:
+
+### Geaendert
+- ``_entry_exchange_code`` (Helfer im Adapter) erkennt jetzt zusaetzlich
+  Klammer-Suffix-Notation ``"SAP SE (IBIS)"`` aus dem ``companyHeader``.
+  Live-CP setzt beim ISIN-Pfad (``name=true``) ``description=null`` und
+  packt das Exchange-Kuerzel in Klammern. Bisheriger Bindestrich-Pfad
+  ``"SAP SE - IBIS"`` (symbol-Pfad) bleibt als Fallback.
+- ``InstrumentsService.search_by_isin`` normalisiert die CP-Antwort
+  ``{"error": "No contracts found"}`` (Object statt Liste) auf leeres
+  Array + HTTP 200. Karten-Vertrag verlangt ``[]`` bei unbekannter ISIN.
+- ``ReplayCPGatewayMock`` ``_ISIN_LISTINGS`` an Live-Schema kalibriert:
+  3 Cross-Listings (IBIS, EBS, MEXI) statt 2, ``description=null``,
+  ``companyHeader="SAP SE (IBIS)"``, ``secType`` Top-Level. No-Match
+  liefert jetzt den Error-Wrapper.
+
 ## [1.27.0] — 2026-05-05 (Karte 12e04c98 — ISIN-Filter auf /v1/instruments/search)
 
 Marktneutraler Instrumenten-Lookup per ISIN. Trigger ist Karte
