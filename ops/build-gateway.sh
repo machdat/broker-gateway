@@ -60,12 +60,18 @@ case "$ENV_NAME" in
         export BG_ENV_FILE=".env"
         export BG_GATEWAY_HOST_PORT="${BG_GATEWAY_HOST_PORT:-4000}"
         export BG_CPGATEWAY_VOLUME="${BG_CPGATEWAY_VOLUME:-./var/cpgateway/logs}"
+        # Defensive: setzt BG_STACK_KIND, falls die .env-Datei den
+        # Wert nicht enthaelt. ENV-Wert in der env_file hat Vorrang im
+        # Container, dieser Export deckt den Fall ab, in dem die
+        # env_file-Variable noch fehlt.
+        export BG_STACK_KIND="live"
         ;;
     paper)
         export COMPOSE_PROJECT_NAME="broker-gateway-paper"
         export BG_ENV_FILE=".env.paper"
         export BG_GATEWAY_HOST_PORT="${BG_GATEWAY_HOST_PORT:-4001}"
         export BG_CPGATEWAY_VOLUME="${BG_CPGATEWAY_VOLUME:-/mnt/ssd/broker-gateway-paper/var/cpgateway-paper/logs}"
+        export BG_STACK_KIND="paper"
         ;;
     *)
         echo "build-gateway.sh: --env=$ENV_NAME unbekannt (erlaubt: live | paper)" >&2

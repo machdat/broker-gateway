@@ -37,6 +37,7 @@ from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
 from broker_gateway.config import quotes_source as _read_quotes_source
+from broker_gateway.config import validate_runtime_config
 from broker_gateway.cp.calendar import CalendarService
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.instruments import InstrumentsService
@@ -245,6 +246,14 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Hard-Guard 1: BG_STACK_KIND-Pflicht, Live-vs-Paper-Mismatch
+        # und BG_PAPER_AUTO_LOGIN-Konsistenz. ConfigError bricht den
+        # Lifespan ab, bevor wir Services hochziehen oder das CP-
+        # Gateway anfassen. Bewusst im Lifespan und nicht in create_app
+        # selbst, damit Modul-Level ``app = create_app()`` ohne Env
+        # importierbar bleibt — die echte Pruefung passiert erst beim
+        # ersten Lifespan-Run (uvicorn / TestClient).
+        validate_runtime_config()
         actual_throttle = actual_throttle_outer
         owns_lifecycle = lifecycle is None
         if owns_lifecycle:

@@ -58,6 +58,28 @@ class InternalHealthResponse(BaseModel):
         description="Aufeinanderfolgende Bridge-Drift-Befunde; reset auf 0 "
         "nach erfolgreichem Probe oder erfolgreicher Recovery",
     )
+    last_auto_login_attempt_at: datetime | None = Field(
+        default=None,
+        description="Zeitpunkt des letzten Auto-Login-Sidecar-Aufrufs; "
+        "None solange kein Versuch gelaufen ist (auch im Live-Stack)",
+    )
+    last_auto_login_success_at: datetime | None = Field(
+        default=None,
+        description="Zeitpunkt des letzten erfolgreichen Auto-Login-Sidecar-"
+        "Laufs (Exit-Code 0)",
+    )
+    auto_login_failures_total: int = Field(
+        default=0,
+        description="Kumulierte Anzahl fehlgeschlagener Auto-Login-Sidecar-"
+        "Laeufe seit Service-Start",
+    )
+    auto_login_throttle_state: str = Field(
+        default="ready",
+        description="Aktueller Auto-Login-Throttle-Zustand: ready | running | "
+        "cooldown_5min | cooldown_15min | cooldown_45min | "
+        "hourly_limit_reached | daily_limit_reached | "
+        "2fa_required_manual_intervention",
+    )
 
 
 @router.get("/health", response_model=InternalHealthResponse, summary="Detail-Health (admin:*)")
@@ -79,4 +101,8 @@ def internal_health(
         iserver_bridge_ok=snap.iserver_bridge_ok,
         last_bridge_probe_at=snap.last_bridge_probe_at,
         consecutive_bridge_failures=snap.consecutive_bridge_failures,
+        last_auto_login_attempt_at=snap.last_auto_login_attempt_at,
+        last_auto_login_success_at=snap.last_auto_login_success_at,
+        auto_login_failures_total=snap.auto_login_failures_total,
+        auto_login_throttle_state=snap.auto_login_throttle_state,
     )

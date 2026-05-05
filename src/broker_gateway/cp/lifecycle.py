@@ -80,6 +80,15 @@ class LifecycleSnapshot:
     iserver_bridge_ok: bool | None
     last_bridge_probe_at: datetime | None
     consecutive_bridge_failures: int
+    # Auto-Login-Felder (Karte ece90a8e, Phase A):
+    # `last_auto_login_attempt_at=None` heisst "Auto-Login wurde noch
+    # nie versucht". `auto_login_throttle_state="ready"` ist der
+    # Default — siehe `cp.auto_login_throttle.AutoLoginThrottle.state()`
+    # fuer das vollstaendige Mapping.
+    last_auto_login_attempt_at: datetime | None = None
+    last_auto_login_success_at: datetime | None = None
+    auto_login_failures_total: int = 0
+    auto_login_throttle_state: str = "ready"
 
 
 class AuthLifecycle:
@@ -138,6 +147,10 @@ class AuthLifecycle:
         self._last_bridge_probe_at: datetime | None = None
         self._last_bridge_probe_monotonic: float | None = None
         self._consecutive_bridge_failures = 0
+        self._last_auto_login_attempt_at: datetime | None = None
+        self._last_auto_login_success_at: datetime | None = None
+        self._auto_login_failures_total = 0
+        self._auto_login_throttle_state = "ready"
 
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
@@ -172,7 +185,35 @@ class AuthLifecycle:
             iserver_bridge_ok=self._iserver_bridge_ok,
             last_bridge_probe_at=self._last_bridge_probe_at,
             consecutive_bridge_failures=self._consecutive_bridge_failures,
+            last_auto_login_attempt_at=self._last_auto_login_attempt_at,
+            last_auto_login_success_at=self._last_auto_login_success_at,
+            auto_login_failures_total=self._auto_login_failures_total,
+            auto_login_throttle_state=self._auto_login_throttle_state,
         )
+
+    def update_auto_login(
+        self,
+        *,
+        attempted_at: datetime | None = None,
+        succeeded_at: datetime | None = None,
+        failure_increment: int = 0,
+        throttle_state: str | None = None,
+    ) -> None:
+        """Update der Auto-Login-Status-Felder im Lifecycle-Snapshot.
+
+        Wird vom ``AutoLoginTrigger`` aufgerufen. Bewusst partial:
+        nur die uebergebenen Argumente werden gesetzt, der Rest bleibt
+        unveraendert. ``failure_increment`` ist additiv — der Trigger
+        muss nicht den aktuellen Stand mitlesen.
+        """
+        if attempted_at is not None:
+            self._last_auto_login_attempt_at = attempted_at
+        if succeeded_at is not None:
+            self._last_auto_login_success_at = succeeded_at
+        if failure_increment:
+            self._auto_login_failures_total += failure_increment
+        if throttle_state is not None:
+            self._auto_login_throttle_state = throttle_state
 
     # ---- Lifecycle-Steuerung ----
 

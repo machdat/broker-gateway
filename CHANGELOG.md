@@ -4,6 +4,60 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.28.0] — 2026-05-05 (Karte ece90a8e Phase A — Auto-Login-Skeleton fuer Paper-Stack)
+
+Phase A der Karte ece90a8e (*Paper-Stack Auto-Login via Headless-
+Chromium-Sidecar*) liefert das Code-Skelett ohne den eigentlichen
+Sidecar — der folgt in Phase B. Phase 1 (Reverse-Engineering, HAR +
+SRP-6-Befund) wurde mit PR #5 gemerged.
+
+### Neu
+- ``BG_STACK_KIND={live|paper}`` ist Pflicht-Env beim Lifespan-Start.
+  Fehlt der Wert oder ist er ungueltig, bricht der Service mit
+  ``ConfigError`` ab. ``ops/build-gateway.sh`` exportiert ihn defensiv
+  abhaengig vom ``--env=``-Schalter.
+- ``broker_gateway.config.validate_runtime_config`` als zentrale
+  Hard-Guard-Pruefung beim Startup:
+  1. ``BG_STACK_KIND=live`` + ``BG_PAPER_AUTO_LOGIN=1`` → Startup-Fail.
+  2. ``BG_STACK_KIND=live`` + ``BG_PAPER_USERNAME``/``_PASSWORD``
+     gesetzt → Startup-Fail (verhindert stillen Drift).
+  3. ``BG_PAPER_AUTO_LOGIN=1`` ohne Credentials → Startup-Fail.
+- ``LifecycleSnapshot`` um vier Auto-Login-Felder erweitert:
+  ``last_auto_login_attempt_at``, ``last_auto_login_success_at``,
+  ``auto_login_failures_total``, ``auto_login_throttle_state``.
+  Default-Werte (None / 0 / "ready") halten Backwards-Kompat.
+- ``broker_gateway.cp.auto_login_throttle.AutoLoginThrottle``: clock-
+  injectable Throttle mit konservativen Limits (max 1/5min, max 3/h,
+  max 5/Tag, Backoff 5/15/45 min nach Fehlschlag, Sticky-Stop bei
+  2FA-Detection).
+- ``broker_gateway.cp.auto_login_trigger.AutoLoginTrigger``: Skeleton
+  mit injizierbarem ``AutoLoginRunner`` (Phase B liefert den echten
+  docker-SDK-Runner). Pre-Conditions (enabled? stack_kind? auth_status
+  in {auth_lost, cp_down}? throttle erlaubt?) werden zentral geprueft.
+- ``GET /v1/internal/health`` liefert die Auto-Login-Felder zusaetzlich
+  zur Bridge-Probe und den bestehenden Lifecycle-Daten.
+- ``.env.live.template``/``.env.paper.template``: ``BG_STACK_KIND`` als
+  Pflicht-Variable, Paper-Template um ``BG_PAPER_AUTO_LOGIN=0`` und
+  Hinweise zu ``BG_PAPER_USERNAME``/``_PASSWORD``.
+
+### Geaendert
+- ``main.py`` ruft ``validate_runtime_config`` im Lifespan-Block
+  (nicht im ``create_app``-Body), damit Modul-Level-Imports ohne
+  gesetzte Env weiter klappen — die Validation-Pruefung trifft erst
+  beim ersten echten Lifespan-Run.
+- ``tests/conftest.py`` setzt ``BG_STACK_KIND=paper`` als autouse-
+  Default und entfernt ``BG_PAPER_*``-Vars, damit Tests nicht
+  versehentlich am neuen Hard-Guard scheitern.
+
+### Bewusst noch nicht enthalten (Phase B)
+- ``ops/auto-login/`` (Sidecar-Image + ``auto_login.py`` mit Playwright).
+- Echter docker-SDK-``AutoLoginRunner`` in ``cp/auto_login_trigger.py``.
+- Lifecycle-Hook, der den Trigger nach ``CP_DOWN``/``AUTH_LOST``
+  auch tatsaechlich aufruft (Phase A bleibt das Skeleton ohne
+  Verdrahtung in den Tickle-Loop).
+- ``POST /v1/admin/auto-login/trigger`` (manueller Anstoss).
+- Live-Smokes 2 + 3 auf cma-pi-1.
+
 ## [1.27.1] — 2026-05-05 (Karte 12e04c98 Drift-Fix — Live-Schema-Anpassung ISIN-Pfad)
 
 Zwei Schema-Drifts zwischen Mock und Live, die der Live-Smoke gegen

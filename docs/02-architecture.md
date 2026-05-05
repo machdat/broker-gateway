@@ -351,6 +351,79 @@ Token-Werte werden **nirgendwo geloggt** — nur `caller_id` und
 `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `X-Auth-Token`
 und `Proxy-Authorization` aus jedem Log-Strang.
 
+### 6.4 Stack-Kennung und Auto-Login (Karte ece90a8e)
+
+Seit v1.28.0 ist der Service stack-aware: jede Instanz kennt sich
+selbst als **Live**- oder **Paper**-Stack über `BG_STACK_KIND` (Pflicht-
+Env). Der Wert wird in `config.py::stack_kind()` gelesen und beim
+Lifespan-Start gegen ein Hard-Guard-Set geprüft (`validate_runtime_
+config`):
+
+1. **Hard-Guard 1 (App-Level):** `BG_STACK_KIND=live` UND
+   `BG_PAPER_AUTO_LOGIN=1` → `ConfigError` beim Lifespan-Start. Der
+   Service kommt gar nicht hoch, kein einziger Tickle wird abgesetzt.
+2. **Hard-Guard 1b (App-Level):** `BG_STACK_KIND=live` UND
+   `BG_PAPER_USERNAME`/`BG_PAPER_PASSWORD` gesetzt → ebenfalls
+   `ConfigError`. Damit kann eine versehentlich auf den Live-Stack
+   gemountete `.env.paper` nicht stillschweigend Credentials in einen
+   Live-Container schreiben — der Fail kommt sofort beim Start.
+3. **Hard-Guard 2 (Sidecar):** Phase-B-Sidecar prüft selbst, dass die
+   Ziel-URL `paper-cpgateway` enthält und exitet sonst mit Code 5,
+   bevor er die Form rendert.
+4. **Hard-Guard 3 (Compose):** Live-Compose hat **keinen**
+   `docker.sock`-Mount und **keine** `BG_PAPER_*`-Variablen. Phase A
+   etabliert die Trennung über `ops/build-gateway.sh` (`BG_STACK_KIND`
+   wird per `--env=…`-Schalter exportiert) und die getrennten
+   `.env.live.template` / `.env.paper.template`. Phase B fügt im
+   Paper-Compose ein Override für den Sidecar-Service hinzu.
+
+**Auto-Login-Pfad (Phase A skeleton, Phase B vollständig):**
+
+```
+  paper-cpgateway killed (Container-Recreate beim Deploy)
+        │
+        ▼
+  AuthLifecycle._heartbeat_sso → CP_DOWN
+        │
+        ▼
+  AutoLoginTrigger.maybe_trigger
+   ├─ enabled? (BG_PAPER_AUTO_LOGIN=1)
+   ├─ stack_kind == "paper"?
+   ├─ auth_status in {auth_lost, cp_down}?
+   ├─ AutoLoginThrottle.attempt() erlaubt?
+   │   └─ blockt nach Limits: 5min/15min/45min Backoff,
+   │      max 3/h, max 5/Tag, "2fa_required_manual_intervention"
+   │      sticky bis Service-Restart
+   ▼
+  AutoLoginRunner.run()  ← Phase B: docker run --rm Sidecar
+        │                    Phase A: Mock-Runner in Tests
+        ▼
+  AutoLoginResult{exit_code, duration_s, error}
+        │
+        ▼
+  AuthLifecycle.update_auto_login(...)
+   → Felder im LifecycleSnapshot:
+     last_auto_login_attempt_at, last_auto_login_success_at,
+     auto_login_failures_total, auto_login_throttle_state
+   → sichtbar in /v1/internal/health
+```
+
+`AutoLoginTrigger`, `AutoLoginThrottle` und `AutoLoginResult` leben in
+`src/broker_gateway/cp/auto_login_trigger.py` bzw.
+`auto_login_throttle.py`. Phase A liefert das Skeleton + Tests; der
+echte docker-SDK-`Runner` und das Sidecar-Image (`ops/auto-login/`)
+folgen in Phase B.
+
+**Reichweite:** Auto-Login heilt das Container-Recreate-Problem
+(Session-Memory weg) automatisch. Es heilt **NICHT** den Fall, dass
+IBKR die Session aus eigenen Gründen kappt (Wartungsfenster,
+Account-Lock, 2FA-Policy-Änderung) — dort wird zuerst der Reauth-Loop
+versucht, und falls auch der scheitert, fällt der Pfad auf
+Auto-Login zurück. Bei IBKR-2FA-Policy-Änderung exitet der Sidecar
+mit Code 4, der Throttle-Status springt auf
+`2fa_required_manual_intervention`, und jeder weitere Trigger wird
+gestoppt — bis ein Mensch den Service neu startet.
+
 ---
 
 ## 7. Streaming-Architektur
