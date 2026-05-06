@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:1.29.3
+    image: broker-gateway:1.30.0
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Default laut API-Draft 1.1) bzw. 4001 fuer den
@@ -25,11 +25,15 @@ services:
       cpgateway:
         condition: service_healthy
 
-  # IBKR Client Portal Gateway als interner Service. Nur intern im Compose-
-  # Netzwerk erreichbar (kein published port) - der gateway-Service spricht
-  # ueber http://cpgateway:5000, externer Zugriff ausschliesslich ueber
-  # SSH-Reverse-Tunnel fuer den Browser-2FA-Login (siehe
-  # docs/runbooks/cpgateway-login.md).
+  # IBKR Client Portal Gateway als interner Service. Im Compose-Netz
+  # erreichbar via http://cpgateway:5000 (gateway-Service intern). Auf dem
+  # Host liegt der Port hinter einem 127.0.0.1-Bind, damit ein Browser
+  # auf der Pi-Desktop-Session den Recovery-Login direkt ueber localhost
+  # machen kann (siehe docs/runbooks/cpgateway-pi-desktop-login.md).
+  # Live-Stack: 127.0.0.1:5000, Paper-Stack: 127.0.0.1:5001 (Wert kommt
+  # aus BG_CPGATEWAY_HOST_PORT, gesetzt von ops/build-gateway.sh).
+  # Bewusst KEIN 0.0.0.0-Bind: cpgateway hat keine eigene Auth-Schicht
+  # vor dem SRP-Login.
   cpgateway:
     build:
       context: ops/cpgateway
@@ -44,6 +48,8 @@ services:
     image: broker-cpgateway:1.0.3
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}-cpgateway
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${BG_CPGATEWAY_HOST_PORT:-5000}:5000"
     volumes:
       # CP-Gateway-Logs persistieren - bei Container-Restart bleiben sie
       # erhalten und sind ohne docker exec einsehbar. Beim Paper-Stack

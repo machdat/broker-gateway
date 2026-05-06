@@ -61,6 +61,11 @@ case "$ENV_NAME" in
         export COMPOSE_PROJECT_NAME="broker-gateway"
         export BG_ENV_FILE=".env"
         export BG_GATEWAY_HOST_PORT="${BG_GATEWAY_HOST_PORT:-4000}"
+        # Pi-Desktop Quick-Login: cpgateway-Port wird auf 127.0.0.1
+        # gemappt, damit der Pi-Browser den Recovery-Login direkt ueber
+        # localhost machen kann (siehe
+        # docs/runbooks/cpgateway-pi-desktop-login.md).
+        export BG_CPGATEWAY_HOST_PORT="${BG_CPGATEWAY_HOST_PORT:-5000}"
         export BG_CPGATEWAY_VOLUME="${BG_CPGATEWAY_VOLUME:-./var/cpgateway/logs}"
         # Defensive: setzt BG_STACK_KIND, falls die .env-Datei den
         # Wert nicht enthaelt. ENV-Wert in der env_file hat Vorrang im
@@ -76,6 +81,10 @@ case "$ENV_NAME" in
         export COMPOSE_PROJECT_NAME="broker-gateway-paper"
         export BG_ENV_FILE=".env.paper"
         export BG_GATEWAY_HOST_PORT="${BG_GATEWAY_HOST_PORT:-4001}"
+        # Pi-Desktop Quick-Login: Paper-cpgateway nutzt 127.0.0.1:5001,
+        # damit Live (5000) und Paper (5001) parallel ohne Port-Konflikt
+        # auf dem Pi-Host erreichbar sind.
+        export BG_CPGATEWAY_HOST_PORT="${BG_CPGATEWAY_HOST_PORT:-5001}"
         export BG_CPGATEWAY_VOLUME="${BG_CPGATEWAY_VOLUME:-/mnt/ssd/broker-gateway-paper/var/cpgateway-paper/logs}"
         export BG_STACK_KIND="paper"
         # Auto-Login-Override haengt den docker.sock-Mount und die
