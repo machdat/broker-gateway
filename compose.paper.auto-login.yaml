@@ -29,7 +29,7 @@ services:
       BG_PAPER_AUTO_LOGIN: "${BG_PAPER_AUTO_LOGIN:-0}"
       # Image-Tag des Sidecars; Update muss synchron mit der
       # Service-Version laufen (Memory: image-Tag = Service-Version).
-      BG_AUTO_LOGIN_IMAGE: "${BG_AUTO_LOGIN_IMAGE:-broker-gateway-paper-auto-login:1.29.3}"
+      BG_AUTO_LOGIN_IMAGE: "${BG_AUTO_LOGIN_IMAGE:-broker-gateway-paper-auto-login:1.30.0}"
       # Compose-Netz, in dem der Sidecar nach broker-gateway-paper-
       # cpgateway connected. Beachte den Project-Prefix.
       BG_AUTO_LOGIN_NETWORK: "${BG_AUTO_LOGIN_NETWORK:-broker-gateway-paper_default}"

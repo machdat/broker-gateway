@@ -4,6 +4,42 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.30.0] — 2026-05-06 (Pi-Desktop Quick-Login fuer cpgateway)
+
+Auto-Login-PoC mit IBeam (Karte c824617e) hat ARM64-Browser-Stabilitaet
+gezeigt, scheiterte aber am IBKR-Submit-Pfad: Form wird nach Submit
+zurueckgesetzt, ohne sichtbare Fehlermeldung — passt zum Phase-B-Symptom
+mit Playwright. Statt einer weiteren Iteration auf Headless-Login
+macht v1.30.0 den manuellen Recovery-Pfad bequem.
+
+`cpgateway` exponiert auf cma-pi-1 jetzt einen lokalen 127.0.0.1-Bind
+(Live `:5000`, Paper `:5001`), so dass ein Browser auf der Pi-Desktop-
+Session den Login direkt ueber `localhost` abwickelt — VNC oeffnen,
+Login-Tab refreshen, Passwort tippen.
+
+- compose.yaml: cpgateway-Service erhaelt
+  `127.0.0.1:${BG_CPGATEWAY_HOST_PORT:-5000}:5000`. Bind explizit lokal,
+  cpgateway hat keine eigene Auth-Schicht vor dem SRP-Login.
+- ops/build-gateway.sh: setzt `BG_CPGATEWAY_HOST_PORT` auf 5000 (Live)
+  bzw. 5001 (Paper), damit beide Stacks parallel ohne Konflikt
+  erreichbar sind.
+- compose.paper.auto-login.yaml: `BG_AUTO_LOGIN_IMAGE`-Default zieht
+  auf `:1.30.0` mit (Memory: image-Tag = Service-Version).
+- docs/runbooks/cpgateway-pi-desktop-login.md (neu): Voraussetzungen,
+  Erst-Setup, Recovery-Workflow in drei Schritten, Sicherheits-Hinweis
+  zu wayvnc-Bind 0.0.0.0:5900.
+
+Auto-Login bleibt deaktiviert (`BG_PAPER_AUTO_LOGIN=0`), Trigger,
+Throttle, Admin-Endpoint und LifecycleSnapshot-Felder unveraendert.
+Branch `feature/auto-login-ibeam` (Karte c824617e Phase 2a) bleibt
+lokal als Upstream-PR-Baseline und Diagnose-Spur, NICHT in main.
+
+Live-Stack-Restart wurde mit dieser Version NICHT ausgeloest (vernichtet
+laufende Session). Der naechste ohnehin faellige Recovery-Login bringt
+den Live-Bind automatisch mit.
+
+Karte: `91283e58-14c8-49aa-b072-3ee98f537a10`.
+
 ## [1.29.3] — 2026-05-05 (Phase-B-Hotfix — Live/Paper-Toggle vor Submit)
 
 Live-Smoke 3 nach v1.29.2 hat den Sidecar 32s laufen lassen, dann
