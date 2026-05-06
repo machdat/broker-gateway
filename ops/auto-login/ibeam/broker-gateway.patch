@@ -1,0 +1,99 @@
+--- a/src/handlers/login_handler.py
++++ b/src/handlers/login_handler.py
+@@ -26,6 +26,32 @@
+ 
+ 
+ 
++
++def _set_react_input_value(driver, element, value):
++    """Set a React-controlled <input> value reliably.
++
++    Plain Selenium send_keys writes the DOM value, but React keeps an
++    internal valueTracker per controlled input and reverts the DOM on
++    the next render unless the tracker sees a real change. The same
++    is true for the native value setter alone: it bypasses the React
++    setter, so the tracker never updates and React eventually resets
++    the field to its (empty) state. The reliable pattern is to
++    invalidate the tracker first by setting it to an empty string,
++    then write the new value via the native setter and dispatch an
++    input event so React commits the change to its state.
++    """
++    driver.execute_script(
++        "const el = arguments[0];"
++        "const value = arguments[1];"
++        "const proto = window.HTMLInputElement.prototype;"
++        "const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;"
++        "if (el._valueTracker) { el._valueTracker.setValue(''); }"
++        "setter.call(el, value);"
++        "el.dispatchEvent(new Event('input', {bubbles: true}));"
++        "el.dispatchEvent(new Event('change', {bubbles: true}));",
++        element, value,
++    )
++
+ class AttemptException(Exception):
+     def __init__(self, *args, cause:str, **kwargs):
+         self.cause = cause
+@@ -175,17 +201,22 @@
+             live_paper_toggle_el = find_element(targets['LIVE_PAPER_TOGGLE'], driver)
+             live_paper_toggle_el.click()
+             time.sleep(3)
+-
+-        user_name_el.clear()
+-        password_el.clear()
+-
+-        user_name_el.send_keys(account)
+-
++            # broker-gateway: re-fetch handles, the IBKR SPA re-renders
++            # the form on the toggle so the previously found elements
++            # are stale.
++            user_name_el = find_element(targets['USER_NAME'], driver)
++            password_el = find_element(targets['PASSWORD'], driver)
++
++        # broker-gateway: the inputs are React-controlled. send_keys is
++        # not enough on its own; we go through _set_react_input_value
++        # so React commits the value to its internal state. send_keys
++        # is still used for the trailing TAB to move focus.
+         if key is None:
+-            password_el.send_keys(password)
++            plain_password = password
+         else:
+-            password_el.send_keys(Fernet(key).decrypt(password.encode('utf-8')).decode("utf-8"))
+-
++            plain_password = Fernet(key).decrypt(password.encode('utf-8')).decode("utf-8")
++        _set_react_input_value(driver, user_name_el, account)
++        _set_react_input_value(driver, password_el, plain_password)
+         password_el.send_keys(Keys.TAB)
+ 
+         # small buffer to prevent race-condition on client side
+@@ -316,6 +347,20 @@
+ 
+         time.sleep(3)
+ 
++        # broker-gateway: same SPA re-render as in step_login, on top
++        # of which the toggle clears the inputs. Re-fetch handles, then
++        # re-fill via the React-aware setter before submit.
++        user_name_el = find_element(targets['USER_NAME'], driver)
++        password_el = find_element(targets['PASSWORD'], driver)
++        if self.secrets_handler.key is None:
++            plain_password = self.secrets_handler.password
++        else:
++            plain_password = Fernet(self.secrets_handler.key).decrypt(self.secrets_handler.password.encode('utf-8')).decode("utf-8")
++        _set_react_input_value(driver, user_name_el, self.secrets_handler.account)
++        _set_react_input_value(driver, password_el, plain_password)
++        password_el.send_keys(Keys.TAB)
++        time.sleep(self.presubmit_buffer)
++
+         submit_form_el = find_element(targets['SUBMIT'], driver)
+         submit_form_el.click()
+ 
+--- a/ibeam_starter.py
++++ b/ibeam_starter.py
+@@ -160,7 +160,7 @@
+         while True:
+             pass
+     elif args.authenticate:
+-        success, _ = strategy_handler.try_authenticating()
++        success, *_ = strategy_handler.try_authenticating()
+         _LOGGER.info(f'Gateway {"" if success else "not "}authenticated.')
+     elif args.check:
+         status = http_handler.get_status()
