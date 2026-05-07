@@ -70,6 +70,7 @@ class CPGatewayClient:
         pacing_hook: PacingHook | None = None,
         throttle: ThrottleManager | None = None,
         http_client: httpx.AsyncClient | None = None,
+        cookies: httpx.Cookies | None = None,
         recorder: CPRecorder | None = None,
         wire_logger: CPWireLogger | None = None,
     ) -> None:
@@ -77,7 +78,18 @@ class CPGatewayClient:
         self._pacing = pacing_hook or _noop_pacing
         self._throttle = throttle
         self._owns_client = http_client is None
-        self._client = http_client or httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
+        if http_client is None:
+            self._client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
+        else:
+            self._client = http_client
+        # httpx kopiert ein cookies=-Argument im Konstruktor in seinen
+        # internen Jar — initiale Set-Cookies muessen also nachtraeglich
+        # in self._client.cookies geseedet werden, damit shared State
+        # erhalten bleibt. self.cookies (Property) zeigt unmittelbar
+        # auf den Client-Jar.
+        if cookies is not None:
+            for cookie in cookies.jar:
+                self._client.cookies.jar.set_cookie(cookie)
 
         # Recorder-Aktivierung: explizit injiziert > ENV > nichts.
         if recorder is None and self._owns_client:
@@ -97,9 +109,32 @@ class CPGatewayClient:
         if self._wire_logger is not None:
             self._wire_logger.install_into(self._client)
 
+        # Path-Override-Hook (Karte 406fce15 Phase B): patcht alle
+        # cpgateway-Cookies im Jar nach jeder Response auf Path='/'.
+        # Hintergrund: cpgateway setzt JSESSIONID + x-sess-uuid mit
+        # Path=/sso. Service-Calls gehen aber an /v1/api/* — der
+        # CookieJar wuerde die Session-Cookies ohne Override nicht
+        # mitsenden, und alle authenticated Endpoints liefern 401.
+        self._client.event_hooks.setdefault("response", []).append(
+            self._force_root_path_on_session_cookies
+        )
+
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+    @property
+    def cookies(self) -> httpx.Cookies:
+        """Cookie-Jar des unterliegenden httpx.AsyncClient.
+
+        Shared State: Cookies aus Set-Cookie-Response-Headern landen
+        automatisch hier; Jar-Eintraege werden bei jedem Request
+        mitgesendet (httpx-Default-Verhalten). Wird genutzt vom
+        ``/v1/internal/seed-cookies``-Endpoint, um nach dem
+        Browser-Login die cpgateway-Session-Cookies in den Service-
+        Client zu importieren.
+        """
+        return self._client.cookies
 
     # ---- Auth-Lifecycle-Endpunkte ----
 
@@ -169,3 +204,27 @@ class CPGatewayClient:
             self._throttle.register_pacing_violation(method, path)
         else:
             self._throttle.register_success(method, path)
+
+    async def _force_root_path_on_session_cookies(self, response: httpx.Response) -> None:
+        """Schreibt Set-Cookie-Cookies aus der aktuellen Response auf Path='/' um.
+
+        cpgateway setzt JSESSIONID + x-sess-uuid mit Path=/sso. Service-
+        Calls gehen aber an /v1/api/* — der httpx-CookieJar wuerde diese
+        Session-Cookies sonst nicht mitsenden. Wir patchen den Path nach
+        jedem Response auf '/', damit alle Pfade matchen.
+
+        Greift nur fuer Cookies, die in der aktuellen Response per
+        Set-Cookie kamen (`response.cookies`). Cookies anderer Hosts, die
+        bereits im Client-Jar liegen, bleiben unangetastet — der Hook
+        agiert lokal auf dieser einen Roundtrip-Reaktion.
+        """
+        client_jar = self._client.cookies.jar
+        for set_cookie in response.cookies.jar:
+            if set_cookie.path == "/":
+                continue
+            # Aus dem Client-Jar entfernen (gleicher domain/path/name) und
+            # mit Path='/' neu einsetzen. Direkte Mutation reicht nicht —
+            # CookieJar nutzt path als Bucket-Key in seinem internen Dict.
+            client_jar.clear(set_cookie.domain, set_cookie.path, set_cookie.name)
+            set_cookie.path = "/"
+            client_jar.set_cookie(set_cookie)

@@ -4,6 +4,53 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.31.0] — 2026-05-07 (Cookie-Bridge Browser → Service)
+
+Karte 406fce15 schliesst die Luecke zwischen Pi-Browser-Login (Karte
+739777a9, nsenter-Variante) und Service-Cookie-Jar: cpgateway setzt
+JSESSIONID + x-sess-uuid mit `Path=/sso`, der Service ruft aber
+`/v1/api/*` auf — ohne Override greift das Cookie-Path-Matching nicht
+und alle authenticated Endpoints liefern 401, selbst wenn die
+Browser-Session perfekt etabliert ist.
+
+- `src/broker_gateway/cp/client.py`: `CPGatewayClient` akzeptiert
+  optionalen `cookies=httpx.Cookies()`-Parameter, exponiert die Cookies
+  via Property `client.cookies` als Shared State mit dem httpx-Jar
+  (Phase A). Response-event_hook
+  `_force_root_path_on_session_cookies` schreibt jeden Set-Cookie aus
+  der aktuellen Response, dessen Path != `/` ist, im Client-Jar auf
+  `Path=/` um (Phase B). Greift nur fuer Cookies, die in dieser
+  Roundtrip-Reaktion vom Server kamen — fremde Hosts im Jar bleiben
+  unangetastet.
+- `src/broker_gateway/cp/lifecycle.py`: `AuthLifecycle.client`-Property
+  als read-only Zugriff auf den Lifecycle-eigenen CPGatewayClient
+  (Voraussetzung fuer Phase C).
+- `src/broker_gateway/api/v1/internal_seed_cookies.py` (neu): `POST
+  /v1/internal/seed-cookies` mit Scope `admin:*`. Body
+  `{"jsessionid", "x_sess_uuid", "host"?, "ssodh_init"?}` — Cookies
+  werden mit `Path=/` in den Lifecycle-Client und (falls separat) in
+  den Services-Client geseedet. Default ruft der Endpoint anschliessend
+  `/iserver/auth/ssodh/init` mit `{"keepAlive": true}` auf (Phase D);
+  bei Fehler bleibt der Phase-B-Path-Override als Fallback. Zum
+  Schluss `lifecycle.tick_once()` -> der naechste internal/health-
+  Snapshot zeigt sofort den frischen Auth-Status.
+- `tests/test_cp_client_cookies.py` (neu): 9 Tests fuer Phase A + B
+  (Roundtrip auth_status -> tickle inkl. Cookie-Header).
+- `tests/test_admin_seed_cookies.py` (neu): 12 Tests fuer Phase C + D
+  (401/403/422, Jar-Befuellung, auth_status=ok, tick-Trigger,
+  Services-Client-Sync, ssodh/init-on/off/error).
+- `tests/cp_mock/replay.py`: Stub-Route fuer
+  `POST /iserver/auth/ssodh/init` mit toggleablem `ssodh_init_should_fail`.
+
+Funktional ist v1.31.0 die Loesung fuer das in Karte 739777a9 zuletzt
+beschriebene Symptom *"Client login succeeds, aber Service bleibt
+auth_status=cp_down"*: nach dem Pi-Browser-Login traegt der Operator
+JSESSIONID + x-sess-uuid (Browser-DevTools) per `curl POST
+/v1/internal/seed-cookies` ein, der Service-Lifecycle springt
+typischerweise innerhalb 1-2 Tickle-Zyklen auf `auth_status=ok`.
+
+Test-Stand: 725 passed, 4 skipped (713 vor Karte 406fce15 + 12 neue).
+
 ## [1.30.0] — 2026-05-06 (Pi-Desktop Quick-Login fuer cpgateway)
 
 Auto-Login-PoC mit IBeam (Karte c824617e) hat ARM64-Browser-Stabilitaet

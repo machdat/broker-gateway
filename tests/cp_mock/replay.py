@@ -116,6 +116,13 @@ class ReplayCPGatewayMock:
         self.pacing_violation_after_n = pacing_violation_after_n
         self.reply_warnings: list[dict[str, Any]] = list(reply_warnings or [])
         self.omit_trade_currency: bool = False
+        # Karte 406fce15 Phase D: optionaler /iserver/auth/ssodh/init-
+        # Trigger nach dem Cookie-Seed. Default-Stub liefert authenticated;
+        # Test kann ssodh_init_should_fail=True setzen, um den
+        # Fehler-Pfad (Endpoint bleibt 200, ssodh_init_status="error")
+        # zu pruefen.
+        self.ssodh_init_should_fail: bool = False
+        self.ssodh_init_calls: list[dict[str, Any]] = []
         self._pending_replies: dict[str, dict[str, Any]] = {}
 
         self.subscriptions: set[int] = set()
@@ -204,6 +211,34 @@ class ReplayCPGatewayMock:
             return resp
         status, body = self._recorded("/iserver/accounts", method="GET")
         return httpx.Response(status, json=body)
+
+    def _h_iserver_auth_ssodh_init(self, request: httpx.Request) -> httpx.Response:
+        """Karte 406fce15 Phase D: Stub fuer den optionalen ssodh-Init-Call.
+
+        IBKR liefert nach diesem Call typischerweise das Auth-Bundle
+        (authenticated/connected/competing). Wir mocken einen
+        Default-Erfolg; Tests koennen ``ssodh_init_should_fail=True``
+        setzen, um den 503-Pfad zu pruefen.
+        """
+        if (resp := self._pre()) is not None:
+            return resp
+        try:
+            body_in = json.loads(request.content.decode() or "{}")
+        except json.JSONDecodeError:
+            body_in = {}
+        self.ssodh_init_calls.append(body_in)
+        if self.ssodh_init_should_fail:
+            return httpx.Response(503, json={"error": "ssodh-init-failed"})
+        return httpx.Response(
+            200,
+            json={
+                "authenticated": True,
+                "competing": False,
+                "connected": True,
+                "message": "",
+                "fail": "",
+            },
+        )
 
     # ---- Sec-Def (Recording-backed) ----
 
@@ -516,6 +551,7 @@ class ReplayCPGatewayMock:
         router.post(url__regex=rf"^{b}/reauthenticate$").mock(side_effect=self._h_reauthenticate)
         router.get(url__regex=rf"^{b}/sso/validate$").mock(side_effect=self._h_sso_validate)
         router.get(url__regex=rf"^{b}/iserver/accounts$").mock(side_effect=self._h_iserver_accounts)
+        router.post(url__regex=rf"^{b}/iserver/auth/ssodh/init$").mock(side_effect=self._h_iserver_auth_ssodh_init)
         router.get(url__regex=rf"^{b}/iserver/secdef/search(\?.*)?$").mock(side_effect=self._h_secdef_search)
         router.get(url__regex=rf"^{b}/iserver/secdef/info(\?.*)?$").mock(side_effect=self._h_secdef_info)
         router.get(url__regex=rf"^{b}/iserver/marketdata/snapshot(\?.*)?$").mock(side_effect=self._h_snapshot)

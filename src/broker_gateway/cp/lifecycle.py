@@ -169,6 +169,18 @@ class AuthLifecycle:
     def session_id(self) -> str | None:
         return self._session_id
 
+    @property
+    def client(self) -> CPGatewayClient:
+        """CPGatewayClient des Lifecycles — Cookie-Jar-Owner.
+
+        Bereitgestellt fuer den ``/v1/internal/seed-cookies``-Endpoint
+        (Karte 406fce15 Phase C): nach dem Pi-Browser-Login werden
+        JSESSIONID + x-sess-uuid in genau diesen Jar geseedet, damit
+        der Tickle-Loop ab dem naechsten Tick eine authenticated
+        cpgateway-Session sieht.
+        """
+        return self._client
+
     def snapshot(self) -> LifecycleSnapshot:
         age: float | None
         if self._session_started_at is None:
