@@ -297,8 +297,30 @@ class AuthLifecycle:
             payload = await self._client.tickle()
         except httpx.HTTPError as exc:
             logger.warning("Tickle-Call fehlgeschlagen: %s", exc)
-            # Wenn auch sso/validate nicht authenticated antwortete, ist
-            # das CP-Gateway insgesamt nicht erreichbar.
+            # Karte 739777a9: 401/403 von cpgateway = Session
+            # unauthenticated, NICHT CP-down. cpgateway antwortet ja,
+            # also bleibt cp_reachable=True und last_tickle_at darf
+            # aktualisiert werden. Status wandert in den Reauth-Loop
+            # (oder bleibt OK wenn sso/validate ok lieferte).
+            is_unauthorized = (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code in (401, 403)
+            )
+            if is_unauthorized:
+                self._cp_reachable = True
+                self._last_tickle_at = _utcnow()
+                if sso_authenticated:
+                    # SSO valide aber Tickle 401 = vermutlich Init-Race
+                    # (Session frisch erstellt, Tickle-Endpoint liest
+                    # noch die alte Auth). SSO-validate vertrauen.
+                    self._mark_session_ok()
+                    await self._maybe_init_accounts()
+                    return self._status
+                await self._handle_auth_loss()
+                await self._maybe_invoke_auto_login()
+                return self._status
+            # Network-Level Fehler (Connection refused, Timeout, DNS)
+            # oder unerwarteter HTTP-Status: cpgateway nicht erreichbar.
             if not sso_authenticated:
                 self._cp_reachable = False
                 self._status = AuthStatus.CP_DOWN

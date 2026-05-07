@@ -7,6 +7,7 @@ from typing import Iterator
 
 import httpx
 import pytest
+import respx
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
@@ -149,6 +150,49 @@ async def test_cp_unreachable_marks_cp_down() -> None:
         assert lc.snapshot().cp_reachable is False
     finally:
         await client.aclose()
+
+
+async def test_tickle_401_keeps_cp_reachable_and_marks_auth_lost() -> None:
+    """Karte 739777a9: 401 von cpgateway = Session unauthenticated,
+    NICHT CP-down. cpgateway antwortet ja, also bleibt cp_reachable=True
+    und last_tickle_at darf aktualisiert werden. Status wandert in den
+    Reauth-Loop / AUTH_LOST, nicht CP_DOWN.
+    """
+    base_url = "http://cpgateway-401-test:5000/v1/api"
+    with respx.mock(assert_all_called=False) as router:
+        router.get(url__regex=rf"^{base_url}/sso/validate$").respond(
+            status_code=401, json={}
+        )
+        router.post(url__regex=rf"^{base_url}/tickle$").respond(
+            status_code=401, json={}
+        )
+        router.post(url__regex=rf"^{base_url}/reauthenticate$").respond(
+            status_code=401, json={}
+        )
+
+        client = CPGatewayClient(base_url=base_url)
+        try:
+            lc = AuthLifecycle(
+                client,
+                tickle_interval_s=0.05,
+                reauth_max_retries=1,
+                reauth_backoff_s=0.0,
+            )
+            status = await lc.tick_once()
+            snap = lc.snapshot()
+            assert snap.cp_reachable is True, (
+                "cpgateway hat mit 401 geantwortet -> reachable bleibt True"
+            )
+            assert snap.last_tickle_at is not None, (
+                "Tickle hat eine Antwort bekommen (auch wenn 401) -> last_tickle_at gesetzt"
+            )
+            assert status is not AuthStatus.CP_DOWN, (
+                "401 ist nicht CP-Down, sondern Auth-Loss"
+            )
+            # Reauth wurde mindestens einmal versucht, ist aber gescheitert
+            assert snap.last_reauth_at is not None
+        finally:
+            await client.aclose()
 
 
 # ---- AuthLifecycle - sso/validate, accounts-Init, force-reauth ----
