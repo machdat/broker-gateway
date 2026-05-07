@@ -110,6 +110,18 @@ echo
 # Container-Bridge-IPs (172.x.x.x) sind kein Loopback, also brauchen
 # wir den Flag, sonst landet kein Cookie im Browser-Profil und der
 # Login ist effektiv ohne Folgewirkung.
+# --disable-web-security + --disable-features=BlockInsecure...:
+# cpgateway-Login-Page macht beim Render einen JavaScript-
+# Connectivity-Check via XHR auf https://www.interactivebrokers.com/
+# en/includes/general/gdpr-am.php (Cookie-Consent + Reachability).
+# Origin ist http://172.23.0.2:5000 -> Cross-Origin -> CORS-preflight
+# scheitert (kein Access-Control-Allow-Origin auf interactivebrokers.com
+# fuer http-Origins). Ohne den Disable-Flag rendert die Login-Form als
+# "Network connectivity error: Unable to reach server" und der Login
+# bleibt blockiert. HAR-Befund 2026-05-07 (Karte 739777a9 Phase 2).
+# Sicherheitlich vertretbar fuer den Pi-Login-Container: das Profil ist
+# isoliert, die einzige besuchte URL ist cpgateway selbst, --user-data-
+# dir trennt den State von einem normalen Browser-Profil.
 SECURE_ORIGIN="http://${CP_IP}:5000"
 
 nohup \
@@ -124,6 +136,8 @@ nohup \
                 --new-window \
                 --user-data-dir="${USER_DATA_DIR}" \
                 --unsafely-treat-insecure-origin-as-secure="${SECURE_ORIGIN}" \
+                --disable-web-security \
+                --disable-features=BlockInsecurePrivateNetworkRequests \
                 "${LOGIN_URL}" \
     >"${LOG_FILE}" 2>&1 </dev/null &
 
