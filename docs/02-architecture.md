@@ -92,7 +92,40 @@ Session aus. Browser-Login muss vor Ablauf erneuert oder per
 `reauthenticate` aufgefrischt werden. Das ist nicht-trivialer Zustand,
 den nur eine Stelle halten darf.
 
-### 2.5 Bewährte IBKR-Beobachtungen
+### 2.5 IP-basierte Session-Whitelist (Karte 739777a9)
+
+cpgateway bindet eine Login-Session an die **TCP-Source-IP**, von der
+der Browser-Submit kam. Folge-Requests von einer anderen Source-IP
+bekommen HTTP 401, auch mit korrekten Cookies. Aus der IBKR-Doku:
+„authentication must be done on the same machine where the gateway is
+running". IBeam-README hält dasselbe Constraint fest („bridge network
+mode required due to clientportal.gw IP whitelist").
+
+Konsequenz im Compose-Stack:
+
+- Pi-Desktop-Browser auf `127.0.0.1:5001` → Source-IP für cpgateway
+  ist die Bridge-Gateway-IP (z. B. `172.23.0.1`).
+- `broker-gateway-paper`-Service → eigene Bridge-IP (z. B.
+  `172.23.0.3`).
+- cpgateway sieht zwei verschiedene Sessions; die zweite ist nicht
+  authenticated.
+
+Lösungspfad: **Login-Browser im selben Network-Namespace wie der
+Service** betreiben. Praktisch entweder
+`docker run --network=container:broker-gateway-paper <login-sidecar>`
+oder `nsenter --net=/proc/<service-pid>/ns/net chromium ...` (Pi-
+Desktop-Chromium ins Service-netns einklinken — Display bleibt
+wayvnc, TCP-Stack ist Service). Helper-Skript:
+[`ops/cp-login-pi-nsenter.sh`](../ops/cp-login-pi-nsenter.sh).
+
+Headless-Auto-Login aus dem Container heraus scheitert unabhängig von
+der Browser-Engine am Live/Paper-Toggle: das IBKR-Login-Form-Bundle
+prüft auf trusted Mouse-Events, der State-Change kommt nicht durch
+zum Server. Sowohl Playwright + Firefox als auch Selenium + Chrome
+(IBeam) reproduzieren das (Phase 2.1c und 2.1e in Karte 739777a9).
+Manueller User-Click via wayvnc bleibt der einzige zuverlässige Pfad.
+
+### 2.6 Bewährte IBKR-Beobachtungen
 
 In der Bootstrap-Session und in den Live-Recordings 2026-04-23..2026-04-30
 mehrfach reproduziert:

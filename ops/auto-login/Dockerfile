@@ -19,6 +19,15 @@ FROM mcr.microsoft.com/playwright/python:v1.49.1-noble
 # spart 200MB+ Build-Time-Aufwand fuer Chromium-Dependencies und
 # unterstuetzt ARM64 (linux/arm64) seit playwright 1.40.
 
+# Ab v1.31.0: Xvfb-Stack fuer headed Chromium. Headless ARM64-Chromium
+# crasht reproduzierbar am IBKR-React-Submit (Phase-1-Befund Karte
+# 739777a9); Xvfb-virtueller-X-Server liefert dem Renderer das vom
+# echten Display erwartete Verhalten.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       xvfb xauth dbus-x11 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY requirements.txt .
