@@ -49,6 +49,22 @@ abweichende IBKR-Version im Spiel. In dem Fall **erst** dokumentieren,
 welche Version installiert wird, **dann** Pruefsumme aktualisieren — nie
 ohne Versionsnotiz blind ueberschreiben.
 
+## Tarball-Versionshistorie
+
+| Datum  | Tarball-SHA256 | Build (`Implementation-Version` aus MANIFEST) | Notiz |
+|--------|----------------|-----------------------------------------------|-------|
+| 2026-04-25 (lokal repackaged) | `d937beb55ca3ddb7367a00c54f8938ef362049ec5e91dfa36619fd4ba4325dbe` | `ibgroup.web.core.iblink.router.clientportal.gw-20230424154245` | Aktueller Stand. Identisch zu IBKR-Stable + Beta-URL (Last-Modified `Mon, 24 Apr 2023 19:44:58 GMT`) — IBKR hat den Tarball seit drei Jahren nicht mehr aktualisiert. Karte d1c837f9 / 739777a9 dokumentiert den daraus folgenden Auth-Bug (SRP geht durch, Server etabliert keine Session). |
+
+## Logging-Konfiguration
+
+Default-`logback.xml` liegt im Tarball (`/opt/clientportal.gw/root/logback.xml`)
+und wird vom Image unveraendert uebernommen. Fuer Diagnose-Sessions
+gibt es zusaetzlich `logback-debug.xml` mit DEBUG-Level fuer
+HttpMessageLogger / CookieManager / ibgroup-Namespace und aktivem
+STDOUT-Appender. Aktivierung **manuell per `docker cp`** in den
+laufenden Container, kein Image-Rebuild noetig — Workflow im
+Datei-Header und in `docs/runbooks/cpgateway-login.md` dokumentiert.
+
 ## Login-Flow
 
 Der Container startet, danach erfolgt der Browser-Login mit 2FA. Das
