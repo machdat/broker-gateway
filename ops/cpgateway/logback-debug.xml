@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    DEBUG-Variante der CP-Gateway-Logback-Konfiguration fuer Diagnose der
+    cpgateway-Auth-Pipeline (Karte 739777a9). Wird **nicht** im Default-Image
+    aktiviert — manuell per `docker cp` ins laufende Container-Filesystem
+    kopiert, Logback's scan=true (10s) zieht sie ohne Restart nach. Damit
+    bleibt die laufende IBKR-Session unangetastet (vgl. Memory
+    project_container_recreate_kills_session).
+
+    Aktivierungs-Workflow:
+        scp ops/cpgateway/logback-debug.xml cma@cma-pi-1:/tmp/
+        ssh cma@cma-pi-1 'docker cp /tmp/logback-debug.xml \
+            broker-gateway-paper-cpgateway:/opt/clientportal.gw/root/logback.xml'
+        sleep 12  # logback scan-period
+
+    Reset auf Default:
+        ssh cma@cma-pi-1 'docker exec broker-gateway-paper-cpgateway \
+            cp /opt/clientportal.gw/root/logback.xml.dist \
+               /opt/clientportal.gw/root/logback.xml' \
+        # voraussetzt: Default vorher als logback.xml.dist gesichert.
+
+    Wire-Bodies (HttpMessageLogger DEBUG) koennen Cookies/Tokens enthalten -
+    Logs nicht aus dem Pi rausgeben, gw.message.* nach der Diagnose loeschen.
+-->
+<configuration scan="true" scanPeriod="10 seconds">
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/gw.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>21</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %thread %-40logger{0} : %message%n%ex</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="MESSAGELOG" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/gw.message.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>21</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%message%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %thread %-40logger{0} : %message%n%ex</pattern>
+        </encoder>
+    </appender>
+
+    <!-- HTTP-Wire-Inspector: Request/Response-Header + Body. -->
+    <logger name="HttpMessageLogger" level="DEBUG" additivity="false">
+        <appender-ref ref="MESSAGELOG" />
+        <appender-ref ref="STDOUT" />
+    </logger>
+
+    <!-- Cookie-Lifecycle: Set/Clear/Send-Decisions. -->
+    <logger name="ibgroup.web.core.clientportal.gw.core.CookieManager" level="DEBUG" additivity="false">
+        <appender-ref ref="FILE" />
+        <appender-ref ref="STDOUT" />
+    </logger>
+
+    <!-- Auth-Pipeline + alle ibgroup-Komponenten (SSO/Dispatcher/Authenticator). -->
+    <logger name="ibgroup" level="DEBUG" additivity="false">
+        <appender-ref ref="FILE" />
+        <appender-ref ref="STDOUT" />
+    </logger>
+
+    <!-- Netty bleibt INFO, sonst Spam. -->
+    <logger name="io.netty" level="INFO" additivity="false">
+        <appender-ref ref="FILE" />
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="FILE" />
+        <appender-ref ref="STDOUT" />
+    </root>
+
+</configuration>

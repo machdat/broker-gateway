@@ -193,3 +193,101 @@ Der broker-gateway-Service detektiert die letzten beiden Faelle und
 markiert seinen internen Status als `auth_lost`. Ab dann liefern alle
 Business-Endpunkte `503 Service Unavailable` mit `Retry-After: 30` —
 das ist das Signal, dieses Runbook erneut durchzulaufen.
+
+## Bekannter Auth-Bug (Stand 2026-05-08)
+
+Der Login-Pfad oben funktioniert auf der **UI-Ebene** (Browser zeigt
+"Client login succeeds"), aber der **Service-Lifecycle bleibt
+`auth_lost`**. Schritt 4 (`/v1/api/iserver/auth/status`) liefert HTTP
+401 statt `authenticated:true`. Das Problem ist
+**cpgateway-spezifisch und strukturell**:
+
+- IBKR hat den `clientportal.gw`-Tarball seit 2023-04-24 nicht mehr
+  aktualisiert (Stable + Beta beide auf diesem Build, Manifest
+  `When-Built=2023-04-24T15:42:44-0400`,
+  `Implementation-Version=ibgroup.web.core.iblink.router.clientportal.gw-20230424154245`).
+- Wire-Diagnose 2026-05-08 (Karten 739777a9 + d1c837f9): `POST
+  /sso/Authenticator` Round 1+2 -> 200, `POST /sso/Dispatcher` -> 200
+  mit Login-Form-HTML-Body. Authenticator(2)-Antwort liefert ein
+  gueltiges SRP `M2`-Server-Proof + `reached_max_login:false` — der
+  SRP-Handshake ist kryptographisch erfolgreich, aber das Backend
+  etabliert NACH `COMPLETEAUTH` keine authentifizierte Session.
+- ndcdyn.interactivebrokers.com Login mit identischen Credentials
+  klappt sofort (Konto-Dashboard, Balance) — der Auth-Pfad dort nutzt
+  ein anderes Backend-API.
+
+**Konsequenz fuer Operations:** der hier dokumentierte Login-Pfad
+bringt `authenticated:true` mit dem aktuellen Tarball nicht zustande.
+Das Runbook bleibt erhalten als Referenz fuer den Tag, an dem ein
+Fork (siehe Karte a78431aa) oder ein neuer IBKR-Build den Bug
+behebt.
+
+## Diagnose: DEBUG-Logging aktivieren
+
+Logback-Default loggt nur Access-Log-Stil. Fuer SRP-/Cookie-/Auth-
+Pipeline-Detail liegt im Repo eine vorbereitete Variante:
+
+```bash
+# 1. Datei auf den Pi holen
+ssh cma@cma-pi-1 'curl -sL -o /tmp/logback-debug.xml \
+  https://raw.githubusercontent.com/machdat/broker-gateway/main/ops/cpgateway/logback-debug.xml'
+
+# 2. Default sichern + Debug-Variante einspielen
+ssh cma@cma-pi-1 'docker exec broker-gateway-paper-cpgateway \
+  cp /opt/clientportal.gw/root/logback.xml \
+     /opt/clientportal.gw/root/logback.xml.dist'
+ssh cma@cma-pi-1 'docker cp /tmp/logback-debug.xml \
+  broker-gateway-paper-cpgateway:/opt/clientportal.gw/root/logback.xml'
+
+# 3. Logback liest die neue Konfig per scan=true automatisch nach ~10s.
+# Kein Container-Restart noetig (Memory project_container_recreate_kills_session).
+```
+
+Aktiviert: `HttpMessageLogger` + `CookieManager` + `ibgroup`-Namespace
+auf DEBUG, STDOUT-Appender enabled. Logs landen in
+`/opt/clientportal.gw/logs/gw.<datum>.log` und
+`gw.message.<datum>.log` plus `docker logs`. **Die Wire-Logs koennen
+Cookies/Tokens enthalten — Logs nicht aus dem Pi raus geben, nach
+Diagnose loeschen.**
+
+Reset auf Default:
+```bash
+ssh cma@cma-pi-1 'docker exec broker-gateway-paper-cpgateway \
+  cp /opt/clientportal.gw/root/logback.xml.dist \
+     /opt/clientportal.gw/root/logback.xml'
+```
+
+## Diagnose: Wire-Capture (HTTP-Bodies)
+
+`HttpMessageLogger` schreibt nur `body size XXXX`, nicht den Inhalt.
+Fuer Klartext-Bodies eignet sich ein tcpdump-Container im
+gemeinsamen Network-Namespace des cpgateway:
+
+```bash
+# Capture starten (5 Sekunden Setup wegen apk add tcpdump)
+ssh cma@cma-pi-1 'docker run --rm -d --name cpgw-tcpdump \
+  --network=container:broker-gateway-paper-cpgateway \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v /tmp:/host alpine \
+  sh -c "apk add --no-cache tcpdump >/dev/null 2>&1 && \
+         exec tcpdump -i any -s0 -U -w /host/cpgw-cap.pcap tcp port 5000"'
+
+# ... User-Login durchfuehren ...
+
+# Capture stoppen
+ssh cma@cma-pi-1 'docker stop cpgw-tcpdump'
+
+# Bodies extrahieren (tshark via apk add)
+ssh cma@cma-pi-1 'docker run --rm -v /tmp:/host alpine \
+  sh -c "apk add --no-cache tshark >/dev/null 2>&1 && \
+         tshark -r /host/cpgw-cap.pcap --export-objects http,/host/bodies"'
+
+# Authenticator/Dispatcher-Bodies inspizieren
+ssh cma@cma-pi-1 'cd /tmp/bodies && for f in Authenticator* Dispatcher*; do \
+  echo "=== $f ==="; cat -- "$f"; echo; done'
+```
+
+Das pcap und die Bodies enthalten Cookies und SRP-Material — auf der
+Pi belassen, nach der Diagnose loeschen. Die `HttpMessageLogger`-
+Header-Logs sind dafuer in der Regel sicher genug, der pcap-Capture
+ist nur fuer eine Vertiefungs-Session.
