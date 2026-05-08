@@ -10,6 +10,7 @@ der im Compose-Stack als Service `cpgateway` mitlaeuft.
 | `README.md` | ja | Diese Datei |
 | `conf.yaml` | ja | IBKR-CP-Gateway-Konfiguration (listenPort, listenSsl) — Single Source of Truth |
 | `clientportal.gw.tar.gz.sha256` | ja | SHA256-Pruefsumme der getesteten IBKR-Tarball-Version |
+| `logback-debug.xml` | ja | Optionale DEBUG-Logback-Variante (nur Diagnose, vgl. Karte 739777a9; siehe Datei-Header fuer Aktivierungs-Workflow per `docker cp`) |
 | `clientportal.gw.tar.gz` | **nein** (.gitignore) | IBKR-Tarball, separat von IBKR bezogen |
 | `clientportal.gw/` | **nein** (.gitignore) | Optional lokal entpackter Tarball, falls man ihn ausserhalb des Containers ansehen will |
 
