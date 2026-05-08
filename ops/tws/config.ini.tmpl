@@ -1,0 +1,111 @@
+# IBC-Konfigurationstemplate fuer broker-gateway-tws.
+#
+# Wird beim Container-Start vom gnzsnz-Entrypoint (run.sh) per envsubst
+# zu /home/ibgateway/ibc/config.ini expandiert. Nur Settings, die wir
+# bewusst pinnen oder per ENV durchreichen, sind hier explizit gefuehrt -
+# IBC nutzt fuer den Rest interne Defaults (siehe IBC-Doku 3.23.0).
+#
+# Tag-gepinnt fuer ghcr.io/gnzsnz/ib-gateway:10.45.1e. Bei Image-Bump
+# pruefen, ob sich relevante IBC-Settings geaendert haben (gnzsnz-Repo
+# stable/Dockerfile + IBC release notes).
+#
+# Spike-Validierung in Karte 368ccdfe; Karten-Constraints fixieren
+# ExistingSessionDetectedAction=primary, AcceptIncomingConnectionAction=
+# accept, ReadOnlyApi=yes, TradingMode=paper als Hard-Defaults.
+
+
+# =============================================================================
+# 1. Authentication (kommt aus den TWS_USERID / TWS_PASSWORD ENV-Vars)
+# =============================================================================
+
+IbLoginId=${TWS_USERID}
+IbPassword=${TWS_PASSWORD}
+
+# =============================================================================
+# 2. Session-Behavior (Spike-Quirks)
+# =============================================================================
+
+# primary: wenn beim Login eine bereits laufende Session erkannt wird,
+# uebernehmen wir und schiessen die andere ab. Das ist der einzige
+# Modus, der zum Single-Owner-Konstraint von broker-gateway passt
+# (siehe Memory project_ibkr_session_owner.md).
+ExistingSessionDetectedAction=${EXISTING_SESSION_DETECTED_ACTION}
+
+# accept: API-Verbindungen aus dem Compose-Netz werden ohne UI-Dialog
+# akzeptiert. Ohne diese Setting blockiert IB Gateway eingehende
+# Connections, weil ein modaler Dialog erschiene, der ohne Bedienung
+# unklickbar bleibt.
+AcceptIncomingConnectionAction=${TWS_ACCEPT_INCOMING}
+
+# yes: blockt Order-Submit auf API-Ebene. Default-an in dieser Karte;
+# Cutover auf no in Folge-Karte 5/6, wenn der TWS-Adapter Orders
+# kontrolliert routet.
+ReadOnlyApi=${READ_ONLY_API}
+
+# paper / live - kommt aus dem Stack-spezifischen .env / .env.paper.
+TradingMode=${TRADING_MODE}
+
+# =============================================================================
+# 3. Account-Warnings auto-akzeptieren
+# =============================================================================
+
+# yes: das "Konten ohne Brokerage-Verbindung"-Popup beim Paper-Login
+# wegklicken. Sonst friert das Gateway nach Login auf dem Dialog ein.
+AcceptNonBrokerageAccountWarning=yes
+
+# yes: Risk Navigator / Account Management Warnings werden weggeklickt.
+# Erforderlich fuer headless Betrieb.
+DismissPasswordExpiryWarning=no
+
+# =============================================================================
+# 4. 2FA (Live-Konto)
+# =============================================================================
+
+# Paper-Konto braucht kein 2FA. Live-Konto verwendet IBKR-Mobile;
+# RELOGIN_AFTER_TWOFA_TIMEOUT=yes laesst IBC nach Timeout neu versuchen.
+ReloginAfterSecondFactorAuthenticationTimeout=${RELOGIN_AFTER_TWOFA_TIMEOUT}
+SecondFactorAuthenticationExitInterval=${TWOFA_EXIT_INTERVAL}
+SecondFactorDevice=${TWOFA_DEVICE}
+
+# =============================================================================
+# 5. Daily Auto-Restart
+# =============================================================================
+
+# IB Gateway laeuft 6 Tage durch und bekommt jeden Tag einen
+# Soft-Restart via IBC. Format: "HH:MM" (24h). Leere String = aus.
+AutoRestartTime=${AUTO_RESTART_TIME}
+
+# Sat-Reset macht IBKR serverseitig - der Container muss am Sonntag
+# fruehmorgens fresh hochkommen. gnzsnz-Entrypoint regelt das via
+# IBC-Auto-Restart, kein zusaetzlicher cron noetig.
+
+# =============================================================================
+# 6. TrustedIPs fuer eingehende API-Connections
+# =============================================================================
+
+# IBC patcht /home/ibgateway/Jts/jts.ini selbst und setzt
+# [IBGateway]/TrustedIPs=127.0.0.1,${TrustedTwsApiClientIPs}.
+# Eine eigene jts.ini.tmpl-Setting wuerde von IBC sofort ueberschrieben.
+#
+# 172.16.0.0/12 deckt die Standard-Docker-Bridge-Range ab; ohne diesen
+# Eintrag timeoutet jeder API-Connect aus dem Compose-Netz oder vom
+# Host (docker-proxy NAT laesst IB Gateway nicht 127.0.0.1, sondern die
+# Bridge-Gateway-IP sehen).
+TrustedTwsApiClientIPs=${TWS_TRUSTED_IPS}
+
+# =============================================================================
+# 7. Misc
+# =============================================================================
+
+# no: GUI bleibt nicht-minimiert (relevant nur, wenn jemand den VNC-
+# Port aufmacht).
+MinimizeMainWindow=no
+
+# no: blocking-Mode Trading wird explizit nicht erlaubt. Erst spaeter,
+# wenn die TWS-Order-Submission durch den Adapter geht.
+AllowBlindTrading=${ALLOW_BLIND_TRADING}
+
+# yes: TWS-Settings beim Shutdown auf das Volume schreiben - sonst
+# verlieren wir Account-spezifische UI-Zustaende beim Container-
+# Restart.
+SaveTwsSettings=${SAVE_TWS_SETTINGS}

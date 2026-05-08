@@ -1,0 +1,31 @@
+# IB-Gateway-Settings-Template (jts.ini) fuer broker-gateway-tws.
+#
+# Wird beim Container-Start vom gnzsnz-Entrypoint per envsubst zu
+# /home/ibgateway/Jts/jts.ini expandiert. Nur Eingangs-Defaults - IB
+# Gateway baut die Datei nach dem ersten Login um (Account-spezifische
+# Settings, Persistierung im jts-settings-Volume).
+#
+# Tag-gepinnt fuer ghcr.io/gnzsnz/ib-gateway:10.45.1e.
+
+[IBGateway]
+# false: kein verbose Java-Trace. Fuer Debug temporaer auf true.
+WriteDebug=false
+
+# Hinweis: IBC patcht diese Datei nach dem Login und setzt
+# [IBGateway]/TrustedIPs=127.0.0.1,${TrustedTwsApiClientIPs aus config.ini}.
+# Hier nur 127.0.0.1 als Initial-Wert; die echte Allowlist fuer den
+# Bridge-Range steckt in ops/tws/config.ini.tmpl unter
+# TrustedTwsApiClientIPs.
+TrustedIPs=127.0.0.1
+
+# true: nur API, kein Trader-UI. Reduziert Surface-Area des Containers.
+ApiOnly=true
+
+[Logon]
+Locale=en
+TimeZone=${TIME_ZONE}
+displayedproxymsg=1
+UseSSL=true
+s3store=true
+
+[Communication]

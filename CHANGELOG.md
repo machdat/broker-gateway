@@ -4,6 +4,35 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.32.0] — 2026-05-09 (TWS-Container parallel zu cpgateway, Phase 2 von Karte 8b1781d3)
+
+Erste Stufe des TWS-API-Refactors: ein neuer Compose-Service `tws`
+nutzt das gnzsnz-Image (`ghcr.io/gnzsnz/ib-gateway:10.45.1e`,
+multi-arch, MIT) als IBKR-Adapter parallel zum bestehenden
+`cpgateway`. Diese Karte liefert nur das Image- und Compose-Setup;
+Adapter-Code (`src/broker_gateway/tws/`), Lifecycle-Anpassung,
+Single-Owner-Coordination und Hard-Cutover folgen in Karten 2-6 der
+Folge-Reihe.
+
+- `compose.yaml`: neuer Service `tws` mit gepinntem Image-Tag, named
+  Volume `tws-settings` fuer Account-State-Persistenz, ENV-getriebene
+  IBC-Konfig (Spike-Quirks: `ExistingSessionDetectedAction=primary`,
+  `AcceptIncomingConnectionAction=accept`, `ReadOnlyApi=yes`,
+  `TradingMode=${BG_TRADING_MODE}`).
+- `ops/tws/config.ini.tmpl`, `ops/tws/jts.ini.tmpl`: schlanke IBC-/
+  IB-Gateway-Templates mit allen Spike-Quirks; werden ueber bind-mount
+  ueber die gnzsnz-Defaults gelegt.
+- `ops/tws/README.md`: Image-Strategie (gnzsnz direkt, kein eigener
+  Build), Versions-Historie, ENV-Tabelle, Volume-Layout, Spike-Quirks-
+  Mapping, Folge-Karten-Hinweise.
+- `ops/build-gateway.sh`: setzt `BG_TRADING_MODE`, `BG_TWS_HOST_PORT`
+  (Live 4101 / Paper 4102) und `BG_TWS_INTERNAL_PORT` (Live 4001 /
+  Paper 4002) je `--env`. 4001/4002 direkt am Host kollidiert mit dem
+  Paper-Gateway-Host-Port - daher 41xx.
+- `.env.example`, `.env.live.template`, `.env.paper.template`:
+  TWS-spezifische ENV-Vorlagen (`TWS_USERID`, `TWS_PASSWORD`,
+  `BG_TWS_HOST_PORT`, `TWS_READ_ONLY_API`).
+
 ## [1.31.1] — 2026-05-08 (Doku: Fork-Evaluation cpgateway-Wrapper)
 
 Karte a78431aa (Time-Boxed Spike) hat zwei Open-Source-Wrapper als
