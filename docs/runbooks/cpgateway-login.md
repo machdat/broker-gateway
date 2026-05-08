@@ -222,6 +222,28 @@ Das Runbook bleibt erhalten als Referenz fuer den Tag, an dem ein
 Fork (siehe Karte a78431aa) oder ein neuer IBKR-Build den Bug
 behebt.
 
+## Alternative Container-Wrapper (Stand 2026-05-08)
+
+Karte `a78431aa` hat zwei Open-Source-Wrapper als moegliche
+Workaround-Pfade evaluiert:
+
+| Wrapper | Login-Mechanik | Eigener Login-Stack? | Aktivitaet | Befund |
+|---------|----------------|----------------------|------------|--------|
+| `ppaanngggg/ib-cp-server` | chromedp (Headless-Chrome) gegen IBKR-Login-Form, Proxy zu embedded `clientportal.gw` | nein | last push 2024-04, 0 Stars, MIT | identisch zu Pi-Chromium-Pfad; reproduziert denselben Tarball-Auth-Bug. Selektor `#xyz-field-username` veraltet (heute `#xyz-field-credential`); Fork wartet zwingend auf `.xyzblock-notification`-2FA-Push (Paper-Account hat keinen). |
+| `schuss-capital/ib-client-docker` | keiner — reiner Tarball-Container ohne Login-Layer | nein | last push 2022-11, 0 Stars, kein License | hilft nicht: kein Beitrag zum Login-Pfad. |
+| Eigenbau (`ops/cpgateway/`) | Pi-Chromium / nsenter / Cookie-Bridge | nein | aktiv | dokumentierter Stand, gleicher Tarball-Bug. |
+
+**Empfehlung: keinen Fork adoptieren.** Beide Wrapper nutzen denselben
+2023er IBKR-Tarball intern und bringen keinen eigenen Login-Stack
+(z.B. direkt-SRP gegen `api.ibkr.com` ohne Java-Backend). Damit
+treffen sie die strukturelle Wurzel nicht. Phase 2 (Smoke auf cma-pi-1)
+wurde uebersprungen — die Inventur war eindeutig.
+
+Reaktivieren der Fork-Pruefung wird sinnvoll, sobald (a) IBKR den
+Tarball aktualisiert, (b) ein Fork mit echtem direkt-SRP-Stack
+auftaucht, oder (c) ein Strategiewechsel zu IBKR-Web-API/OAuth
+ansteht.
+
 ## Diagnose: DEBUG-Logging aktivieren
 
 Logback-Default loggt nur Access-Log-Stil. Fuer SRP-/Cookie-/Auth-
