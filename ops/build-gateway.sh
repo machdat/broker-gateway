@@ -67,6 +67,13 @@ case "$ENV_NAME" in
         # docs/runbooks/cpgateway-pi-desktop-login.md).
         export BG_CPGATEWAY_HOST_PORT="${BG_CPGATEWAY_HOST_PORT:-5000}"
         export BG_CPGATEWAY_VOLUME="${BG_CPGATEWAY_VOLUME:-./var/cpgateway/logs}"
+        # TWS-Container (gnzsnz/ib-gateway:10.45.1e). Live-Stack: IB
+        # Gateway haengt im Container auf 4001 (Live-Default) und wird
+        # auf 127.0.0.1:4101 am Host gemappt - 4001 direkt am Host
+        # waere belegt vom Paper-Gateway.
+        export BG_TRADING_MODE="${BG_TRADING_MODE:-live}"
+        export BG_TWS_HOST_PORT="${BG_TWS_HOST_PORT:-4101}"
+        export BG_TWS_INTERNAL_PORT="${BG_TWS_INTERNAL_PORT:-4001}"
         # Defensive: setzt BG_STACK_KIND, falls die .env-Datei den
         # Wert nicht enthaelt. ENV-Wert in der env_file hat Vorrang im
         # Container, dieser Export deckt den Fall ab, in dem die
@@ -86,6 +93,12 @@ case "$ENV_NAME" in
         # auf dem Pi-Host erreichbar sind.
         export BG_CPGATEWAY_HOST_PORT="${BG_CPGATEWAY_HOST_PORT:-5001}"
         export BG_CPGATEWAY_VOLUME="${BG_CPGATEWAY_VOLUME:-/mnt/ssd/broker-gateway-paper/var/cpgateway-paper/logs}"
+        # TWS-Container im Paper-Stack: IB Gateway haengt im Container
+        # auf 4002 (Paper-Default) und wird auf 127.0.0.1:4102 am Host
+        # gemappt.
+        export BG_TRADING_MODE="${BG_TRADING_MODE:-paper}"
+        export BG_TWS_HOST_PORT="${BG_TWS_HOST_PORT:-4102}"
+        export BG_TWS_INTERNAL_PORT="${BG_TWS_INTERNAL_PORT:-4002}"
         export BG_STACK_KIND="paper"
         # Auto-Login-Override haengt den docker.sock-Mount und die
         # BG_PAPER_*/BG_AUTO_LOGIN_*-Vars an den gateway-Service.

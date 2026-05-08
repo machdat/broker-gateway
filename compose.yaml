@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:1.31.1
+    image: broker-gateway:1.32.0
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Default laut API-Draft 1.1) bzw. 4001 fuer den
@@ -67,3 +67,66 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+
+  # IBKR Trader Workstation API ueber IB Gateway 10.45.1e + IBC 3.23.0
+  # (gnzsnz-Image). Parallel-Service zu cpgateway in dieser Karte; der
+  # Cutover (gateway-Service haengt zukuenftig an tws statt cpgateway)
+  # erfolgt in Folge-Karten 5 und 6. Dokumentation: ops/tws/README.md.
+  #
+  # Host-Port-Bind nur 127.0.0.1, damit der Smoke-Pfad (Phase 3) ueber
+  # localhost erreichbar ist. Externe Erreichbarkeit ist bewusst nicht
+  # vorgesehen - der Adapter spricht intern ueber tws:4001 (Live) bzw.
+  # tws:4002 (Paper). Default-Host-Port 4101 (Live) / 4102 (Paper) -
+  # 4001/4002 direkt am Host wuerden mit gateway-paper:4001 kollidieren
+  # (Live- und Paper-Stack teilen den Host-Port-Namespace auf cma-pi-1).
+  tws:
+    image: ghcr.io/gnzsnz/ib-gateway:10.45.1e
+    container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}-tws
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${BG_TWS_HOST_PORT:-4101}:${BG_TWS_INTERNAL_PORT:-4001}"
+    env_file:
+      - path: ${BG_ENV_FILE:-.env}
+        required: false
+    environment:
+      # Pflicht-ENVs (Login + Modus). TWS_USERID/TWS_PASSWORD kommen aus
+      # dem env_file (.env / .env.paper) - hier nur Pass-Through.
+      TWS_USERID: ${TWS_USERID:-}
+      TWS_PASSWORD: ${TWS_PASSWORD:-}
+      TRADING_MODE: ${BG_TRADING_MODE:-paper}
+      # Spike-Quirks (siehe ops/tws/config.ini.tmpl).
+      EXISTING_SESSION_DETECTED_ACTION: ${EXISTING_SESSION_DETECTED_ACTION:-primary}
+      TWS_ACCEPT_INCOMING: ${TWS_ACCEPT_INCOMING:-accept}
+      READ_ONLY_API: ${TWS_READ_ONLY_API:-yes}
+      ALLOW_BLIND_TRADING: ${ALLOW_BLIND_TRADING:-no}
+      # gnzsnz-Defaults fuer headless Betrieb.
+      BYPASS_WARNING: ${BYPASS_WARNING:-yes}
+      SAVE_TWS_SETTINGS: ${SAVE_TWS_SETTINGS:-yes}
+      AUTO_RESTART_TIME: ${AUTO_RESTART_TIME:-11:59 PM}
+      AUTO_LOGOFF_TIME: ${AUTO_LOGOFF_TIME:-}
+      # Bridge-Range fuer eingehende API-Connects. IBC prepended 127.0.0.1
+      # automatisch (siehe ops/tws/config.ini.tmpl Sektion 6). Wer den
+      # tws-Container in einem ungewoehnlichen Bridge-Subnetz betreibt,
+      # passt den Default in der .env an.
+      TWS_TRUSTED_IPS: ${TWS_TRUSTED_IPS:-172.16.0.0/12}
+      # 2FA fuer Live-Konto. Paper laesst das alles leer.
+      RELOGIN_AFTER_TWOFA_TIMEOUT: ${RELOGIN_AFTER_TWOFA_TIMEOUT:-yes}
+      TWOFA_DEVICE: ${TWOFA_DEVICE:-}
+      TWOFA_EXIT_INTERVAL: ${TWOFA_EXIT_INTERVAL:-}
+      TWS_COLD_RESTART: ${TWS_COLD_RESTART:-}
+      TWS_MASTER_CLIENT_ID: ${TWS_MASTER_CLIENT_ID:-}
+      TIME_ZONE: ${TWS_TIME_ZONE:-Europe/Vienna}
+    volumes:
+      # Persistente Account-Settings + Logs des IB Gateways. Der Container
+      # schreibt seinen Zustand zwischen Starts in dieses Verzeichnis -
+      # ohne den volume-Mount geht die UI-Persistenz beim Restart verloren.
+      - tws-settings:/home/ibgateway/Jts
+      # Eigene IBC- und jts-Templates (Spike-Quirks gepinnt). Der bind-
+      # mount auf eine Datei innerhalb des tws-settings-Volumes ist
+      # zulaessig und ueberschreibt die einzelne Datei.
+      - ./ops/tws/config.ini.tmpl:/home/ibgateway/ibc/config.ini.tmpl:ro
+      - ./ops/tws/jts.ini.tmpl:/home/ibgateway/Jts/jts.ini.tmpl:ro
+
+volumes:
+  tws-settings:
+    name: ${COMPOSE_PROJECT_NAME:-broker-gateway}_tws-settings
