@@ -4,6 +4,18 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.31.1] — 2026-05-08 (Doku: Fork-Evaluation cpgateway-Wrapper)
+
+Karte a78431aa (Time-Boxed Spike) hat zwei Open-Source-Wrapper als
+moegliche Workaround-Pfade fuer den Tarball-Auth-Bug evaluiert
+(`ppaanngggg/ib-cp-server`, `schuss-capital/ib-client-docker`). Beide
+nutzen denselben 2023er IBKR-Tarball intern und bringen keinen
+eigenen Login-Stack — Empfehlung: keinen Fork adoptieren. Phase 2
+(Smoke auf cma-pi-1) wurde nach eindeutiger Inventur uebersprungen.
+
+- `docs/runbooks/cpgateway-login.md`: neues Kapitel "Alternative
+  Container-Wrapper" mit Befund-Tabelle und Begruendung.
+
 ## [1.31.0] — 2026-05-07 (Cookie-Bridge Browser → Service)
 
 Karte 406fce15 schliesst die Luecke zwischen Pi-Browser-Login (Karte
