@@ -11,8 +11,10 @@ für die Frage: **Wie ist dieser Service gebaut, und warum so?**
 > festgehalten — wer Architektur-Inhalte sucht, findet sie hier, nicht
 > dort. **Begriffsklärungen:** [`docs/06-glossary.md`](06-glossary.md).
 
-**Stand:** v1.11.0, 2026-04-30 (Snapshot zum Architektur-IST nach
-AP-01..AP-05 K2 und AP-04 K1..K4).
+**Stand:** v1.34.1, 2026-05-09 (Snapshot zum Architektur-IST nach
+AP-01..AP-11 plus TWS-Refactor Karten 368ccdfe / 8b1781d3 / 441b53db /
+33cb35b1; das v1.32–v1.34-Update führt das TWS-Backend parallel zum
+cpgateway-Pfad ein, gewählt per `BG_BACKEND=cp|tws`).
 
 ## Inhalt
 
@@ -222,7 +224,8 @@ Folge-Karte behoben, nicht im laufenden Code „mal eben angepasst".
 
 ### 4.1 Compose-Stack
 
-Der Service läuft als Docker-Compose-Stack mit zwei Services:
+Der Service läuft als Docker-Compose-Stack. Es gibt zwei Backend-Pfade,
+gewählt per `BG_BACKEND` (Default `cp`):
 
 ```
 +---------------------------+
@@ -231,30 +234,48 @@ Der Service läuft als Docker-Compose-Stack mit zwei Services:
 +-------------+-------------+
               | Port 4000 (extern)
               v
-+---------------------------+        +---------------------------+
-| gateway                   |  HTTP  | cpgateway                 |
-| broker-gateway:1.11.0     +--------> broker-cpgateway:1.0.3    |
-| Port 8000 intern          |        | Port 5000 intern          |
-| (FastAPI / uvicorn)       |        | (Java CP-Gateway)         |
-+---------------------------+        +-------------+-------------+
-                                                   | HTTPS / WSS
-                                                   v
-                                          api.ibkr.com (IBKR Backend)
++---------------------------+
+| gateway                   |
+| broker-gateway:1.34.1     |
+| Port 8000 intern          |
+| (FastAPI / uvicorn)       |
++----+--------+-------------+
+     |        |
+     | (cp)   | (tws)         BG_BACKEND wählt zur Lifespan-Zeit
+     v        v
++----+----+ +-+-----------+
+| cp-     | | tws         |
+| gateway | | (IB Gateway |
+| :5000   | |  + IBC)     |
+| (Java)  | | :4001/4002  |
++----+----+ +-+-----------+
+     |        |
+     | HTTPS  | TWS-Socket
+     v        v
+       api.ibkr.com (IBKR Backend)
 ```
 
-- **`gateway`** (Image `broker-gateway:1.11.0`): die FastAPI-App,
+- **`gateway`** (Image `broker-gateway:1.34.1`): die FastAPI-App,
   intern Port 8000, extern auf 4000 publiziert.
 - **`cpgateway`** (Image `broker-cpgateway:1.0.3`): IBKR Client Portal
   Gateway als Java-Prozess (eclipse-temurin), nur intern. Externer
   Zugriff für den Browser-2FA-Login ausschließlich über SSH-Reverse-Tunnel
-  (siehe `docs/runbooks/cpgateway-login.md`).
+  bzw. Pi-Desktop-Browser auf `127.0.0.1:5000` (Live) / `:5001` (Paper);
+  siehe [`docs/runbooks/cpgateway-pi-desktop-login.md`](runbooks/cpgateway-pi-desktop-login.md).
+- **`tws`** (geplanter Compose-Service, Container-Slot in Karte 8b1781d3
+  vorbereitet): IB Gateway + IBC, Default-Image `gnzsnz/ib-gateway:stable`.
+  Heute noch nicht im `compose.yaml` aktiviert — Karte 6 (Hard-Cutover)
+  zieht den Compose-Eintrag nach. Solange läuft TWS-Verkehr in Tests
+  und Spike-Setups gegen einen lokal gestarteten IB-Gateway-Container.
 - `gateway` wartet via `depends_on: condition: service_healthy` auf den
-  `cpgateway`-Healthcheck.
+  `cpgateway`-Healthcheck. Im Hard-Cutover-Endzustand ersetzt der
+  `tws`-Healthcheck diese Bedingung.
 - Beim Image-Bump muss der `image:`-Tag in `compose.yaml` mitgezogen
   werden (Konvention: Image-Tag = Service-Version).
 
-Deployment-Target: cma-pi-1 unter `/mnt/ssd/broker-gateway`. Gateway-Port
-4000 ist frei (KanPrompt belegt 8000/8001 auf demselben Host).
+Deployment-Target: cma-pi-1 unter `/mnt/ssd/broker-gateway` (Live) bzw.
+`/mnt/ssd/broker-gateway-paper` (Paper). Gateway-Port 4000/4001 (Live/
+Paper) ist frei (KanPrompt belegt 8000/8001 auf demselben Host).
 
 ### 4.2 Repo-Layout
 
@@ -272,9 +293,12 @@ src/broker_gateway/
     events_stream.py     # /v1/events/stream (SSE)
     errors.py            # zentrale Error-Envelope-Helper
   auth/                  # Token-Modell, Store, FastAPI-Middleware
-  cp/                    # IBKR-Adapter-Schicht (siehe Sektion 5)
+  auth_status.py         # AuthStatus-Enum (SSOT, sechs Werte) +
+                         #   to_consumer_status + is_session_unavailable
+  cp/                    # IBKR-Adapter-Schicht ueber CP Gateway (Sektion 5)
     client.py            # CPGatewayClient (httpx-basiert)
-    lifecycle.py         # Auth-Status, Tickle-Job, Reauthenticate
+    lifecycle.py         # Auth-Status, Tickle-Job, Reauthenticate;
+                         #   re-exportiert AuthStatus aus auth_status.py
     redaction.py         # Header-Redaktion (SSOT)
     recorder.py          # httpx-Event-Hook fuer Live-Recordings
     normalize.py         # Money / Availability / Currency
@@ -284,6 +308,13 @@ src/broker_gateway/
     orders.py            # Order-Lifecycle (whatif, reply-loop)
     trades.py            # Trades-History + MTD-Aggregation
     ws_client.py         # CPWebSocketClient (AP-04 K3)
+    auto_login_trigger.py / auto_login_throttle.py  # Auto-Login-Pfad
+                                                    # (cp-spezifisch, Sektion 6.4)
+  tws/                   # IBKR-Adapter-Schicht ueber TWS-Socket (Karten
+                         #   441b53db + 33cb35b1, Sektion 5.1)
+    client.py            # TWSClient (ib_async-basiert), ClientIdPool
+    lifecycle.py         # TWSLifecycle (Heartbeat) + TWSLifecycleCpAdapter
+                         #   (cp-Slot-Kompatibilitaet)
   streams/               # SSE-Stream-Manager (Quotes + EventBus)
     manager.py           # Subscription-Refcount + Fan-Out
     events.py            # EventBus fuer /v1/events/stream
@@ -304,21 +335,28 @@ Kein eigenes Repo-Layout für Consumer — Consumer hängen sich nur an
 
 | Endpoint | Auth | Liefert | Wozu |
 |---|---|---|---|
-| `GET /v1/health` | keiner | `{"status":"ok","version":"1.11.0"}` | Liveness ohne IBKR-Abhängigkeit |
-| `GET /v1/internal/health` | `admin:*` | IBKR-Auth-Status, Tickle-Age, Subscription-Count, OK / `auth_lost` / `ibkr_down` | Readiness mit Detail |
+| `GET /v1/health` | keiner | `{"status":"ok","version":"1.34.1"}` | Liveness ohne IBKR-Abhängigkeit |
+| `GET /v1/internal/health` | `admin:*` | Roher Backend-Status (`auth_status`) plus stabiler `auth_status_consumer` (`ok`/`down`/`lost`), Heartbeat-Age, Subscription-Count | Readiness mit Detail; Schema gleich für CP- und TWS-Backend |
+| `GET /v1/internal/tws-health` | `admin:*` | TWSClient-spezifische Diagnose (Connect-State, ClientId, Last-Heartbeat); nur sinnvoll unter `BG_BACKEND=tws` (Karte 441b53db) | TWS-Backend-Diagnose |
 | `GET /metrics` | keiner (nur intern) | Prometheus-Format | Scrape vom Pi-Prometheus |
 
-Bei `auth_lost` antworten alle Business-Endpunkte mit `503` und
-`Retry-After: 30` — der Recovery-Mechanismus läuft im Hintergrund
-(bis zu drei `reauthenticate`-Versuche, dann 503 bis Operator-Eingriff).
+Bei Session-Verlust antworten alle Business-Endpunkte mit `503` und
+`Retry-After: 30`. Im CP-Pfad läuft der Recovery-Mechanismus im
+Hintergrund (bis zu drei `reauthenticate`-Versuche, dann 503 bis
+Operator-Eingriff bzw. Auto-Login-Sidecar im Paper-Stack). Im TWS-Pfad
+übernimmt IB Gateway + IBC den Daily-Restart und Sat-Reset; broker-
+gateway reconnected automatisch beim nächsten Heartbeat.
 
 ---
 
 ## 5. IBKR-Adaptions-Schicht
 
-Die `cp/`-Module sind die einzige Stelle, an der IBKR-Spezifika
-adressiert werden. Außerhalb dieses Pakets darf nichts wissen, dass
-hinter dem Gateway IBKR steht.
+Die `cp/`- und `tws/`-Module sind die einzigen Stellen, an denen IBKR-
+Spezifika adressiert werden. Außerhalb dieser Pakete darf nichts
+wissen, dass hinter dem Gateway IBKR steht. Die `cp/`-Familie spricht
+das interne Client Portal Gateway über HTTP/REST an (Default), die
+`tws/`-Familie spricht IB Gateway + IBC über die TWS-Socket-API
+(`ib_async`) — siehe Sektion 5.1. Auswahl per `BG_BACKEND=cp|tws`.
 
 | IBKR-Eigenheit | Lösung im Gateway | Modul |
 |---|---|---|
@@ -437,6 +475,14 @@ Token-Werte werden **nirgendwo geloggt** — nur `caller_id` und
 und `Proxy-Authorization` aus jedem Log-Strang.
 
 ### 6.4 Stack-Kennung und Auto-Login (Karte ece90a8e)
+
+> **Backend-Hinweis:** Der Auto-Login-Pfad ist cp-spezifisch — er heilt
+> den Container-Recreate-Verlust der **cpgateway-Session**. Im
+> `BG_BACKEND=tws`-Pfad existiert kein Pendant, weil der TWS-Lifecycle
+> ohne Browser-2FA läuft (IBC + IB Gateway machen Saturday-Reset und
+> Daily-Restart selbst). `_maybe_attach_auto_login` in `main.py` skipped
+> entsprechend, wenn der gewählte Lifecycle keine `AuthLifecycle`-
+> Instanz ist (ab v1.34.0).
 
 Seit v1.28.0 ist der Service stack-aware: jede Instanz kennt sich
 selbst als **Live**- oder **Paper**-Stack über `BG_STACK_KIND` (Pflicht-
@@ -561,6 +607,14 @@ REST-Polling auf WS-Push) wird in einem Folge-AP-05 spezifiziert,
 nicht in AP-04.
 
 ### 7.4 WS-Lifespan-Aktivierung (AP-11 K9)
+
+> **Backend-Hinweis:** Der WS-Push-Pfad ist cp-spezifisch — er nutzt
+> die WebSocket-Quelle des CP Gateways (`/v1/api/ws`). Im
+> `BG_BACKEND=tws`-Pfad gibt es heute keinen aktiven Stream-Pfad; die
+> TWS-Event-Callbacks (`updateEvent`, `execDetailsEvent`,
+> `orderStatusEvent`) werden in der Single-Owner-Coordination-Karte 4
+> in den `EventBus` gebridged. Bis dahin ist `/v1/quotes/stream` /
+> `/v1/orders/stream` unter `BG_BACKEND=tws` nicht funktional.
 
 Der WS-Push-Pfad ist Code-seitig komplett (AP-11 K1..K8: SmdTopicAdapter,
 SubscriptionRegistry, WSPushSource, OrdersBroadcaster, /v1/status).
@@ -803,9 +857,18 @@ eigenmächtig entschieden:
   Backing für `idempotency.py` ist im Design erwähnt, aber noch nicht
   implementiert. Solange der Service in-process restartet, ist die
   Memory-Map akzeptabel.
+- **TWS-Backend-Migration:** seit v1.34.0 läuft `tws/` parallel zu
+  `cp/`, gewählt per `BG_BACKEND`. Nächste Schritte sind in der
+  KanPrompt-Backlog: **Karte 4 (Single-Owner-Coordination)** macht die
+  Service-Schicht (Portfolio/Orders/Quotes/Events) TWS-fähig und
+  bridged TWS-Event-Callbacks in den EventBus; **Karte 6 (Hard-Cutover)**
+  reisst den cp-Pfad raus, entfernt `TWSLifecycleCpAdapter` und
+  ersetzt den `cpgateway`-Compose-Service durch einen `tws`-Service
+  mit Healthcheck. Bis dahin sind die Order/Portfolio/Quotes-Pfade
+  unter `BG_BACKEND=tws` nicht funktional.
 
 ---
 
-*Stand: v1.11.0 (2026-04-30). Lebt mit dem Code: jede Karte mit
+*Stand: v1.34.1 (2026-05-09). Lebt mit dem Code: jede Karte mit
 architekturrelevanten Konsequenzen aktualisiert dieses Dokument oder
 verweist explizit auf die Sektion, die geändert werden muss.*

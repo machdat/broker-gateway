@@ -4,6 +4,61 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.34.1] — 2026-05-09 (Doku-Update v1-Spec + Architektur fuer TWS-Backend)
+
+Karte 45b03110: reine Doku-Aktualisierung im Anschluss an den
+TWS-Refactor (Karten 368ccdfe Spike, 8b1781d3 Container-Slot,
+441b53db Adapter, 33cb35b1 Lifecycle). Konsumenten-API-Vertrag
+unveraendert; kein Code-Verhalten betroffen; kein Pi-Deploy.
+
+- `docs/api/v1.md`:
+  - Header auf v1.34.1 mit Hinweis auf TWS-Refactor v1.32-v1.34.
+  - Section 3.2 (Internal Health): Beispiel-Body um
+    `auth_status_consumer` erweitert; Feld-Tabelle backend-aware
+    formuliert (CP- vs TWS-Bedeutung pro Feld).
+  - Section 3.2 Auth-Lifecycle in zwei Bloecke geteilt (CP-Tickle vs
+    TWS-Heartbeat); 503-Verhalten verweist auf zentrale
+    `is_session_unavailable`.
+  - Section 3.2 ENV-Tabelle: `BG_BACKEND`, `BG_TWS_HEARTBEAT_SEC`,
+    `BG_TWS_HOST`, `BG_TWS_PORT` ergaenzt; CP-Defaults belassen.
+  - Section 9.4 (Events Stream Source): Hinweis, dass TWS-Bridge in
+    Folgekarte 4 entsteht.
+  - Section 11 (Internals): Heartbeat-/Reconnect-Bullets backend-aware.
+  - Section 11.1 (ThrottleManager): Hinweis, dass der CP-spezifische
+    Bucket-Layer im TWS-Pfad nicht greift; TWS-Pacing liegt bei
+    `ib_async`.
+  - Neue Section 14.1: TWS-Backend-Refactor v1.32-v1.34, Service-
+    Schicht-Limitation und Drift-Status.
+- `docs/02-architecture.md`:
+  - Header-Stand auf v1.34.1.
+  - Section 4.1 Compose-Stack-Diagramm um zweiten Backend-Pfad
+    erweitert; Image-Tag auf `broker-gateway:1.34.1`; Pi-Desktop-
+    Login-Runbook verlinkt; geplanter `tws`-Compose-Service erlaeutert.
+  - Section 4.2 Repo-Layout: `auth_status.py` und `tws/`-Pfad
+    ergaenzt; `cp/auto_login_*` als cp-spezifisch markiert.
+  - Section 4.3 Healthchecks: Schema von `/v1/internal/health`
+    backend-aware; `/v1/internal/tws-health` als TWS-Diagnose-Endpunkt
+    aufgenommen.
+  - Section 5 Lead-In: `cp/` und `tws/` als gleichberechtigte
+    Adapter-Familien.
+  - Section 6.4 Auto-Login: Backend-Hinweis vorangestellt - cp-spezifisch.
+  - Section 7.4 WS-Lifespan: Backend-Hinweis vorangestellt - cp-spezifisch.
+  - Section 11.2 offene Architektur-Fragen: TWS-Migration als laufender
+    Refactor-Punkt mit Verweis auf Folgekarten 4 und 6.
+- `README.md`:
+  - Status-Block auf v1.34.1 mit TWS-Refactor-Zusammenfassung; Live-
+    und Paper-Stack-Ports referenziert; Doku-Karte 45b03110 erwaehnt.
+  - Container-Stack-Section um `BG_BACKEND`-Hinweis und Verweis auf
+    Karte 6 (Hard-Cutover) ergaenzt.
+  - Footer auf Version 1.34.1.
+- `compose.yaml`: Image-Tag `broker-gateway:1.34.1`.
+- `pyproject.toml` + `src/broker_gateway/__init__.py`: 1.34.0 -> 1.34.1.
+
+**Out-of-Scope:** KanPrompt-Projekt-Instructions (in der DB) sind
+nicht im Repo gepflegt - der Hinweis ist in der Karte als optionaler
+Mini-Schritt vermerkt und kann separat ueber `mcp__kanprompt__update_project`
+nachgezogen werden, gehoert aber nicht zur Code-Basis dieser Karte.
+
 ## [1.34.0] — 2026-05-09 (TWS-Lifecycle, Feature-Flag BG_BACKEND)
 
 Karte 33cb35b1 (Folge zur Adapter-Karte 441b53db) fuehrt einen
