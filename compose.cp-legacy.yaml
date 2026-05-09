@@ -1,0 +1,29 @@
+# Override fuer den cpgateway-Roll-Back-Pfad (Karte 5 / v2.0.0).
+#
+# Aktiviert wird das ausschliesslich durch ops/rollback-to-cp.sh.
+# Manueller Aufruf:
+#   docker compose --env-file .env --profile cp-legacy \
+#     -f compose.yaml -f compose.cp-legacy.yaml up -d gateway cpgateway
+#
+# Wirkung:
+#   - gateway-Service-Override: BG_BACKEND=cp + depends_on cpgateway
+#     (zusaetzlich zu tws aus compose.yaml). gateway nutzt damit den
+#     CPGatewayLifecycle und ignoriert die tws-Verbindung.
+#   - tws-Service ist im Stack weiter vorhanden, laeuft aber idle, weil
+#     gateway ihn nicht ansprechen muss. Wer den tws-Container ganz weg
+#     haben will, stoppt ihn separat (`docker compose stop tws`).
+#   - cpgateway-Service wird durch das `--profile cp-legacy`-Flag aus
+#     der compose.yaml aktiviert.
+#
+# Memory-Bezug: project_cpgateway_auth_stagnation. Das ist nur fuer
+# Notfall-Roll-Back gedacht - cpgateway ist strukturell broken (SRP-
+# Login etabliert keine Session). Wer das aktiviert, braucht direkt
+# einen Browser-Login (siehe docs/runbooks/cpgateway-login.md).
+
+services:
+  gateway:
+    environment:
+      - BG_BACKEND=cp
+    depends_on:
+      cpgateway:
+        condition: service_healthy

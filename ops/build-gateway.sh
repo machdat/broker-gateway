@@ -22,22 +22,27 @@
 #   --env=paper           -> Project broker-gateway-paper, .env.paper,
 #                            Port 4001, Volume var/cpgateway-paper/.
 #
-# --backend-Schalter (Karte 4 + 5):
-#   --backend=cp (Default) -> compose.yaml only (cpgateway-Service).
-#   --backend=tws          -> compose.yaml + compose.tws.yaml. Aktiviert
-#                             BG_BACKEND=tws im gateway-Service und zieht
-#                             den tws-Service (gnzsnz/ib-gateway:stable)
-#                             hoch. Drift-Acceptance-Check wird im tws-
-#                             Modus uebersprungen, weil cpgateway nicht
-#                             mehr die Quelle der Wahrheit ist.
-#                             BG_TWS_PORT defaultet je nach env auf
+# --backend-Schalter (Karte 5 / v2.0.0):
+#   --backend=tws (Default) -> compose.yaml only (tws-Service).
+#                             gnzsnz/ib-gateway:stable mit IBC + Xvfb,
+#                             gateway redet ueber socat-Forward Port
 #                             4004 (paper) bzw. 4003 (live).
+#                             Drift-Acceptance-Check wird im tws-Modus
+#                             uebersprungen, weil cpgateway nicht mehr
+#                             Quelle der Wahrheit ist.
+#   --backend=cp            -> compose.yaml + compose.cp-legacy.yaml,
+#                             Profile cp-legacy aktiviert. NUR fuer
+#                             Notfall-Roll-Back nach gescheitertem
+#                             tws-Cutover - cpgateway ist strukturell
+#                             broken (Memory project_cpgateway_auth_stagnation).
+#                             Wer das nutzt, sollte ops/rollback-to-cp.sh
+#                             statt build-gateway.sh aufrufen.
 #
 # Aufruf:
-#   ./ops/build-gateway.sh                                # Live-Default (cp)
-#   ./ops/build-gateway.sh --env=paper                    # Paper-Stack (cp)
-#   ./ops/build-gateway.sh --env=paper --backend=tws      # Paper auf TWS
-#   ./ops/build-gateway.sh --env=live  --backend=tws      # Live auf TWS (Karte 5)
+#   ./ops/build-gateway.sh                                # Live (tws Default)
+#   ./ops/build-gateway.sh --env=paper                    # Paper (tws Default)
+#   ./ops/build-gateway.sh --env=paper --backend=cp       # Paper Roll-Back cp
+#   ./ops/build-gateway.sh --env=live  --backend=cp       # Live Roll-Back cp
 #   SKIP_ACCEPTANCE=1 ./ops/build-gateway.sh              # Notfall-Bypass
 
 set -euo pipefail
@@ -45,7 +50,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENV_NAME="live"
-BACKEND="cp"
+BACKEND="tws"
 
 show_help() {
     sed -n '2,42p' "$0"
@@ -133,9 +138,6 @@ case "$ENV_NAME" in
 esac
 
 if [[ "$BACKEND" == "tws" ]]; then
-    # Override-File ans Ende anhaengen, damit es die compose.yaml-Werte
-    # ueberschreibt (BG_BACKEND, depends_on auf tws statt cpgateway).
-    COMPOSE_FILES+=(-f compose.tws.yaml)
     # Default-Port je nach env: gnzsnz forwardet via socat 4001->4003
     # (live) bzw. 4002->4004 (paper). Wer beide Ports braucht, kann
     # BG_TWS_PORT explizit ueberschreiben.
@@ -148,6 +150,12 @@ if [[ "$BACKEND" == "tws" ]]; then
         export BG_TWS_TRADING_MODE="${BG_TWS_TRADING_MODE:-live}"
         export BG_TWS_VNC_HOST_PORT="${BG_TWS_VNC_HOST_PORT:-5906}"
     fi
+elif [[ "$BACKEND" == "cp" ]]; then
+    # Roll-Back-Pfad zieht compose.cp-legacy.yaml als Override:
+    # ueberschreibt BG_BACKEND und ergaenzt depends_on cpgateway.
+    # Profile cp-legacy aktiviert die cpgateway-Service-Definition.
+    COMPOSE_FILES+=(-f compose.cp-legacy.yaml)
+    COMPOSE_PROFILES_FLAG="--profile cp-legacy"
 fi
 
 if [[ ! -f "$BG_ENV_FILE" ]]; then
@@ -194,7 +202,7 @@ echo "[4/4] docker compose up -d gateway"
 if [[ "$BACKEND" == "tws" ]]; then
     docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" up -d gateway tws
 else
-    docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" up -d gateway
+    docker compose --env-file "$BG_ENV_FILE" ${COMPOSE_PROFILES_FLAG:-} "${COMPOSE_FILES[@]}" up -d gateway cpgateway
 fi
 
 echo "[done] gateway-Container ist live ($ENV_NAME, backend=$BACKEND)."
