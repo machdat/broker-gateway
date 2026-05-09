@@ -22,25 +22,42 @@
 #   --env=paper           -> Project broker-gateway-paper, .env.paper,
 #                            Port 4001, Volume var/cpgateway-paper/.
 #
+# --backend-Schalter (Karte 4 + 5):
+#   --backend=cp (Default) -> compose.yaml only (cpgateway-Service).
+#   --backend=tws          -> compose.yaml + compose.tws.yaml. Aktiviert
+#                             BG_BACKEND=tws im gateway-Service und zieht
+#                             den tws-Service (gnzsnz/ib-gateway:stable)
+#                             hoch. Drift-Acceptance-Check wird im tws-
+#                             Modus uebersprungen, weil cpgateway nicht
+#                             mehr die Quelle der Wahrheit ist.
+#                             BG_TWS_PORT defaultet je nach env auf
+#                             4004 (paper) bzw. 4003 (live).
+#
 # Aufruf:
-#   ./ops/build-gateway.sh                       # Live-Default
-#   ./ops/build-gateway.sh --env=paper           # Paper-Stack
-#   SKIP_ACCEPTANCE=1 ./ops/build-gateway.sh     # Notfall-Bypass
+#   ./ops/build-gateway.sh                                # Live-Default (cp)
+#   ./ops/build-gateway.sh --env=paper                    # Paper-Stack (cp)
+#   ./ops/build-gateway.sh --env=paper --backend=tws      # Paper auf TWS
+#   ./ops/build-gateway.sh --env=live  --backend=tws      # Live auf TWS (Karte 5)
+#   SKIP_ACCEPTANCE=1 ./ops/build-gateway.sh              # Notfall-Bypass
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 ENV_NAME="live"
+BACKEND="cp"
 
 show_help() {
-    sed -n '2,32p' "$0"
+    sed -n '2,42p' "$0"
 }
 
 for arg in "$@"; do
     case "$arg" in
         --env=*)
             ENV_NAME="${arg#--env=}"
+            ;;
+        --backend=*)
+            BACKEND="${arg#--backend=}"
             ;;
         --help|-h)
             show_help
@@ -53,6 +70,14 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+case "$BACKEND" in
+    cp|tws) ;;
+    *)
+        echo "build-gateway.sh: --backend=$BACKEND unbekannt (erlaubt: cp | tws)" >&2
+        exit 2
+        ;;
+esac
 
 COMPOSE_FILES=(-f compose.yaml)
 
@@ -107,6 +132,26 @@ case "$ENV_NAME" in
         ;;
 esac
 
+if [[ "$BACKEND" == "tws" ]]; then
+    # Override-File ans Ende anhaengen, damit es die compose.yaml-Werte
+    # ueberschreibt (BG_BACKEND, depends_on auf tws statt cpgateway).
+    COMPOSE_FILES+=(-f compose.tws.yaml)
+    # Default-Port je nach env: gnzsnz forwardet via socat 4001->4003
+    # (live) bzw. 4002->4004 (paper). Wer beide Ports braucht, kann
+    # BG_TWS_PORT explizit ueberschreiben.
+    if [[ "$ENV_NAME" == "paper" ]]; then
+        export BG_TWS_PORT="${BG_TWS_PORT:-4004}"
+        export BG_TWS_TRADING_MODE="${BG_TWS_TRADING_MODE:-paper}"
+        export BG_TWS_VNC_HOST_PORT="${BG_TWS_VNC_HOST_PORT:-5905}"
+        export BG_TWS_VOLUME="${BG_TWS_VOLUME:-/mnt/ssd/broker-gateway-paper/var/tws/jts}"
+    else
+        export BG_TWS_PORT="${BG_TWS_PORT:-4003}"
+        export BG_TWS_TRADING_MODE="${BG_TWS_TRADING_MODE:-live}"
+        export BG_TWS_VNC_HOST_PORT="${BG_TWS_VNC_HOST_PORT:-5906}"
+        export BG_TWS_VOLUME="${BG_TWS_VOLUME:-./var/tws/jts}"
+    fi
+fi
+
 if [[ ! -f "$BG_ENV_FILE" ]]; then
     echo "build-gateway.sh: env-Datei '$BG_ENV_FILE' nicht gefunden." >&2
     if [[ "$ENV_NAME" == "paper" ]]; then
@@ -121,11 +166,11 @@ SKIP_ACCEPTANCE="${SKIP_ACCEPTANCE:-0}"
 BASE_URL="${CPGATEWAY_BASE_URL:-http://localhost:5000/v1/api}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
-echo "[env] $ENV_NAME (project=$COMPOSE_PROJECT_NAME, env_file=$BG_ENV_FILE, port=$BG_GATEWAY_HOST_PORT)"
+echo "[env] $ENV_NAME (project=$COMPOSE_PROJECT_NAME, env_file=$BG_ENV_FILE, port=$BG_GATEWAY_HOST_PORT, backend=$BACKEND)"
 echo "[1/4] docker compose build gateway"
 docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" build gateway
 
-if [[ "$ENV_NAME" == "paper" ]]; then
+if [[ "$ENV_NAME" == "paper" && "$BACKEND" == "cp" ]]; then
     echo "[2/4] docker build broker-gateway-paper-auto-login (linux/arm64)"
     docker build \
         --platform linux/arm64 \
@@ -133,11 +178,13 @@ if [[ "$ENV_NAME" == "paper" ]]; then
         -f ops/auto-login/Dockerfile \
         ops/auto-login/
 else
-    echo "[2/4] SKIP: --env=$ENV_NAME, Auto-Login-Sidecar wird nicht gebaut."
+    echo "[2/4] SKIP: --env=$ENV_NAME --backend=$BACKEND, Auto-Login-Sidecar wird nicht gebaut."
 fi
 
 if [[ "${SKIP_ACCEPTANCE}" == "1" ]]; then
     echo "[3/4] SKIP: SKIP_ACCEPTANCE=1 gesetzt - Drift-Check uebersprungen."
+elif [[ "$BACKEND" == "tws" ]]; then
+    echo "[3/4] SKIP: --backend=tws - cpgateway ist nicht mehr Quelle der Wahrheit, Drift-Check entfaellt."
 else
     echo "[3/4] check_mock_drift --build-acceptance (commit ${GIT_COMMIT})"
     GIT_COMMIT="${GIT_COMMIT}" "${PYTHON_BIN}" scripts/check_mock_drift.py \
@@ -146,6 +193,10 @@ else
 fi
 
 echo "[4/4] docker compose up -d gateway"
-docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" up -d gateway
+if [[ "$BACKEND" == "tws" ]]; then
+    docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" up -d gateway tws
+else
+    docker compose --env-file "$BG_ENV_FILE" "${COMPOSE_FILES[@]}" up -d gateway
+fi
 
-echo "[done] gateway-Container ist live ($ENV_NAME)."
+echo "[done] gateway-Container ist live ($ENV_NAME, backend=$BACKEND)."
