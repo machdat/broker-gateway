@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.0.2
+    image: broker-gateway:2.0.3
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den
@@ -78,12 +78,15 @@ services:
       - TRADING_MODE=${BG_TWS_TRADING_MODE:-paper}
       - VNC_SERVER_PASSWORD=${BG_TWS_VNC_PASSWORD:-}
       # Mappt auf SecondFactorDevice in IBC config.ini (gnzsnz envsubst-
-      # Mechanik). Default "IBKR Mobile" -> IBC waehlt im 2FA-Dialog
-      # automatisch IBKR Mobile App, IBKR sendet sofort Push aufs Handy.
-      # Operator muss nur noch "OK" druecken; kein VNC-Klick noetig.
+      # Mechanik). Default "IB Key" -> IBC akzeptiert das Default-
+      # Highlight im 2FA-Dropdown automatisch und klickt OK; IBKR sendet
+      # daraufhin den Push aufs Handy. Operator muss nur am Handy
+      # bestaetigen, kein VNC-Klick mehr noetig. Verifiziert 2026-05-09
+      # mit chmangold/U25235077 - die einzigen Werte im Dropdown sind
+      # "IB Key" und "Mobile Authenticator app".
       # Live-Account chmangold/U25235077 nutzt diesen Pfad. Paper
       # (cborlm399) hat kein 2FA, ENV bleibt unbenutzt.
-      - TWOFA_DEVICE=${BG_TWS_2FA_DEVICE:-IBKR Mobile}
+      - TWOFA_DEVICE=${BG_TWS_2FA_DEVICE:-IB Key}
       # Schaltet "Allow connections from localhost only" off, damit der
       # gateway-Container ueber das Compose-Bridge-Netz reinkommt.
       - TWS_ACCEPT_INCOMING=accept

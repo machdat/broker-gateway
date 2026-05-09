@@ -4,6 +4,23 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.3] — 2026-05-09 (Default-Fix: TWOFA_DEVICE auf "IB Key", verifizierter Wert)
+
+Patch zu v2.0.2. Der Default `IBKR Mobile` matchte den 2FA-Dropdown
+nicht; der echte String fuer chmangold/U25235077 ist `IB Key`. Via
+VNC am Live-Container ablegen: das Dropdown bietet exakt zwei Werte,
+`IB Key` (Default-Highlight) und `Mobile Authenticator app`.
+
+- `compose.yaml` tws-Service: Default fuer `TWOFA_DEVICE` auf `IB Key`,
+  Comment-Block aktualisiert mit beiden Dropdown-Werten und der Quelle
+  der Verifikation.
+- `.env.paper.template`: Default-Hinweis auf `IB Key` plus VNC-
+  Verifikations-Notiz.
+- Memory `project_live_2fa_gnzsnz_pattern` als "automatisiert"
+  umgeschrieben.
+- Pi-Live-Test: `Click button: OK` direkt nach Dialog-Open verifiziert,
+  Push ankommt am Handy, U25235077-Login durchgelaufen.
+
 ## [2.0.2] — 2026-05-09 (Live-2FA automatisiert: SecondFactorDevice via TWOFA_DEVICE-ENV)
 
 Karte `7efd4696`. Eliminiert den manuellen VNC-Klick auf den
