@@ -4,6 +4,23 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.2] — 2026-05-09 (Live-2FA automatisiert: SecondFactorDevice via TWOFA_DEVICE-ENV)
+
+Karte `7efd4696`. Eliminiert den manuellen VNC-Klick auf den
+"Second Factor Authentication"-Dialog beim Live-Container-Recreate.
+
+- `compose.yaml` tws-Service: neue ENV-Variable
+  `TWOFA_DEVICE=${BG_TWS_2FA_DEVICE:-IBKR Mobile}`. gnzsnz/ib-gateway
+  mappt das via `envsubst` auf `SecondFactorDevice` in IBC's
+  `config.ini` (siehe Image-Script `/home/ibgateway/scripts/common.sh::apply_settings`).
+- `.env.paper.template`: `BG_TWS_2FA_DEVICE`-Block ergaenzt mit
+  Default-Wert und Hinweis auf Alternative-Werte (`IB Key`,
+  `Security Code Card`).
+- Wirkung: IBC waehlt im 2FA-Dialog automatisch IBKR Mobile, IBKR
+  sendet sofort einen Push an das Handy des Login-Users. Operator
+  muss nur noch am Handy "OK" druecken; kein VNC-Tunnel mehr noetig.
+- Paper-Stack (cborlm399, kein 2FA) ignoriert den Wert.
+
 ## [2.0.1] — 2026-05-09 (Doku-Update Karte 5)
 
 Patch-Bump nach erfolgreichem Live- und Paper-Cutover. Reine Doku-
