@@ -89,13 +89,22 @@ Persistenz wahlweise über `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json`
 mit einem In-Memory-Store — Tokens gehen beim Neustart verloren, was zur
 transienten Service-Natur passt.
 
-## CP-Gateway-Auth-Lifecycle
+## Auth-Lifecycle (CP- und TWS-Backend)
 
-Der Service hält **genau eine** IBKR-Trading-Session offen und betreibt
-im Hintergrund einen Tickle-Job (`asyncio`). Bei verlorener Session wird
-bis zu dreimal `reauthenticate` versucht, sonst kippt der Status auf
-`auth_lost` und alle Business-Endpunkte (Quotes/Orders/...) liefern ab
-Karte 06 `503 Service Unavailable` + `Retry-After: 30`.
+Der Service hält **genau eine** IBKR-Trading-Session offen. Seit
+v1.34.0 (Karte 33cb35b1) gibt es zwei Backend-Pfade, gewählt über
+`BG_BACKEND`:
+
+| `BG_BACKEND` | Lifecycle | Status-Werte |
+|---|---|---|
+| `cp` (Default) | `AuthLifecycle` mit Tickle-Job alle 60 s; bis zu 3× `reauthenticate` bei Verlust, sonst `auth_lost` | `ok` / `reauth_pending` / `auth_lost` / `cp_down` |
+| `tws` | `TWSLifecycle` mit Heartbeat über `ib.isConnected()` + `ib.client.isReady()`; IB Gateway + IBC machen Daily-Restart und Sat-Reset | `ok` / `session_lost` / `tws_down` |
+
+Konsumenten-Code parsen den stabilen `auth_status_consumer`-View
+(`ok | down | lost`), Operations sehen den feinen Backend-Status
+über das `auth_status`-Feld. Beide Backends liefern dasselbe Schema
+in `/v1/internal/health`. Bei `down`/`lost` antworten Business-
+Endpunkte mit `503 Service Unavailable` + `Retry-After: 30`.
 
 Der aktuelle Zustand ist über den admin-geschützten Endpunkt abrufbar:
 
@@ -108,8 +117,10 @@ Konfigurierbar über ENV:
 
 | Variable | Default | Wirkung |
 |---|---|---|
+| `BG_BACKEND` | `cp` | Backend-Auswahl. `cp` = cpgateway-HTTP-Proxy, `tws` = TWS-Socket-API über `ib_async`. |
 | `BG_CP_BASE_URL` | `http://cpgateway:5000/v1/api` | Base-URL des internen CP Gateways inkl. `/v1/api`-Prefix — der Override **muss** den Suffix enthalten, sonst landen alle Calls in der CP-Gateway-Default-Proxy-Route nach `https://api.ibkr.com` (HTTP 302). |
-| `BG_CP_TICKLE_INTERVAL_S` | `60` | Tickle-Intervall in Sekunden |
+| `BG_CP_TICKLE_INTERVAL_S` | `60` | Tickle-Intervall in Sekunden (CP-Backend). |
+| `BG_TWS_HEARTBEAT_SEC` | `60` | Heartbeat-Intervall in Sekunden (TWS-Backend). |
 
 Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
 
@@ -271,4 +282,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.33.0*
+*Version 1.34.0*

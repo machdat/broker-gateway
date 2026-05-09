@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:1.33.0
+    image: broker-gateway:1.34.0
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Default laut API-Draft 1.1) bzw. 4001 fuer den
@@ -18,6 +18,14 @@ services:
     # BG_BOOTSTRAP_ADMIN_TOKEN. Vorlage in .env.example. Beim
     # paper-Deploy ueber ops/build-gateway.sh --env=paper kommt
     # docker compose --env-file .env.paper zum Einsatz.
+    #
+    # BG_BACKEND (Karte 33cb35b1, optional): waehlt zwischen ``cp``
+    # (cpgateway-Backend, Default) und ``tws`` (IBKR TWS-API ueber
+    # ib_async + IB Gateway). Solange dieser Compose-Stack den
+    # cpgateway-Service haelt, bleibt cp der Default. Wechsel auf tws
+    # ist Migration-Karte 6 (Hard-Cutover).
+    # BG_TWS_HEARTBEAT_SEC (optional, nur fuer tws): Heartbeat-Intervall
+    # in Sekunden, Default 60s.
     env_file:
       - path: ${BG_ENV_FILE:-.env}
         required: false
