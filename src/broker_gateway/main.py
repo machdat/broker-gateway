@@ -20,6 +20,7 @@ from broker_gateway.api.v1.errors import (
 )
 from broker_gateway.api.v1.exchanges import get_calendar_service
 from broker_gateway.api.v1.instruments import get_instruments_service
+from broker_gateway.api.v1.internal_tws_health import get_tws_client
 from broker_gateway.api.v1.orders_stream import (
     OrdersBootstrapLoader,
     get_orders_bootstrap_loader,
@@ -73,6 +74,7 @@ from broker_gateway.streams.orders import (
 from broker_gateway.streams.registry import SubscriptionRegistry
 from broker_gateway.streams.ws_source import WSPushSource
 from broker_gateway.throttle.manager import ThrottleManager, get_throttle_manager
+from broker_gateway.tws import TWSClient
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -297,6 +299,7 @@ def create_app(
     event_bus: EventBus | None = None,
     throttle: ThrottleManager | None = None,
     metrics: BrokerGatewayMetrics | None = None,
+    tws_client: TWSClient | None = None,
 ) -> FastAPI:
     configure_logging()
     actual_metrics = metrics if metrics is not None else BrokerGatewayMetrics()
@@ -512,6 +515,17 @@ def create_app(
     app.state.throttle_manager = actual_throttle_outer
     app.dependency_overrides[get_token_store] = lambda: cast(TokenStore, app.state.token_store)
     app.dependency_overrides[get_metrics] = lambda: cast(BrokerGatewayMetrics, app.state.metrics)
+
+    # TWSClient-Adapter (Karte 441b53db). Wenn ein Client injektiert
+    # wird, ueberschreiben wir die Default-Dependency, die sonst 503
+    # liefert. Lifespan-Connect/-Disconnect bleibt Caller-Sache - bis
+    # zum Cutover (Karte 6) wird der Adapter nicht in Production
+    # auto-aktiviert.
+    if tws_client is not None:
+        app.state.tws_client = tws_client
+        app.dependency_overrides[get_tws_client] = lambda: cast(
+            TWSClient, app.state.tws_client
+        )
     return app
 
 

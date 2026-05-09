@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "broker-gateway"
-version = "1.31.1"
+version = "1.33.0"
 description = "Versionierte HTTP-API zwischen Consumern und broker-vermittelten Diensten (IBKR Client Portal Gateway)."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,6 +27,7 @@ dependencies = [
     "structlog>=24.1",
     "prometheus-client>=0.20",
     "websockets>=12",
+    "ib-async>=2.1,<2.2",
 ]
 
 [project.optional-dependencies]
