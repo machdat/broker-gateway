@@ -1,9 +1,7 @@
 """Async-Adapter fuer die IBKR TWS-API ueber ib_async.
 
-Pendant zu :class:`broker_gateway.cp.client.CPGatewayClient`, aber gegen
-die TWS-Socket-API. Phase 1 (Karte 441b53db) liefert nur das Skelett -
-Type-Mapping in :mod:`broker_gateway.tws.types` und volle Bodies fuer
-die Read-Methoden folgen in Phase 2.
+Pendant zu :class:`broker_gateway.cp.client.CPGatewayClient`, aber
+gegen die TWS-Socket-API. Read-Only-Pfade.
 
 Disziplin (Memory ``project_tws_api_pi5_setup``):
 
@@ -24,8 +22,15 @@ import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from broker_gateway.tws.types import (
+    AccountField,
+    Bar,
+    Position,
+    Snapshot,
+    Tick,
+)
+
 if TYPE_CHECKING:
-    from ib_async import IB as _IB  # noqa: F401
     from ib_async.contract import Contract
 
 
@@ -34,6 +39,8 @@ _DEFAULT_PAPER_PORT = 4002
 _DEFAULT_LIVE_PORT = 4001
 _DEFAULT_CLIENT_ID_RANGE: tuple[int, int] = (100, 199)
 _DEFAULT_CONNECT_TIMEOUT_S = 20.0
+_SNAPSHOT_TIMEOUT_S = 10.0
+_STREAM_POLL_INTERVAL_S = 1.0
 
 
 class ContractNotFoundError(LookupError):
@@ -51,10 +58,10 @@ class ClientIdPool:
 
     Default-Range 100..199 (siehe Memory ``project_tws_api_pi5_setup``):
 
-    - 0  : TWS-Master, reserviert.
-    - 1..99: manuelle TWS-/Spike-Sessions, nicht ueberbuchen.
-    - 100..199: broker-gateway-Adapter.
-    - 200+: frei fuer Folge-Projekte (PSM-Kurator usw.).
+    - 0 : TWS-Master, reserviert.
+    - 1..99 : manuelle TWS-/Spike-Sessions, nicht ueberbuchen.
+    - 100..199 : broker-gateway-Adapter.
+    - 200+ : frei fuer Folge-Projekte (PSM-Kurator usw.).
     """
 
     def __init__(self, range_: tuple[int, int] = _DEFAULT_CLIENT_ID_RANGE) -> None:
@@ -88,7 +95,7 @@ class ClientIdPool:
 class TWSClient:
     """Async-Adapter fuer die IBKR TWS-API.
 
-    Read-Only-Pfade (Phase 1 Skelett, Phase 2 Bodies):
+    Read-Only-Pfade:
 
     - :meth:`account_summary` - Account-Felder (NetLiquidation, BuyingPower, ...).
     - :meth:`positions` - offene Positionen pro Account.
@@ -100,7 +107,7 @@ class TWSClient:
     Lebenszyklus::
 
         pool = ClientIdPool()
-        async with TWSClient(pool=pool, paper=True) as client:
+        async with TWSClient(client_id_pool=pool, paper=True) as client:
             rows = await client.account_summary()
     """
 
@@ -115,9 +122,6 @@ class TWSClient:
         connect_timeout: float = _DEFAULT_CONNECT_TIMEOUT_S,
         ib: Any | None = None,
     ) -> None:
-        # Lazy-Import: ib_async ist eine eher schwergewichtige Dependency
-        # (eventkit, asyncio-Loop-Setup). Tests, die den TWSClient nicht
-        # nutzen, sollen nicht zwangsweise das Modul laden.
         if ib is None:
             from ib_async import IB
 
@@ -195,31 +199,55 @@ class TWSClient:
     def is_connected(self) -> bool:
         return bool(self._ib.isConnected())
 
-    # ---- Read-Pfade (Phase 2 fuellt die Bodies) ----
+    # ---- Read-Pfade ----
 
-    async def account_summary(self, account: str | None = None) -> dict[str, Any]:
+    async def account_summary(
+        self, account: str | None = None
+    ) -> dict[str, AccountField]:
         """Account-Felder (NetLiquidation, BuyingPower, ...).
 
-        Phase 1: Skelett. Phase 2 mappt ``ib_async.AccountValue`` auf
-        :class:`broker_gateway.tws.types.AccountField`.
+        Bei mehreren Accounts ohne Filter koennen ``tag``-Schluessel
+        kollidieren - der letzte Eintrag gewinnt. Fuer deterministische
+        Ergebnisse ``account`` setzen.
         """
-        raise NotImplementedError("Phase 2 - Type-Mapping")
+        rows = await self._ib.accountSummaryAsync(account or "")
+        return {row.tag: AccountField.from_account_value(row) for row in rows}
 
-    async def positions(self, account: str | None = None) -> list[Any]:
-        """Offene Positionen pro Account.
+    async def positions(self, account: str | None = None) -> list[Position]:
+        """Offene Positionen.
 
-        Phase 1: Skelett. Phase 2 mappt ``ib_async.PortfolioItem`` auf
-        :class:`broker_gateway.tws.types.Position`.
+        Nutzt :meth:`ib_async.IB.reqAccountUpdatesAsync` +
+        :meth:`ib_async.IB.portfolio`, weil PortfolioItem auch
+        MarketPrice/MarketValue/PnL liefert. Die schmale
+        ``reqPositionsAsync``-Variante haette nur Lots+AvgCost.
         """
-        raise NotImplementedError("Phase 2 - Type-Mapping")
+        target = account or ""
+        await self._ib.reqAccountUpdatesAsync(target)
+        items = self._ib.portfolio()
+        if account:
+            items = [it for it in items if it.account == account]
+        return [Position.from_portfolio_item(it) for it in items]
 
     async def qualify(self, contract: Contract) -> Contract:
         """Aufloesung von ``conId`` und ``primaryExchange``.
 
-        Phase 1: Skelett. Phase 2 ruft ``qualifyContractsAsync`` und
-        wirft :class:`ContractNotFoundError`, wenn keine Resultate.
+        Wirft :class:`ContractNotFoundError`, wenn IBKR keinen Treffer
+        liefert (typisch bei Tippfehlern, abgelaufenen Optionen,
+        delisteten Symbolen).
         """
-        raise NotImplementedError("Phase 2 - Type-Mapping")
+        results = await self._ib.qualifyContractsAsync(contract)
+        if not results or results[0] is None:
+            raise ContractNotFoundError(
+                f"Kein qualifizierter Contract fuer {contract!r}"
+            )
+        first = results[0]
+        if isinstance(first, list):
+            if not first or first[0] is None:
+                raise ContractNotFoundError(
+                    f"Kein qualifizierter Contract fuer {contract!r}"
+                )
+            return first[0]
+        return first
 
     async def historical_bars(
         self,
@@ -230,40 +258,103 @@ class TWSClient:
         bar_size: str = "1 hour",
         what_to_show: str = "TRADES",
         use_rth: bool = True,
-    ) -> list[Any]:
-        """Historische Bars.
-
-        Phase 1: Skelett. Phase 2 ruft ``reqHistoricalDataAsync`` und
-        mappt ``BarData`` auf :class:`broker_gateway.tws.types.Bar`
-        (UTC-normalisiert).
-        """
-        raise NotImplementedError("Phase 2 - Type-Mapping")
+    ) -> list[Bar]:
+        """Historische Bars (UTC-normalisiert)."""
+        bars = await self._ib.reqHistoricalDataAsync(
+            contract,
+            endDateTime=end_date_time,
+            durationStr=duration,
+            barSizeSetting=bar_size,
+            whatToShow=what_to_show,
+            useRTH=use_rth,
+        )
+        return [Bar.from_bar_data(b) for b in bars]
 
     async def market_snapshot(
         self,
         contract: Contract,
         *,
         market_data_type: int = 3,
-    ) -> Any:
-        """Snapshot - last/bid/ask/volume.
+        timeout: float = _SNAPSHOT_TIMEOUT_S,
+    ) -> Snapshot:
+        """Snapshot (last/bid/ask/volume).
 
         Defaultet auf ``market_data_type=3`` (delayed). Live-Subscription
-        muss vom Caller gewaehlt werden, sonst sind Subscription-Konflikte
-        (Error 10197) wahrscheinlich. Siehe Memory
+        muss vom Caller gewaehlt werden, sonst sind Subscription-
+        Konflikte (Error 10197) wahrscheinlich. Siehe Memory
         ``project_tws_api_pi5_setup`` Marketdata-Quirks.
-        """
-        raise NotImplementedError("Phase 2 - Type-Mapping")
 
-    def market_stream(
+        Wartet bis zum ersten ``updateEvent`` oder ``timeout`` Sekunden
+        - was zuerst kommt. ``snapshot=True`` triggert auf IBKR-Seite
+        einen Auto-Cancel nach Erfolg, ein expliziter Cancel hier ist
+        nicht noetig.
+        """
+        self._ib.reqMarketDataType(market_data_type)
+        ticker = self._ib.reqMktData(
+            contract, "", snapshot=True, regulatorySnapshot=False
+        )
+        loop = asyncio.get_running_loop()
+        first_update: asyncio.Future[None] = loop.create_future()
+
+        def _on_update(_: Any) -> None:
+            if not first_update.done():
+                first_update.set_result(None)
+
+        ticker.updateEvent += _on_update
+        try:
+            try:
+                await asyncio.wait_for(first_update, timeout=timeout)
+            except TimeoutError:
+                # Snapshot kam nicht zurueck - geben wir trotzdem den
+                # Ticker-Stand zurueck, damit der Caller selbst
+                # entscheiden kann (alle Felder None / Decimal None).
+                pass
+        finally:
+            ticker.updateEvent -= _on_update
+        return Snapshot.from_ticker(ticker)
+
+    async def market_stream(
         self,
         contract: Contract,
         *,
         market_data_type: int = 3,
-    ) -> AsyncIterator[Any]:
-        """Stream-Pattern ueber ``ticker.updateEvent``.
+        field: str = "last",
+        poll_interval: float = _STREAM_POLL_INTERVAL_S,
+    ) -> AsyncIterator[Tick]:
+        """Kontinuierlicher Tick-Stream ueber ``ticker.updateEvent``.
 
-        AsyncIterator yieldet bei jedem Tick einen neuen
-        :class:`broker_gateway.tws.types.Tick`. Der Stream endet bei
-        :meth:`disconnect` oder bei ``cancelMktData``.
+        ``async for tick in client.market_stream(contract):`` yieldet
+        einen :class:`Tick` pro IBKR-Update. Der Stream endet, wenn
+        :meth:`disconnect` gerufen wird oder die Connection abreisst.
+
+        ``poll_interval`` begrenzt das Blocking pro Schleifendurchlauf,
+        damit ein Disconnect zeitnah erkannt wird. Default 1 s.
         """
-        raise NotImplementedError("Phase 2 - Type-Mapping")
+        self._ib.reqMarketDataType(market_data_type)
+        ticker = self._ib.reqMktData(
+            contract, "", snapshot=False, regulatorySnapshot=False
+        )
+        queue: asyncio.Queue[Tick] = asyncio.Queue()
+
+        def _on_update(t: Any) -> None:
+            queue.put_nowait(Tick.from_ticker(t, field=field))
+
+        ticker.updateEvent += _on_update
+        try:
+            while self.is_connected():
+                try:
+                    tick = await asyncio.wait_for(
+                        queue.get(), timeout=poll_interval
+                    )
+                except TimeoutError:
+                    continue
+                yield tick
+        finally:
+            ticker.updateEvent -= _on_update
+            try:
+                self._ib.cancelMktData(contract)
+            except Exception:
+                # cancel kann fehlschlagen, wenn die Connection zu
+                # diesem Zeitpunkt schon weg ist. Das ist ein
+                # Cleanup-Pfad - nicht als Fehler eskalieren.
+                pass

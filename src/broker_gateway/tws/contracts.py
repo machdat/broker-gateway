@@ -1,7 +1,10 @@
 """Helper-Funktionen fuer ``ib_async.Contract``-Instanzen.
 
-Pendant zu :mod:`broker_gateway.cp.instruments`. Phase 1 Skelett -
-Phase 2 fuellt die Bodies und ergaenzt Forex/Future-Varianten.
+Pendant zu :mod:`broker_gateway.cp.instruments`. Die Helper sind dunne
+Wrapper um die ``ib_async``-Konstruktoren - sie existieren, damit der
+Adapter-Code einen stabilen Eintrittspunkt hat (z.B. fuer Tests, die
+``contracts.stock(...)`` mocken statt direkt ``ib_async.Stock(...)``)
+und damit die Default-Werte ein gemeinsames Set bilden.
 """
 from __future__ import annotations
 
@@ -20,20 +23,25 @@ def stock(
 ) -> Contract:
     """Erzeugt einen ``Stock``-Contract.
 
-    Phase 2 ruft ``ib_async.Stock(symbol, exchange, currency)`` und
-    setzt ``primaryExchange`` falls angegeben - das ist fuer SMART-
-    Routing bei Cross-Listed-Symbolen (z.B. AAPL auf NASDAQ vs ARCA)
-    nuetzlich.
+    ``primary_exchange`` ist fuer SMART-Routing bei Cross-Listed-
+    Symbolen wichtig (z.B. ``AAPL`` als ``NASDAQ`` vs ``ARCA``).
     """
-    raise NotImplementedError("Phase 2 - Bodies")
+    from ib_async import Stock
+
+    contract = Stock(symbol, exchange, currency)
+    if primary_exchange:
+        contract.primaryExchange = primary_exchange
+    return contract
 
 
-def forex(pair: str) -> Contract:
+def forex(pair: str, *, exchange: str = "IDEALPRO") -> Contract:
     """Erzeugt einen ``Forex``-Contract (z.B. ``EURUSD``).
 
-    Phase 2 ruft ``ib_async.Forex(pair)``.
+    ``exchange`` defaulted auf ``IDEALPRO`` (wie ``ib_async.Forex``).
     """
-    raise NotImplementedError("Phase 2 - Bodies")
+    from ib_async import Forex
+
+    return Forex(pair, exchange=exchange)
 
 
 def future(
@@ -45,7 +53,18 @@ def future(
 ) -> Contract:
     """Erzeugt einen ``Future``-Contract.
 
-    Phase 2 ruft ``ib_async.Future(symbol, lastTradeDateOrContractMonth,
-    exchange)`` und ergaenzt ``currency``.
+    ``last_trade_date_or_contract_month`` im IBKR-Format: entweder
+    ``YYYYMM`` (Contract-Monat, z.B. ``"202612"``) oder ``YYYYMMDD``
+    (genauer Last-Trade-Tag). Wer den Contract erst qualifizieren
+    will, kann auch ohne Datum starten und den Front-Month durch
+    :meth:`broker_gateway.tws.client.TWSClient.qualify` aufloesen
+    lassen.
     """
-    raise NotImplementedError("Phase 2 - Bodies")
+    from ib_async import Future
+
+    return Future(
+        symbol=symbol,
+        lastTradeDateOrContractMonth=last_trade_date_or_contract_month or "",
+        exchange=exchange,
+        currency=currency,
+    )
