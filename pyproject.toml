@@ -27,6 +27,7 @@ dependencies = [
     "structlog>=24.1",
     "prometheus-client>=0.20",
     "websockets>=12",
+    "ib-async>=2.1,<2.2",
 ]
 
 [project.optional-dependencies]
