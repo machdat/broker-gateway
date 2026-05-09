@@ -4,6 +4,73 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.0] — 2026-05-09 (Hard-Cutover: tws ist Default-Backend, cpgateway unter Profile cp-legacy)
+
+Karte 5 (Hard-Cutover broker-gateway). Major-Bump weil das Default-
+Backend wechselt - die Konsumenten-API (`/v1`) bleibt unveraendert,
+aber Operations-Pfade (Compose-Stack, Build-Skript-Defaults, Roll-
+Back-Pfad, Healthcheck-Quelle) sind grundlegend anders.
+
+### Compose-Refactor
+
+- `compose.yaml`:
+  - `tws`-Service (gnzsnz/ib-gateway:stable) ist jetzt **Default-aktiv**.
+  - `cpgateway`-Service hat `profiles: ["cp-legacy"]` und startet nur
+    noch bei explizitem Roll-Back.
+  - `gateway`-Service depends_on `tws` (statt `cpgateway`); Default-
+    ENVs `BG_BACKEND=tws`, `BG_TWS_HOST=tws`, `BG_TWS_PORT=4004`.
+  - Image-Tag `2.0.0`.
+- `compose.tws.yaml` (war v1.35.x-Override) **entfernt** - Inhalt in
+  `compose.yaml` integriert.
+- `compose.cp-legacy.yaml` (neu): Override fuer Roll-Back. Setzt
+  `BG_BACKEND=cp` und ergaenzt `depends_on cpgateway`.
+
+### Build-Skript
+
+- `ops/build-gateway.sh`:
+  - `--backend=tws` ist jetzt **Default** (war `cp` in v1.x).
+  - `--backend=cp` zieht `compose.cp-legacy.yaml` + `--profile cp-legacy`
+    und startet `gateway + cpgateway` (statt `gateway + tws`).
+  - Drift-Acceptance-Check entfaellt im tws-Modus (cpgateway ist nicht
+    mehr Quelle der Wahrheit).
+
+### Cutover- und Roll-Back-Skripte (neu)
+
+- `ops/cutover-tws.sh --env={live,paper}`: kompakter Wrapper. Stoppt
+  cpgateway, ruft `build-gateway.sh --backend=tws`, wartet bis zu 240s
+  auf `/v1/health`, gibt Status-Report. Bei Live: User muss am Handy
+  fuer 2FA-Push verfuegbar sein.
+- `ops/rollback-to-cp.sh --env={live,paper}`: Notfall-Pfad. Stoppt
+  tws, ruft `build-gateway.sh --backend=cp`, gibt Browser-Login-
+  Hinweis (Tunnel + Login-URL).
+
+### Live-Cutover (cma-pi-1)
+
+- broker-gateway-paper lief bereits seit v1.35.x auf BG_BACKEND=tws
+  (Karte 4 / PSM-Single-Owner-Coordination), Account DUP799747.
+- Live-Cutover: `./ops/cutover-tws.sh --env=live` mit Mobile-2FA fuer
+  chmangold (Account U25235077).
+- broker-gateway-paper-cpgateway und broker-gateway-cpgateway bleiben
+  als Container-Definitionen im Stack (Profile cp-legacy), starten
+  aber nicht mehr beim Default-Workflow.
+
+### Memory-Updates
+
+- `project_cpgateway_auth_stagnation`: als "abgeloest durch tws-
+  Refactor v2.0.0" markiert.
+- `project_ibkr_session_owner`: schon in Karte 4 aktualisiert.
+
+### Open Items / Folgekarten
+
+- 30 Tage Stabilitaets-Beobachtung, dann separate Karte fuer
+  vollstaendige Entfernung von `src/broker_gateway/cp/*`,
+  `ops/cpgateway/`, `Dockerfile.cpgateway`, `compose.cp-legacy.yaml`,
+  `ops/auto-login/` und allen Auto-Login-Sidecar-ENVs.
+- IBKR-Settings-Persistenz fuer `/home/ibgateway/Jts` (heute ephemeral)
+  als named volume + docker-cp-Init.
+- Order-Submission-Pfad freischalten (`READ_ONLY_API=no` in IBC +
+  Schreib-Methoden im `TWSClient`).
+
 ## [1.35.1] — 2026-05-09 (TWS-Stack-Volume-Fix)
 
 Fix fuer Endlos-Restart-Loop des tws-Containers nach v1.35.0-Deploy.
