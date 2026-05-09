@@ -15,14 +15,30 @@ from pydantic import BaseModel, Field
 
 from broker_gateway.auth.middleware import require_scope
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
-from broker_gateway.cp.lifecycle import AuthLifecycle, AuthStatus, get_cp_lifecycle
+from broker_gateway.auth_status import (
+    AuthStatus,
+    ConsumerAuthStatus,
+    to_consumer_status,
+)
+from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
 
 
 router = APIRouter(prefix="/internal", tags=["internal-health"])
 
 
 class InternalHealthResponse(BaseModel):
-    auth_status: AuthStatus = Field(description="Aktueller IBKR-Session-Zustand")
+    auth_status: AuthStatus = Field(
+        description="Backend-spezifischer IBKR-Session-Zustand. CP-Mode: "
+        "ok | reauth_pending | auth_lost | cp_down. TWS-Mode: ok | "
+        "session_lost | tws_down. Diagnose-Detail; Konsumenten-Code "
+        "sollte den stabilen ``auth_status_consumer``-View nutzen."
+    )
+    auth_status_consumer: ConsumerAuthStatus = Field(
+        description="Backend-unabhaengiger High-Level-Status (Karte "
+        "33cb35b1): ok | down | lost. Mapping siehe "
+        "broker_gateway.auth_status.to_consumer_status. Garantiert "
+        "stabil ueber CP/TWS-Backend-Wechsel hinweg."
+    )
     cp_reachable: bool = Field(description="Letzter HTTP-Call zum CP-Gateway hat geantwortet")
     last_tickle_at: datetime | None
     last_reauth_at: datetime | None
@@ -90,6 +106,7 @@ def internal_health(
     snap = lifecycle.snapshot()
     return InternalHealthResponse(
         auth_status=snap.auth_status,
+        auth_status_consumer=to_consumer_status(snap.auth_status),
         cp_reachable=snap.cp_reachable,
         last_tickle_at=snap.last_tickle_at,
         last_reauth_at=snap.last_reauth_at,

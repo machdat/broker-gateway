@@ -7,7 +7,6 @@ nirgends im Code dürfen Kopien dieser Werte gehalten werden.
 from __future__ import annotations
 
 import asyncio
-import enum
 import logging
 import os
 import time
@@ -18,17 +17,18 @@ from typing import Annotated
 import httpx
 from fastapi import Depends, HTTPException, status
 
+from broker_gateway.auth_status import AuthStatus
 from broker_gateway.cp.client import CPGatewayClient
 
 
 logger = logging.getLogger(__name__)
 
 
-class AuthStatus(str, enum.Enum):
-    OK = "ok"
-    REAUTH_PENDING = "reauth_pending"
-    AUTH_LOST = "auth_lost"
-    CP_DOWN = "cp_down"
+# Re-Export aus broker_gateway.auth_status als Backward-Compat fuer
+# Konsumenten, die ``from broker_gateway.cp.lifecycle import AuthStatus``
+# importieren. Karte 33cb35b1 hat das Enum nach auth_status.py gehoben,
+# damit es vom TWS-Lifecycle wiederverwendet werden kann.
+__all_re_exports__ = ("AuthStatus",)
 
 
 _DEFAULT_TICKLE_INTERVAL_S = 60.0
@@ -588,9 +588,18 @@ def get_cp_lifecycle() -> AuthLifecycle:
 def require_session_ok(
     lifecycle: Annotated[AuthLifecycle, Depends(get_cp_lifecycle)],
 ) -> AuthLifecycle:
-    """Endpunkt-Guard: 503 + Retry-After bei AUTH_LOST oder CP_DOWN."""
+    """Endpunkt-Guard: 503 + Retry-After bei nicht verfuegbarer Session.
+
+    Nutzt :func:`broker_gateway.auth_status.is_session_unavailable` als
+    zentrale Quelle. Damit greift der Guard auch fuer die TWS-Werte
+    (``TWS_DOWN``, ``SESSION_LOST``) - im CP-Mode treten die nie auf,
+    aber sobald der TWS-Backend-Adapter (Karte 33cb35b1 Phase 3) den
+    cp_lifecycle-Slot uebernimmt, soll dasselbe 503-Verhalten greifen.
+    """
+    from broker_gateway.auth_status import is_session_unavailable
+
     snapshot = lifecycle.snapshot()
-    if snapshot.auth_status in (AuthStatus.AUTH_LOST, AuthStatus.CP_DOWN):
+    if is_session_unavailable(snapshot.auth_status):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
