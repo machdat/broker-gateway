@@ -10,13 +10,20 @@ und Rollback.
 > Login-Detail (Browser-2FA, SSH-Tunnel) lebt im Runbook
 > [`docs/runbooks/cpgateway-login.md`](runbooks/cpgateway-login.md).
 
-**Stand:** v1.11.0, 2026-04-30.
+**Stand:** v2.0.0, 2026-05-09. **TWS-Backend ist Default seit Karte 5
+Hard-Cutover.** Die Sektionen 3 (Compose-Layout) und 8 (2FA-Lifecycle)
+unten beschreiben noch den frueheren cpgateway-Pfad — sie gelten
+weiterhin als Roll-Back-Referenz. Der aktuelle Default-Stack
+(`gnzsnz/ib-gateway:stable` + IBC + `ib_async`) ist im neuen
+[Section 3a unten](#3a-aktueller-tws-stack-v200) zusammengefasst und
+in `compose.yaml` direkt sichtbar.
 
 ## Inhalt
 
 1. [Deploy-Targets](#1-deploy-targets)
 2. [Pfad-Konventionen](#2-pfad-konventionen)
 3. [Compose-Layout](#3-compose-layout)
+3a. [Aktueller TWS-Stack (v2.0.0)](#3a-aktueller-tws-stack-v200)
 4. [Deploy-Workflow](#4-deploy-workflow)
 5. [Healthchecks und Verifikation](#5-healthchecks-und-verifikation)
 6. [Restart-Disziplin](#6-restart-disziplin)
@@ -32,8 +39,8 @@ und Rollback.
 
 | Stack | Host | Compose-Project-Name | Status |
 |---|---|---|---|
-| **Live (U25235077)** | `cma-pi-1` | `broker-gateway` (Default) | **deployed**, in Betrieb |
-| **Paper-Stack** | (geplant — AP-06 Karte 1 muss klären: cma-pi-1 oder separat) | `broker-gateway-paper` (geplant) | nicht aufgesetzt |
+| **Live (U25235077)** | `cma-pi-1` | `broker-gateway` (Default) | **deployed v2.0.0**, TWS-Backend, in Betrieb |
+| **Paper (DUP799747)** | `cma-pi-1` | `broker-gateway-paper` | **deployed v2.0.0**, TWS-Backend, in Betrieb |
 
 Live-Stack ist Single-Owner der IBKR-Trading-Session — siehe
 Architektur-Dok Sektion 3.1. Es gibt **eine** Live-Instanz pro Konto.
@@ -56,7 +63,50 @@ passen (Default 1000:1000 = `cma:cma` auf cma-pi-1) — sonst gehören
 Logs einem im Host nicht existierenden User. Override per Build-Args
 `CPGW_UID`/`CPGW_GID` aus `.env`. Prüfen mit `id cma`.
 
+## 3a. Aktueller TWS-Stack (v2.0.0)
+
+Seit Karte 5 (Hard-Cutover, 2026-05-09) ist der TWS-Backend-Pfad der
+Default-Stack:
+
+```
+gateway     : Image broker-gateway:2.0.0     extern 4000 (live) / 4001 (paper)
+tws         : Image gnzsnz/ib-gateway:stable VNC 127.0.0.1:5906/5905 -> 5900
+cpgateway   : Image broker-cpgateway:1.0.3   nur unter Profile cp-legacy
+```
+
+- `gateway` (FastAPI) `depends_on tws: condition: service_healthy`.
+  `BG_BACKEND=tws`, `BG_TWS_HOST=tws`, `BG_TWS_PORT=4004` (paper) bzw.
+  `4003` (live).
+- `tws` (gnzsnz/ib-gateway:stable) startet IB Gateway 10.x + IBC + Xvfb
+  headless. IBC fuehrt den Login durch und klickt die Configure-Settings
+  (TWS_ACCEPT_INCOMING=accept, READ_ONLY_API=yes, BYPASS_WARNING=yes).
+  socat-Forward von 4001/4002 auf 4003/4004 macht den TWS-Socket fuer
+  den gateway-Container erreichbar.
+- `cpgateway` ist nicht mehr Default-aktiv. Profile `cp-legacy` zieht
+  ihn nur, wenn `ops/rollback-to-cp.sh --env={live,paper}` ausgefuehrt
+  wird (Notfall-Pfad).
+
+**Live-2FA:** Bei Container-Recreate muss der Operator via VNC die
+2FA-Methode "IB" anwaehlen und am Handy zweimal die Push-Bestaetigung
+geben. Details in der Auto-Memory `project_live_2fa_gnzsnz_pattern`.
+Paper (cborlm399) hat kein 2FA und laeuft skriptbar durch.
+
+**Cutover-Skripte:** `ops/cutover-tws.sh --env={live,paper}` (auf TWS)
+und `ops/rollback-to-cp.sh --env={live,paper}` (zurueck auf cpgateway).
+
+**Folgekarten:** Nach 30 Tagen stabiler TWS-Operations werden die
+Code-/Compose-Reste fuer den cp-Pfad in einer eigenen Karte komplett
+entfernt (`src/broker_gateway/cp/*`, `ops/cpgateway/`,
+`Dockerfile.cpgateway`, `compose.cp-legacy.yaml`, `ops/auto-login/`).
+Persistenz fuer `/home/ibgateway/Jts` (heute ephemeral) und
+Order-Submission-Pfad (READ_ONLY_API=no) sind separate Karten.
+
 ## 3. Compose-Layout
+
+> **Hinweis 2026-05-09:** Diese Sektion beschreibt das **frühere**
+> cpgateway-Layout. Es gilt nur noch als Roll-Back-Referenz — der
+> aktuelle Default-Stack ist in [3a](#3a-aktueller-tws-stack-v200)
+> oben.
 
 Stack besteht aus zwei Services in `compose.yaml`:
 
