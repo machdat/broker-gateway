@@ -4,6 +4,59 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.33.0] — 2026-05-09 (TWS-Adapter Read-Only-Pfade)
+
+Karte 441b53db (Folge zur Container-Slot-Karte 8b1781d3) implementiert
+die Python-Bindings fuer die IBKR-TWS-API ueber `ib_async==2.1.x`. Der
+neue Adapter `broker_gateway.tws.TWSClient` lebt parallel zum
+bestehenden `CPGatewayClient` - die `cp/`-Modulstruktur bleibt
+unveraendert (Rollback-Faehigkeit), Cutover erfolgt in einer spaeteren
+Karte. Versions-Sprung 1.31.1 -> 1.33.0 weil 1.32.0 fuer PR #14
+(Container-Slot) reserviert ist.
+
+- `pyproject.toml`: `ib-async>=2.1,<2.2` als runtime-Dependency.
+- `src/broker_gateway/tws/` (neu):
+  - `client.py`: `TWSClient` mit Lifecycle (`connect`/`disconnect`,
+    Async-Context-Manager) und sechs Read-Methoden (`account_summary`,
+    `positions`, `qualify`, `historical_bars`, `market_snapshot`,
+    `market_stream`). `ClientIdPool` (asyncio.Queue, Default-Range
+    100..199) reserviert pro Adapter-Instanz eine eindeutige clientId.
+  - `types.py`: Pydantic-Modelle (`AccountField`, `Position`, `Bar`,
+    `Snapshot`, `Tick`) mit `from_*`-Mapping-Funktionen. Decimal-
+    Disziplin fuer alle Geldbetraege und Mengen, UTC-Normalisierung
+    der Timestamps. `nan` aus ib_async-Tickern wird auf `None`
+    abgebildet.
+  - `contracts.py`: Helper fuer `Stock`, `Forex`, `Future`-Contracts.
+- `src/broker_gateway/api/v1/internal_tws_health.py` (neu): GET
+  `/v1/internal/tws-health` (Scope `admin:*`) liefert Adapter-Status
+  (connected, host, port, paper, read_only, client_id, checked_at).
+  Default-Dependency raised 503 `tws_not_configured`, solange der
+  Adapter nicht via `create_app(tws_client=...)` injektiert ist - das
+  ist der Production-Default bis zum Cutover.
+- `src/broker_gateway/main.py`: `create_app()` bekam `tws_client`-
+  Parameter; bei Injektion wird die `get_tws_client`-Dependency
+  ueberschrieben. Lifespan macht bewusst KEIN Auto-Connect (bis zum
+  Cutover ist nicht garantiert, dass der TWS-Container im Stack
+  laeuft - ein hartes connect waehrend Service-Startup wuerde den
+  ganzen broker-gateway blockieren).
+- `tests/test_tws_client.py`, `tests/test_tws_types.py`,
+  `tests/test_tws_contracts.py`, `tests/test_tws_internal_health.py`
+  (alle neu): 90 Tests; Coverage `src/broker_gateway/tws/` = 97 %.
+  Disziplin-Test verifiziert, dass alle Read-Methoden Coroutinen
+  zurueckgeben (kein Sync-Wrapping); ein zweiter Test belegt, dass
+  `asyncio.run()` im laufenden Loop einen RuntimeError wirft (Loop-
+  Schutz).
+
+Out-of-Scope (Folge-Karten):
+- Order-Routing (`read_only=False`, Submit/Cancel/Modify/Status-Stream).
+- Lifecycle-Anpassung im `AuthLifecycle`-Modul fuer den TWS-Pfad.
+- v1-Spec-Drift gegen die TWS-Realitaet abgleichen.
+- Single-Owner-Coordination zwischen TWS- und CP-Adapter.
+- Hard-Cutover (`cp/` entfernen, gateway-Service zeigt nur noch auf
+  `TWSClient`).
+
+Kein Pi-Deploy aus dieser Karte heraus.
+
 ## [1.31.1] — 2026-05-08 (Doku: Fork-Evaluation cpgateway-Wrapper)
 
 Karte a78431aa (Time-Boxed Spike) hat zwei Open-Source-Wrapper als
