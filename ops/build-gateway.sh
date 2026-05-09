@@ -143,12 +143,10 @@ if [[ "$BACKEND" == "tws" ]]; then
         export BG_TWS_PORT="${BG_TWS_PORT:-4004}"
         export BG_TWS_TRADING_MODE="${BG_TWS_TRADING_MODE:-paper}"
         export BG_TWS_VNC_HOST_PORT="${BG_TWS_VNC_HOST_PORT:-5905}"
-        export BG_TWS_VOLUME="${BG_TWS_VOLUME:-/mnt/ssd/broker-gateway-paper/var/tws/jts}"
     else
         export BG_TWS_PORT="${BG_TWS_PORT:-4003}"
         export BG_TWS_TRADING_MODE="${BG_TWS_TRADING_MODE:-live}"
         export BG_TWS_VNC_HOST_PORT="${BG_TWS_VNC_HOST_PORT:-5906}"
-        export BG_TWS_VOLUME="${BG_TWS_VOLUME:-./var/tws/jts}"
     fi
 fi
 

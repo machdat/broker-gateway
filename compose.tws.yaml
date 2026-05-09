@@ -30,8 +30,14 @@
 #   BG_TWS_READ_ONLY      yes (Default) | no. Order-Submission-Pfad
 #                         braucht spaeter no, das geht in eine eigene
 #                         Folge-Karte (siehe Karte 5 Notes).
-#   BG_TWS_VOLUME         Bind-Mount fuer /home/ibgateway/Jts (IBKR-Settings
-#                         persistent halten). Default ./var/tws/jts.
+#   BG_TWS_VOLUME         Optionaler Pfad fuer ein Bind-Mount auf
+#                         /home/ibgateway/Jts. Default ist leer
+#                         (ephemeral, gnzsnz initialisiert das
+#                         Verzeichnis aus Image-Defaults). Wer
+#                         Persistenz braucht, muss zunaechst die
+#                         Image-Defaults mit ``docker cp`` ins Host-
+#                         Verzeichnis kopieren (siehe Folgekarte zur
+#                         IBKR-Settings-Persistenz).
 
 services:
   gateway:
@@ -83,8 +89,10 @@ services:
       # Login, Configure-Click). start_period unterdrueckt unhealthy-
       # Markierung waehrend dieser Phase.
       start_period: 180s
-    volumes:
-      # IBKR-Settings persistent halten, sodass nach Container-Recreate
-      # die zwischengespeicherten Symbole, Layouts und IB-Server-Pings
-      # nicht jedes Mal neu aufgebaut werden muessen.
-      - ${BG_TWS_VOLUME:-./var/tws/jts}:/home/ibgateway/Jts
+    # Kein Default-Volume: gnzsnz/ib-gateway erwartet ein vom Image
+    # vorinitialisiertes /home/ibgateway/Jts (mit jts.ini.tmpl). Ein
+    # leerer Bind-Mount ueberschreibt das und der Container restarted
+    # in Endlosschleife. Wer Persistenz braucht, fuegt im Override
+    # ein eigenes ``volumes:``-Mapping hinzu - Default ist ephemeral
+    # (Settings werden beim Container-Recreate neu erzeugt, IBKR-
+    # Login bleibt aber stabil, weil IBC den Login-Pfad treibt).

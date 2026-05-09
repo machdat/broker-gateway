@@ -4,6 +4,21 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.35.1] — 2026-05-09 (TWS-Stack-Volume-Fix)
+
+Fix fuer Endlos-Restart-Loop des tws-Containers nach v1.35.0-Deploy.
+Das Default-Bind-Mount auf `./var/tws/jts` (leeres Host-Verzeichnis)
+hat das Image-interne `/home/ibgateway/Jts` ueberschrieben - gnzsnz
+findet dann sein `jts.ini.tmpl` nicht und IBC restarted in
+Endlosschleife.
+
+- `compose.tws.yaml`: Volumes-Block entfernt. Default ist jetzt
+  ephemeral (Image-interne Settings, beim Recreate neu erzeugt -
+  IBKR-Login bleibt aber stabil, weil IBC den Login-Pfad treibt).
+- `ops/build-gateway.sh`: `BG_TWS_VOLUME`-Default-Export entfernt.
+- Persistenz-Pattern wandert in eine Folgekarte (named volume +
+  `docker cp` der Image-Defaults).
+
 ## [1.35.0] — 2026-05-09 (TWS-Stack-Aktivierung: compose.tws.yaml + build-Schalter)
 
 Karten 4 + 5 (Single-Owner-Coordination + Hard-Cutover): Vorbereitung des
