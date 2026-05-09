@@ -336,6 +336,58 @@ hinter dem Gateway IBKR steht.
 Live-Snapshot-Lookup geht durch `CPGatewayClient` (`cp/client.py`),
 ein httpx-AsyncClient mit Recording-Event-Hook (s. Sektion 9).
 
+### 5.1 TWS-Backend-Adapter (Karte 33cb35b1, parallel zum CP-Pfad)
+
+Seit v1.34.0 lebt parallel zum cpgateway-Pfad ein zweites Backend in
+`tws/`, das dieselbe Trading-Session über die IBKR TWS-Socket-API
+(via `ib_async`) ausliefert. Die Wahl erfolgt über das ENV-Flag
+`BG_BACKEND` (Default `cp`):
+
+| `BG_BACKEND` | Lifecycle | Snapshot-Quelle | Status-Werte |
+|---|---|---|---|
+| `cp` (Default) | `cp/lifecycle.py::AuthLifecycle` | Tickle-Loop alle 60 s + SSO-Validate + iserver-Bridge-Probe | `ok`, `reauth_pending`, `auth_lost`, `cp_down` |
+| `tws` | `tws/lifecycle.py::TWSLifecycle` | Heartbeat alle `BG_TWS_HEARTBEAT_SEC` (Default 60 s) über `ib.isConnected()` + `ib.client.isReady()` | `ok`, `session_lost`, `tws_down` |
+
+Der TWS-Lifecycle hat **keinen Reauth-Mechanismus** — IB Gateway + IBC
+übernehmen Daily-Restart und Saturday-Reset selbständig. Aus dem
+Lifecycle-Heartbeat ergibt sich die State-Maschine pro Tick:
+
+```
+isConnected? --no--> try connect --+--> success -> ready? --yes--> OK
+                                    |                       --no---> SESSION_LOST
+                                    +--> fail x3 -> TWS_DOWN
+isConnected? --yes-> ready? --yes--> OK
+                     ready? --no---> SESSION_LOST
+```
+
+Die zentrale Quelle für beide Status-Räume ist das Enum
+`broker_gateway.auth_status.AuthStatus` (sechs Werte). `cp/lifecycle.
+py` re-exportiert es für Backward-Compat. Konsumenten-Code, der
+backend-unabhängig sein will, nutzt die Mapping-Funktion
+`to_consumer_status` (`ok | down | lost`); `/v1/internal/health`
+rendert sowohl den feinen `auth_status` als auch den stabilen
+`auth_status_consumer`-View.
+
+Die Lifecycle-Auswahl läuft in `main.py::lifespan`. Im `BG_BACKEND=tws`-
+Pfad wird ein `TWSLifecycleCpAdapter` unter `app.state.cp_lifecycle`
+gehängt, der einen `cp.lifecycle.LifecycleSnapshot` mit cp-kompatiblen
+Feldern liefert (cp-spezifische Felder wie `last_sso_validate_at`,
+`iserver_bridge_ok`, `last_auto_login_*` bleiben `None`). Damit greifen
+alle bestehenden Endpunkte (`require_session_ok`, `/v1/internal/
+health`, `/v1/status`) ohne Refactor — ein Hard-Cutover des cp-Pfads
+ist Migration-Karte 6.
+
+**Out-of-Scope dieser Karte:** Order-Routing über die TWS-API
+(`read_only=False`) und die TWS-Faehigkeit der Service-Schicht
+(`PortfolioService`, `OrdersService`, `QuotesService`). Solange die
+Service-Schicht CP-orientiert bleibt, sind unter `BG_BACKEND=tws` nur
+`/v1/internal/health`, `/v1/health` und `/v1/internal/tws-health`
+funktional — Business-Endpunkte wie `/v1/orders` versuchen weiterhin
+gegen `cpgateway:5000` zu sprechen und werfen `ConnectionError`,
+sofern der cpgateway-Container nicht läuft. Karte 4 (Single-Owner-
+Coordination) macht die Service-Schicht TWS-fähig; Karte 6 reisst den
+cp-Pfad raus.
+
 ---
 
 ## 6. Auth-Modell

@@ -91,6 +91,40 @@ def stack_kind() -> StackKind:
     return raw  # type: ignore[return-value]
 
 
+# ---- Backend-Wahl (cp | tws) ----
+
+BackendKind = Literal["cp", "tws"]
+
+_BACKEND_ENV: Final[str] = "BG_BACKEND"
+_BACKEND_DEFAULT: Final[BackendKind] = "cp"
+_BACKEND_VALID: Final[frozenset[str]] = frozenset({"cp", "tws"})
+
+
+def backend_kind() -> BackendKind:
+    """Liefert den aktiven Backend-Kanal aus ``BG_BACKEND``.
+
+    Karte 33cb35b1 (TWS-Lifecycle) fuehrt einen Feature-Flag ein, der
+    zwischen dem alten cpgateway-Backend (``cp``, Default) und dem neuen
+    TWS-API-Backend (``tws``) waehlt.
+
+    Default ist ``cp``, solange ``compose.yaml`` den cpgateway-Service
+    haelt — der Wechsel auf ``tws`` als Default ist Teil der Migration-
+    Karte 6 (Hard-Cutover). Ungueltige Werte werden mit einer Warning
+    auf den Default zurueckgesetzt.
+    """
+    raw = os.environ.get(_BACKEND_ENV, _BACKEND_DEFAULT).strip().lower()
+    if raw not in _BACKEND_VALID:
+        logger.warning(
+            "ENV %s=%r ist keiner von %s, fallback auf %s",
+            _BACKEND_ENV,
+            raw,
+            sorted(_BACKEND_VALID),
+            _BACKEND_DEFAULT,
+        )
+        return _BACKEND_DEFAULT
+    return raw  # type: ignore[return-value]
+
+
 # ---- Auto-Login (Paper-Stack) ----
 
 _PAPER_AUTO_LOGIN_ENV: Final[str] = "BG_PAPER_AUTO_LOGIN"
@@ -166,9 +200,11 @@ def validate_runtime_config() -> None:
 
 
 __all__ = [
+    "BackendKind",
     "ConfigError",
     "QuotesSource",
     "StackKind",
+    "backend_kind",
     "paper_auto_login_enabled",
     "paper_credentials",
     "quotes_source",

@@ -4,6 +4,73 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.34.0] — 2026-05-09 (TWS-Lifecycle, Feature-Flag BG_BACKEND)
+
+Karte 33cb35b1 (Folge zur Adapter-Karte 441b53db) fuehrt einen
+TWS-Backend-Lifecycle parallel zum cpgateway-Pfad ein. Die Wahl
+erfolgt ueber das ENV-Flag `BG_BACKEND=cp|tws` (Default `cp`); der
+Cutover auf `tws` als Default ist Migration-Karte 6. Konsumenten-
+Schema bleibt stabil.
+
+- `src/broker_gateway/auth_status.py` (neu): zentrales `AuthStatus`-
+  Enum (sechs Werte: `ok`, `reauth_pending`, `auth_lost`, `cp_down`,
+  `tws_down`, `session_lost`) plus `to_consumer_status` (Mapping auf
+  `ok | down | lost`) und `is_session_unavailable` (503-Guard-Kontrakt).
+  `cp.lifecycle.AuthStatus` re-exportiert von hier (Backward-Compat).
+- `src/broker_gateway/tws/lifecycle.py` (neu):
+  - `TWSLifecycle`: Heartbeat-Loop (Default 60 s, konfigurierbar via
+    `BG_TWS_HEARTBEAT_SEC`) ueber `ib.isConnected()` + `ib.client.
+    isReady()`. Nach `max_connect_failures` Connect-Fehlversuchen in
+    Folge wechselt der Status auf `tws_down`. `tick_once()` fuer Tests
+    + manuellen Trigger, `start()`/`stop()` mit asyncio.Task,
+    Async-Context-Manager.
+  - `TWSLifecycleCpAdapter`: wrappt `TWSLifecycle` ueber dasselbe
+    Interface wie `cp.AuthLifecycle`. Wird im `BG_BACKEND=tws`-Pfad
+    unter `app.state.cp_lifecycle` gehaengt, damit alle bestehenden
+    Endpunkte (`require_session_ok`, `/v1/internal/health`,
+    `/v1/status`) ohne Refactor weiterlaufen. Karte 6 entfernt diese
+    Bruecke beim Hard-Cutover.
+- `src/broker_gateway/config.py`: neue `backend_kind()`-Funktion fuer
+  `BG_BACKEND` (Default `cp`, ungueltige Werte fallen mit Warning auf
+  `cp` zurueck).
+- `src/broker_gateway/cp/lifecycle.py`: `AuthStatus` aus
+  `auth_status.py` importiert (statt selbst definiert);
+  `require_session_ok` nutzt `is_session_unavailable` als zentrale
+  Quelle und greift damit auch fuer `tws_down`/`session_lost`.
+- `src/broker_gateway/api/v1/internal_health.py`:
+  `InternalHealthResponse` um `auth_status_consumer: ok | down | lost`
+  (stabiler Konsumenten-View) erweitert. Field `auth_status` bleibt
+  rohes Enum (Backward-Compat fuer Operations-Tools).
+- `src/broker_gateway/main.py`: `BG_BACKEND`-Switch im Lifespan baut
+  entweder `AuthLifecycle` (CP) oder `TWSLifecycle` + Adapter (TWS).
+  Im TWS-Pfad wird der `TWSClient` zusaetzlich unter
+  `app.state.tws_client` gehaengt, damit `/v1/internal/tws-health`
+  funktioniert. `_maybe_attach_auto_login` skipped bei TWS-Backend
+  (Auto-Login ist cpgateway-spezifisch).
+- `compose.yaml`: Image-Tag auf `broker-gateway:1.34.0`, `BG_BACKEND`
+  + `BG_TWS_HEARTBEAT_SEC` als optionale Variablen dokumentiert.
+- Tests (neu, gesamt 54 Tests):
+  - `tests/test_auth_status.py`: Enum-Werte, `to_consumer_status`,
+    `is_session_unavailable`, Backward-Compat.
+  - `tests/test_tws_lifecycle.py`: Snapshot, alle State-Uebergaenge,
+    Connect-Failures, IsReady-Defensive, Start/Stop, Heartbeat-Loop,
+    CP-Adapter, FastAPI-Dependency. Coverage 99% fuer
+    `tws/lifecycle.py`, 100% fuer `auth_status.py`.
+  - `tests/test_main_backend_switch.py`: `backend_kind()`-ENV-Logik,
+    CP-/TWS-Lifecycle-Wahl, Schema-Paritaet `/v1/internal/health`,
+    owned-lifecycle-Branche mit gemocktem `TWSClient`.
+- Doku:
+  - `docs/02-architecture.md`: neue Sektion 5.1 "TWS-Backend-Adapter".
+  - `README.md`: Sektion "Auth-Lifecycle" um TWS-Pfad und neue
+    ENV-Variablen erweitert.
+
+**Out-of-Scope (Folgekarten):** Order-Routing ueber TWS
+(`read_only=False`), TWS-Faehigkeit der Service-Schicht
+(`PortfolioService`, `OrdersService`, `QuotesService`) - bis Karte 4
+(Single-Owner-Coordination) bzw. Karte 6 (Hard-Cutover). Unter
+`BG_BACKEND=tws` sind nur `/v1/internal/health`, `/v1/health` und
+`/v1/internal/tws-health` funktional. Kein Pi-Deploy aus dieser Karte.
+
 ## [1.33.0] — 2026-05-09 (TWS-Adapter Read-Only-Pfade)
 
 Karte 441b53db (Folge zur Container-Slot-Karte 8b1781d3) implementiert
