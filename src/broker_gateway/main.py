@@ -38,6 +38,7 @@ from broker_gateway.auth.middleware import get_token_store
 from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
 from broker_gateway.auth.store import TokenStore, build_default_store
 from broker_gateway.config import (
+    backend_kind,
     paper_auto_login_enabled,
     quotes_source as _read_quotes_source,
     stack_kind,
@@ -74,7 +75,12 @@ from broker_gateway.streams.orders import (
 from broker_gateway.streams.registry import SubscriptionRegistry
 from broker_gateway.streams.ws_source import WSPushSource
 from broker_gateway.throttle.manager import ThrottleManager, get_throttle_manager
-from broker_gateway.tws import TWSClient
+from broker_gateway.tws import (
+    ClientIdPool,
+    TWSClient,
+    TWSLifecycle,
+    TWSLifecycleCpAdapter,
+)
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -86,7 +92,9 @@ _DEFAULT_AUTO_LOGIN_TARGET = "http://broker-gateway-paper-cpgateway:5000/"
 _logger = logging.getLogger(__name__)
 
 
-def _maybe_attach_auto_login(cp_lifecycle: AuthLifecycle, app: FastAPI) -> None:
+def _maybe_attach_auto_login(
+    cp_lifecycle: AuthLifecycle | TWSLifecycleCpAdapter, app: FastAPI
+) -> None:
     """Verdrahtet den Auto-Login-Trigger, wenn der Stack-Modus passt.
 
     Stille no-op-Branche, wenn ``BG_PAPER_AUTO_LOGIN`` nicht gesetzt
@@ -101,6 +109,11 @@ def _maybe_attach_auto_login(cp_lifecycle: AuthLifecycle, app: FastAPI) -> None:
     if not paper_auto_login_enabled():
         return
     if stack_kind() != "paper":
+        return
+    # TWS-Backend hat keinen cpgateway-Login zu automatisieren.
+    # Karte 33cb35b1 Phase 3: TWSLifecycleCpAdapter rein durchlassen
+    # waere ein No-op, aber sauberer ist der frueher Exit.
+    if not isinstance(cp_lifecycle, AuthLifecycle):
         return
     # Lazy-Imports verhindern, dass die Auto-Login-Module bei jedem
     # Service-Start ohne Auto-Login geladen werden.
@@ -317,9 +330,28 @@ def create_app(
         validate_runtime_config()
         actual_throttle = actual_throttle_outer
         owns_lifecycle = lifecycle is None
+        # Karte 33cb35b1 Phase 3: BG_BACKEND=tws baut einen TWSLifecycle,
+        # der per TWSLifecycleCpAdapter das Interface der CP-AuthLifecycle
+        # nachbildet. Karte 4 macht die Service-Schicht TWS-faehig; bis
+        # dahin sind /v1/orders, /v1/portfolio etc. unter BG_BACKEND=tws
+        # nicht funktional (ConnectionError zu cpgateway, falls cpgateway
+        # tatsaechlich abgeschaltet ist). /v1/internal/health, /v1/health
+        # und /v1/internal/tws-health bleiben aber konsistent.
+        owned_tws_for_health: TWSClient | None = None
         if owns_lifecycle:
-            client = CPGatewayClient(throttle=actual_throttle)
-            cp_lifecycle = AuthLifecycle(client)
+            selected_backend = backend_kind()
+            if selected_backend == "tws":
+                client = None
+                pool = ClientIdPool()
+                is_paper = stack_kind() == "paper"
+                owned_tws_for_health = TWSClient(
+                    client_id_pool=pool, paper=is_paper
+                )
+                tws_runtime_lifecycle = TWSLifecycle(owned_tws_for_health)
+                cp_lifecycle = TWSLifecycleCpAdapter(tws_runtime_lifecycle)
+            else:
+                client = CPGatewayClient(throttle=actual_throttle)
+                cp_lifecycle = AuthLifecycle(client)
         else:
             client = None
             cp_lifecycle = lifecycle
@@ -327,6 +359,16 @@ def create_app(
         _maybe_attach_auto_login(cp_lifecycle, app)
         app.state.cp_lifecycle = cp_lifecycle
         app.dependency_overrides[get_cp_lifecycle] = lambda: cast(AuthLifecycle, app.state.cp_lifecycle)
+
+        # TWS-Client unter app.state.tws_client haengen, damit
+        # /v1/internal/tws-health im BG_BACKEND=tws-Pfad funktioniert.
+        # Im BG_BACKEND=cp-Pfad bleibt das Field None (Default-503-
+        # Verhalten), ausser ein expliziter tws_client wurde injiziert.
+        if owned_tws_for_health is not None and tws_client is None:
+            app.state.tws_client = owned_tws_for_health
+            app.dependency_overrides[get_tws_client] = lambda: cast(
+                TWSClient, app.state.tws_client
+            )
 
         services_client: CPGatewayClient | None = client
         services_owned = False
