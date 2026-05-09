@@ -4,7 +4,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** v1.34.1 — Service deployed auf cma-pi-1 (Live `:4000`, Paper `:4001`); AP-01..AP-05 + AP-10 abgeschlossen, AP-11 Phase A+B vollständig (K1..K9), AP-12 (L2/L3 Paper-Tests) in Arbeit. **TWS-API-Refactor v1.32–v1.34** (Karten 368ccdfe Spike, 8b1781d3 Container-Slot, 441b53db Adapter, 33cb35b1 Lifecycle): paralleler TWS-Backend-Pfad über `ib_async` + IB Gateway/IBC, gewählt per `BG_BACKEND=cp|tws` (Default `cp`). Konsumenten-Vertrag (`/v1`) bleibt unverändert; `/v1/internal/health` rendert zusätzlich ein stabiles `auth_status_consumer`-Feld (`ok | down | lost`). Service-Schicht (Portfolio/Orders/Quotes/Events) ist heute noch cp-orientiert — Single-Owner-Coordination und Hard-Cutover sind als Folgekarten 4 und 6 im Backlog. v1.34.1 (Karte 45b03110): reine Doku-Aktualisierung, kein Code-Verhalten betroffen. Frühere Highlights: Cookie-Bridge + `seed-cookies`-Endpoint in v1.31.0 (Karte 406fce15), Auto-Login-PoC + Pi-Desktop-Login in v1.30.0, Auto-Login Phase B in v1.29.0, Auto-Login-Skeleton in v1.28.0, ISIN-Filter in v1.27.0, iserver-Bridge-Health-Probe in v1.26.0, Quote-Volume-Bugfix in v1.25.0. Aktueller Architektur-Stand und Komponenten-Übersicht in [`docs/02-architecture.md`](docs/02-architecture.md). Vollständige Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
+**Status:** **v2.0.0 — Hard-Cutover auf TWS-Backend abgeschlossen** (Karte 5, 2026-05-09). broker-gateway läuft auf cma-pi-1 mit `BG_BACKEND=tws` als Default: Live (U25235077, `:4000`) und Paper (DUP799747, `:4001`) sprechen `gnzsnz/ib-gateway:stable` mit IBC + Xvfb über die TWS-Socket-API (Adapter `ib_async`). cpgateway-Service bleibt unter Compose-Profile `cp-legacy` als Notfall-Roll-Back-Material; vollständige Entfernung als Folgekarte nach 30 Tagen Stabilitäts-Beobachtung. Konsumenten-Vertrag (`/v1`) ist unverändert; `/v1/internal/health` rendert das stabile `auth_status_consumer`-Feld (`ok | down | lost`). Frühere Highlights: TWS-Refactor v1.32–v1.34 (Karten 368ccdfe Spike, 8b1781d3 Container-Slot, 441b53db Adapter, 33cb35b1 Lifecycle), v1.34.1 Doku-Update (Karte 45b03110), v1.35.x Compose-Wiring (Karten 4 Vorbereitung), Cookie-Bridge + `seed-cookies` in v1.31.0, Auto-Login-PoC in v1.30.0. Aktueller Architektur-Stand in [`docs/02-architecture.md`](docs/02-architecture.md), Deploy-Workflow in [`docs/03-deployment.md`](docs/03-deployment.md), Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Architektur und Doku
 
@@ -39,20 +39,35 @@ curl http://localhost:8000/v1/health
 Beide Stacks teilen sich `compose.yaml` und unterscheiden sich nur in
 Project-Name, Port, Volume und ENV-Datei (siehe AP-06 K2 +
 [`docs/runbooks/paper-account-setup.md`](docs/runbooks/paper-account-setup.md)).
+Default-Backend ist seit v2.0.0 **`tws`** (gnzsnz/ib-gateway:stable +
+IBC + ib_async). Der cpgateway-Pfad bleibt als Notfall-Roll-Back-Profil
+verfügbar.
 
 ```bash
-# Live (Default-Stack)
-cp .env.live.template .env       # einmalig, Token eintragen
+# Live (Default-Stack auf TWS)
+cp .env.live.template .env       # einmalig, Token + BG_TWS_USERNAME/PASSWORD
 ./ops/build-gateway.sh           # Port 4000, Project broker-gateway
 
 # Paper (parallel zum Live-Stack)
-cp .env.paper.template .env.paper  # einmalig, Token + DU-Konto eintragen
+cp .env.paper.template .env.paper  # einmalig, Token + DU-Konto + BG_TWS_*
 ./ops/build-gateway.sh --env=paper # Port 4001, Project broker-gateway-paper
+
+# Cutover/Roll-Back-Skripte (kompakte Wrapper)
+./ops/cutover-tws.sh   --env={live,paper}   # auf TWS-Backend (Default-Pfad)
+./ops/rollback-to-cp.sh --env={live,paper}  # zurueck auf cpgateway (Notfall)
 ```
 
 `.env`, `.env.paper` und `.env.live` sind in `.gitignore`. Templates
 (`.env.example`, `.env.live.template`, `.env.paper.template`) werden
 committed.
+
+**Live-2FA-Lifecycle (chmangold/U25235077):** Bei jedem
+Container-Recreate triggert IBC den IBKR-Login. Der `Second Factor
+Authentication`-Dialog erscheint, der Operator muss via VNC die
+Methode "IB" auswählen und am Handy zweimal die Push-Bestätigung
+geben. Details + VNC-Tunnel-Anleitung in der Auto-Memory
+`project_live_2fa_gnzsnz_pattern`. Paper (cborlm399) hat kein 2FA
+und läuft skriptbar durch.
 
 Der Pre-Commit-Hook läuft automatisch bei jedem `git commit` und scannt staged JSON/JSONL unter `tests/fixtures/recorded/` auf Authorization-Header, URL-safe-Token-Strings (≥ 32 Zeichen) und Cookie-Pattern. Single Source of Truth für die Header-Liste ist `broker_gateway.cp.redaction.REDACTED_HEADERS`. Manueller Lauf über alle Recordings: `pre-commit run --all-files`.
 

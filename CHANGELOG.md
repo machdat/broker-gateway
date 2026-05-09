@@ -4,6 +4,25 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.1] — 2026-05-09 (Doku-Update Karte 5)
+
+Patch-Bump nach erfolgreichem Live- und Paper-Cutover. Reine Doku-
+Aktualisierung; kein Code-Verhalten betroffen.
+
+- `README.md`: Status-Block auf v2.0.0 + Hinweis auf TWS-Stack als
+  Default; Live-2FA-Pfad (Mobile-OK 2x via VNC-Anwahl) im Stack-
+  Quickstart erlaeutert; `ops/cutover-tws.sh` und
+  `ops/rollback-to-cp.sh` als Operator-Wrapper genannt.
+- `docs/03-deployment.md`: neue Section 3a "Aktueller TWS-Stack
+  (v2.0.0)" mit Compose-Layout, 2FA-Hinweis, Cutover/Roll-Back-Skripte
+  und Folgekarten-Liste. Section 3 (cpgateway-Layout) als
+  Roll-Back-Referenz markiert; Deploy-Targets beide auf "deployed
+  v2.0.0".
+
+Memory `project_live_2fa_gnzsnz_pattern` (neu): Operator-Anleitung
+fuer den Live-2FA-Pfad. Memory `project_cpgateway_auth_stagnation`
+auf "abgeloest" markiert.
+
 ## [2.0.0] — 2026-05-09 (Hard-Cutover: tws ist Default-Backend, cpgateway unter Profile cp-legacy)
 
 Karte 5 (Hard-Cutover broker-gateway). Major-Bump weil das Default-
