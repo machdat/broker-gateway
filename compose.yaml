@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.0.3
+    image: broker-gateway:2.0.4
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den
@@ -95,11 +95,12 @@ services:
       - READ_ONLY_API=${BG_TWS_READ_ONLY:-yes}
       - BYPASS_WARNING=yes
       - TIME_ZONE=Europe/Vienna
-    ports:
-      # VNC fuer Notfall-Manualzugriff. Loopback-Bind, damit der
-      # Pi-Host kein offenes 5900 nach aussen zeigt. Paper 5905,
-      # Live 5906 (Default vom build-gateway.sh-Pfad).
-      - "127.0.0.1:${BG_TWS_VNC_HOST_PORT:-5905}:5900"
+    # Kein ports-Block: VNC ist im Default-Stack aus (Karte 9b4d8982 +
+    # c44f7d12). Wer wirklich VNC-Inspect braucht, legt ein
+    # compose.tws-vnc-debug.yaml lokal in /mnt/ssd/broker-gateway/ ab
+    # (Snippet in Memory project_live_2fa_gnzsnz_pattern) und ruft
+    # docker compose -f compose.yaml -f compose.tws-vnc-debug.yaml ...
+    # Der temp-Override setzt VNC_SERVER_PASSWORD und mappt 5906->5900.
     healthcheck:
       # gnzsnz forwardet die TWS-Socket-API per socat von 4001/4002 auf
       # 4003/4004. Healthcheck testet den socat-Forward (4004 paper,

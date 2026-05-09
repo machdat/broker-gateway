@@ -4,6 +4,23 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.4] — 2026-05-09 (tws-VNC-Port-Bind aus compose.yaml entfernen)
+
+Karte `c44f7d12`. Folgekarte zu `9b4d8982` (VNC-Server abgeschaltet).
+Vor v2.0.4 hielt docker-proxy noch einen 127.0.0.1-Loopback-Listener
+auf 5905/5906 offen, weil compose.yaml den ports-Block fuer den tws-
+Service definierte - obwohl im Container kein VNC-Server lief.
+
+- `compose.yaml` tws-Service: ports-Block entfernt. Default-Stack hat
+  jetzt KEINEN externen VNC-Listener.
+- `.env.paper.template`: Hinweis dass `BG_TWS_VNC_PASSWORD` ohne ein
+  separates Override-File keine Wirkung hat.
+- Memory `project_live_2fa_gnzsnz_pattern`: Debug-Pfad mit konkretem
+  `compose.tws-vnc-debug.yaml`-Override-Snippet dokumentiert.
+
+Roll-Back: ports-Block wieder eintragen oder via temp-Override
+aktivieren.
+
 ## [2.0.3] — 2026-05-09 (Default-Fix: TWOFA_DEVICE auf "IB Key", verifizierter Wert)
 
 Patch zu v2.0.2. Der Default `IBKR Mobile` matchte den 2FA-Dropdown
