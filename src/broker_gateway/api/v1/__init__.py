@@ -8,6 +8,7 @@ from broker_gateway.api.v1.health import router as health_router
 from broker_gateway.api.v1.instruments import router as instruments_router
 from broker_gateway.api.v1.internal_health import router as internal_health_router
 from broker_gateway.api.v1.internal_seed_cookies import router as internal_seed_cookies_router
+from broker_gateway.api.v1.internal_tws_health import router as internal_tws_health_router
 from broker_gateway.api.v1.orders import router as orders_router
 from broker_gateway.api.v1.orders_stream import router as orders_stream_router
 from broker_gateway.api.v1.orders_ws import router as orders_ws_router
@@ -23,6 +24,7 @@ router.include_router(health_router)
 router.include_router(auth_router)
 router.include_router(internal_health_router)
 router.include_router(internal_seed_cookies_router)
+router.include_router(internal_tws_health_router)
 router.include_router(instruments_router)
 router.include_router(exchanges_router)
 router.include_router(quotes_router)
