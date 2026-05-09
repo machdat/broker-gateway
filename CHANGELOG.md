@@ -4,6 +4,39 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [1.35.0] — 2026-05-09 (TWS-Stack-Aktivierung: compose.tws.yaml + build-Schalter)
+
+Karten 4 + 5 (Single-Owner-Coordination + Hard-Cutover): Vorbereitung des
+TWS-Backend-Cutovers. Die Karten 1-3 (Spike, Adapter, Lifecycle) hatten
+den Code-Pfad komplett, aber kein lauffaehiges Compose-Wiring. v1.35.0
+schliesst diese Luecke.
+
+- `compose.tws.yaml` (neu): Override-File definiert den `tws`-Service
+  (`ghcr.io/gnzsnz/ib-gateway:stable` mit IBC + Xvfb), erzwingt
+  `BG_BACKEND=tws` im gateway-Service und setzt `depends_on: tws`
+  (statt `cpgateway`). Healthcheck-Pfad via `/dev/tcp/127.0.0.1/${BG_TWS_PORT}`.
+- `ops/build-gateway.sh`: neuer `--backend=cp|tws`-Schalter (Default cp).
+  Bei `--backend=tws` wird `compose.tws.yaml` zusaetzlich an `-f`
+  gehaengt, der Drift-Acceptance-Check uebersprungen (cpgateway ist
+  nicht mehr Quelle der Wahrheit) und passende Defaults fuer
+  `BG_TWS_PORT` (4004 paper / 4003 live), `BG_TWS_TRADING_MODE`,
+  `BG_TWS_VNC_HOST_PORT` und `BG_TWS_VOLUME` exportiert.
+- `.env.paper.template`: TWS-Block ergaenzt (`BG_TWS_USERNAME`,
+  `BG_TWS_PASSWORD`, `BG_TWS_TRADING_MODE`, `BG_TWS_HEARTBEAT_SEC`,
+  `BG_TWS_VNC_PASSWORD`).
+- `compose.yaml`: Image-Tag auf `1.35.0`.
+
+Verifikation:
+- `docker compose -f compose.yaml -f compose.tws.yaml config` rendert
+  ohne Fehler (lokal validiert).
+- Lokales `pytest -q` weiter gruen (kein Verhaltens-Wandel im Service-
+  Code; TWS-Modul-Tests waren ab v1.33.0 schon enthalten).
+- Pi-Deploy in dieser Karte: paper-Stack via
+  `./ops/build-gateway.sh --env=paper --backend=tws`. Live bleibt cp,
+  bis Karte 5 das umsetzt.
+
+Konsumenten-API-Vertrag (`/v1`) unveraendert.
+
 ## [1.34.1] — 2026-05-09 (Doku-Update v1-Spec + Architektur fuer TWS-Backend)
 
 Karte 45b03110: reine Doku-Aktualisierung im Anschluss an den
