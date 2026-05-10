@@ -81,6 +81,7 @@ from broker_gateway.tws import (
     TWSLifecycle,
     TWSLifecycleCpAdapter,
 )
+from broker_gateway.tws.instruments import TWSInstrumentsService
 from broker_gateway.tws.portfolio import TWSPortfolioService
 
 
@@ -388,11 +389,20 @@ def create_app(
         app.state._owns_services_client = services_owned
         app.state._services_client = services_client
 
-        inst_service = (
-            instruments_service
-            if instruments_service is not None
-            else InstrumentsService(cast(CPGatewayClient, services_client))
-        )
+        # AP `2a203c58-...` Phase 2: BG_BACKEND=tws → TWSInstrumentsService
+        # (ib_async-basiert), sonst cp.InstrumentsService. Cast wegen Duck-
+        # Typing analog zu PortfolioService.
+        if instruments_service is not None:
+            inst_service = instruments_service
+        elif owned_tws_for_health is not None:
+            inst_service = cast(
+                InstrumentsService,
+                TWSInstrumentsService(owned_tws_for_health),
+            )
+        else:
+            inst_service = InstrumentsService(
+                cast(CPGatewayClient, services_client)
+            )
         qts_service = (
             quotes_service
             if quotes_service is not None
