@@ -81,6 +81,7 @@ from broker_gateway.tws import (
     TWSLifecycle,
     TWSLifecycleCpAdapter,
 )
+from broker_gateway.tws.portfolio import TWSPortfolioService
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -416,11 +417,22 @@ def create_app(
         status_probe: StatusProbe | None = None
         ws_client: CPWebSocketClient | None = None
         ws_source: WSPushSource | None = None
-        pf_service = (
-            portfolio_service
-            if portfolio_service is not None
-            else PortfolioService(cast(CPGatewayClient, services_client))
-        )
+        # AP `2a203c58-...` Phase 1: TWS-Backend bekommt einen
+        # TWSPortfolioService, der gegen ib_async laeuft. Bei expliziter
+        # Injection (Tests) hat der injizierte Service Vorrang. cp-Pfad
+        # bleibt fuer Profile cp-legacy aktiv, wenn weder injiziert noch
+        # im tws-Modus owned. Cast wegen Duck-Typing (gleiches Interface,
+        # keine Subklasse von PortfolioService).
+        if portfolio_service is not None:
+            pf_service = portfolio_service
+        elif owned_tws_for_health is not None:
+            pf_service = cast(
+                PortfolioService, TWSPortfolioService(owned_tws_for_health)
+            )
+        else:
+            pf_service = PortfolioService(
+                cast(CPGatewayClient, services_client)
+            )
         ord_service = (
             orders_service
             if orders_service is not None

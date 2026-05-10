@@ -4,6 +4,30 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.5] — 2026-05-10 (HTTP-API: Portfolio auf TWS-Backend umgestellt, AP `2a203c58` Phase 1)
+
+Karte `23a368ee`. Erste Phase des Cutover-Hold-out-AP nach v2.0.0:
+`/v1/portfolio/{account}`, `/positions` und `/ledger` werden im
+`BG_BACKEND=tws`-Pfad jetzt vom neuen `TWSPortfolioService`
+(ib_async-basiert) bedient, statt vom alten cp-Adapter, der zu
+einem nicht mehr existenten `cpgateway`-Hostname connecten wollte
+(500 Internal Server Error vor v2.0.5).
+
+- Neu: `src/broker_gateway/tws/portfolio.py` mit
+  `TWSPortfolioService.positions / summary / ledger`. Schema-Identitaet
+  zur cp-Variante (Re-Export der Pydantic-Modelle aus `cp.portfolio`).
+- `src/broker_gateway/main.py`: Backend-Switch fuer
+  `app.state.portfolio_service` (TWS-Pfad → TWSPortfolioService,
+  cp-Pfad → cp.PortfolioService).
+- Tests: `tests/test_tws/test_portfolio.py` (16 Tests, 100% Coverage),
+  `tests/test_main_backend_switch.py` um Portfolio-Backend-Switch
+  ergaenzt.
+- cp-Pfad bleibt unveraendert fuer Profile `cp-legacy` (Roll-Back).
+
+Folgekarten im AP `2a203c58-63fb-4e0b-ad89-f62158ffc734`: Phase 2
+(Instruments), 3 (Quotes), 4 (Orders+Trades), 5 (Calendar),
+6 (cp-Hold-out absichern), 7 (Tests + Doku-Sweep).
+
 ## [2.0.4] — 2026-05-09 (tws-VNC-Port-Bind aus compose.yaml entfernen)
 
 Karte `c44f7d12`. Folgekarte zu `9b4d8982` (VNC-Server abgeschaltet).
