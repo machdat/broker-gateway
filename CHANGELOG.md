@@ -4,6 +4,49 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.1.1] — 2026-05-10 (Karte `4c5b226d`: Bug-Fix Portfolio-Resubscribe-Hang)
+
+Patch-Release aus dem nachgezogenen Live-Smoke des AP `2a203c58`. Nach
+dem v2.1.0-Deploy auf cma-pi-1 timeoutete `/v1/portfolio/U25235077` und
+`/v1/portfolio/U25235077/positions` indefinit (curl `--max-time 30`
+ohne 200/4xx/5xx). Alle anderen Endpoint-Familien (`/v1/instruments/*`,
+`/v1/exchanges`, `/v1/internal/{health,tws-health,seed-cookies}`)
+liefen unauffaellig in <120ms. Memory `project_tws_portfolio_resubscribe_hang`
+hat das Symptom-Pattern dokumentiert; diese Karte raeumt den Bug aus.
+
+- **Bug:** `tws/portfolio.py::_fetch_portfolio_items` und
+  `_fetch_account_values` riefen bei jedem Endpoint-Call
+  `await ib.reqAccountUpdatesAsync(account_id)`. Die ib_async-Coroutine
+  resolvet aber nur beim allerersten `accountDownloadEnd`-Trigger pro
+  Account; der `connectAsync`-getriebene Lifespan-Sync hat den Trigger
+  bereits konsumiert, jeder weitere awaited Subscribe haengt indefinit.
+  Tests griffen nicht, weil `_make_client` `AsyncMock(return_value=None)`
+  setzte - das resolvet sofort.
+- **Fix:** `TWSPortfolioService.__init__` haelt einen Subscribe-Cache
+  (`_subscribed_accounts: set[str]` + `asyncio.Lock`); neue Methode
+  `_ensure_subscribed(account_id)` ruft genau einmal pro Account-Id
+  `ib.reqAccountUpdates(True, account_id)` (sync, Fire-and-Forget) auf.
+  Die `_fetch_*`-Methoden lesen danach synchron `ib.portfolio()` bzw.
+  `ib.accountValues(account_id)` - ib_async pflegt den Cache via
+  `updatePortfolio`-Events.
+- **Tests:** `tests/test_tws/test_portfolio.py` bekommt eine neue Klasse
+  `TestEnsureSubscribed` mit sechs Tests, die Idempotenz, Lock-Serialisierung,
+  Wildcard-Skip, invalidate-No-op, Multi-Account-Subscriben und Robustheit
+  bei fehlendem Mock-Attribut verriegeln. Der bestehende
+  `test_positions_calls_req_account_updates` wurde auf den Sync-Pfad
+  umgeschrieben. `tests/test_tws/test_schema_compat.py` mockt jetzt
+  ebenfalls `reqAccountUpdates` statt der awaited Variante.
+- **Doku:** Modul-Docstring von `tws/portfolio.py` erklaert den Subscribe-
+  Cache und warum die Async-Variante nicht verwendet wird. README- und
+  CHANGELOG-Eintrag fuehren auf die Memory.
+- **Test-Suite:** **1114 passed**, 4 skipped (vorher 1108 passed; +6 neue
+  TestEnsureSubscribed-Tests).
+- **Live-Verifikation:** im Pi-Deploy dieser Karte gegen U25235077,
+  zwei Iterationen pro Endpoint unter 500ms; Karte 23a368ee final auf
+  `deployed=true` markiert.
+- **Memory-Update:** `project_tws_portfolio_resubscribe_hang` markiert
+  als behoben in v2.1.1.
+
 ## [2.1.0] — 2026-05-10 (AP `2a203c58` Phase 7: Schema-Compat-Tests + Doku-Sweep + AP-Abschluss)
 
 Karte `90034b6f`. Siebte und letzte Phase des HTTP-API-Cutover-Hold-out-AP.

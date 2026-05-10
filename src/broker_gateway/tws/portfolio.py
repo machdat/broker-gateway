@@ -6,16 +6,23 @@ Modelle (Position, Ledger, LedgerEntry, PortfolioSummary), damit die HTTP-
 API-Konsumenten beim Backend-Switch keine Drift sehen.
 
 Folge-Karte zu 33cb35b1 (TWSLifecycle): die Service-Schicht macht den
-Cutover komplett, der dort begonnen wurde. AP `2a203c58-...` Phase 1.
+Cutover komplett, der dort begonnen wurde. AP ``2a203c58-...`` Phase 1.
 
-Cache-Strategie: keine eigene TTL - ib_async puffert PortfolioItem +
-AccountValue + Position automatisch nach ``reqAccountUpdates``. Frische
-faellt damit auf den Heartbeat-Loop zurueck. ``invalidate(...)`` ist ein
-no-op fuer Schema-Kompatibilitaet mit cp.portfolio.PortfolioService
-(der Order-Lifecycle ruft das nach Bestand-Aenderungen).
+Subscribe-Strategie: pro Service-Instanz wird jeder Account genau einmal
+ueber ``ib.reqAccountUpdates(True, account_id)`` (sync, Fire-and-Forget)
+abonniert. Folgecalls lesen synchron aus ``ib.portfolio()`` /
+``ib.accountValues(account_id)`` - ib_async pflegt den Cache via
+``updatePortfolio``-Events. Die Async-Variante ``reqAccountUpdatesAsync``
+wird **nicht** verwendet: sie resolvet nur beim allerersten
+``accountDownloadEnd``-Trigger pro Account und haengt bei Re-Subscribes
+indefinit (Memory ``project_tws_portfolio_resubscribe_hang``, v2.1.0
+Live-Bug). ``invalidate(...)`` ist ein no-op fuer Schema-Kompatibilitaet
+mit cp.portfolio.PortfolioService (der Order-Lifecycle ruft das nach
+Bestand-Aenderungen).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -53,6 +60,8 @@ class TWSPortfolioService:
 
     def __init__(self, client: TWSClient) -> None:
         self._client = client
+        self._subscribed_accounts: set[str] = set()
+        self._subscribe_lock = asyncio.Lock()
 
     @property
     def ttl_seconds(self) -> float:
@@ -138,19 +147,37 @@ class TWSPortfolioService:
 
     # ---- Helpers -----------------------------------------------------
 
+    async def _ensure_subscribed(self, account_id: str) -> None:
+        # Subscribe genau einmal pro Account-Id. Double-Checked-Locking,
+        # damit parallele HTTP-Calls den ersten Subscribe nicht doppelt
+        # senden. Bei leerem account_id (Wildcard-Lese ohne Filter) gibt
+        # es nichts zu subscriben - ib.portfolio() liefert dann den
+        # primaer-Account-Cache, der via connectAsync ohnehin schon da
+        # ist.
+        if not account_id:
+            return
+        if account_id in self._subscribed_accounts:
+            return
+        async with self._subscribe_lock:
+            if account_id in self._subscribed_accounts:
+                return
+            ib = self._client._ib  # noqa: SLF001 - bewusste Low-Level-Bruecke
+            req = getattr(ib, "reqAccountUpdates", None)
+            if callable(req):
+                req(True, account_id)
+            self._subscribed_accounts.add(account_id)
+
     async def _fetch_portfolio_items(self, account_id: str) -> list[Any]:
-        ib = self._client._ib  # noqa: SLF001 - bewusste Low-Level-Bruecke
-        # reqAccountUpdatesAsync ist idempotent fuer einen bereits abonnierten
-        # Account; ib_async puffert die Daten danach in IB.portfolio().
-        await ib.reqAccountUpdatesAsync(account_id)
+        await self._ensure_subscribed(account_id)
+        ib = self._client._ib  # noqa: SLF001
         items = ib.portfolio()
         if account_id:
             return [it for it in items if getattr(it, "account", "") == account_id]
         return list(items)
 
     async def _fetch_account_values(self, account_id: str) -> list[Any]:
+        await self._ensure_subscribed(account_id)
         ib = self._client._ib  # noqa: SLF001
-        await ib.reqAccountUpdatesAsync(account_id)
         # ib_async.IB.accountValues(account) filtert serverseitig; bei manchen
         # Mock-Implementierungen ist das Argument optional. Fallback auf
         # client-seitiges Filtern.
