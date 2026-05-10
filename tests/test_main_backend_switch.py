@@ -498,3 +498,86 @@ class TestSwitchOwnedLifecycle:
             assert isinstance(
                 app.state.subscription_manager, SubscriptionManager
             )
+
+    def test_owned_lifecycle_uses_tws_orders_and_trades(
+        self,
+        store: InMemoryTokenStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AP `2a203c58-...` Phase 4: BG_BACKEND=tws muss
+        TWSOrdersService + TWSTradesService + TWSOrdersBootstrapLoader
+        unter app.state haengen und einen TWSOrdersStreamPump starten."""
+        from broker_gateway.tws.orders import (
+            TWSOrdersBootstrapLoader,
+            TWSOrdersService,
+            TWSOrdersStreamPump,
+        )
+        from broker_gateway.tws.trades import TWSTradesService
+
+        monkeypatch.setenv("BG_BACKEND", "tws")
+        _ensure_admin_env(monkeypatch)
+
+        connect_calls = {"n": 0}
+
+        async def _fake_connect(self: Any) -> None:
+            connect_calls["n"] += 1
+            self._client_id = 100
+
+        async def _fake_disconnect(self: Any) -> None:
+            pass
+
+        def _fake_is_connected(self: Any) -> bool:
+            return connect_calls["n"] > 0
+
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.connect", _fake_connect
+        )
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.disconnect", _fake_disconnect
+        )
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.is_connected",
+            _fake_is_connected,
+        )
+
+        app = create_app(store=store)
+        with TestClient(app):
+            assert isinstance(app.state.orders_service, TWSOrdersService)
+            assert isinstance(app.state.trades_service, TWSTradesService)
+            assert isinstance(
+                app.state.orders_bootstrap_loader, TWSOrdersBootstrapLoader
+            )
+            assert isinstance(
+                app.state.orders_stream_pump, TWSOrdersStreamPump
+            )
+
+    def test_cp_backend_uses_cp_orders_and_trades(
+        self,
+        store: InMemoryTokenStore,
+        cp_gateway_mock: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Schwesterfall: BG_BACKEND=cp behaelt cp.OrdersService /
+        cp.TradesService / cp.OrdersBootstrapLoader; kein
+        TWSOrdersStreamPump."""
+        from broker_gateway.api.v1.orders_stream import OrdersBootstrapLoader
+        from broker_gateway.cp.orders import OrdersService
+        from broker_gateway.cp.trades import TradesService
+
+        monkeypatch.setenv("BG_BACKEND", "cp")
+        _ensure_admin_env(monkeypatch)
+        cp_client = CPGatewayClient(base_url=cp_gateway_mock.base_url)
+        lifecycle = AuthLifecycle(
+            cp_client,
+            tickle_interval_s=10.0,
+            reauth_max_retries=1,
+            reauth_backoff_s=0.0,
+        )
+        app = create_app(store=store, lifecycle=lifecycle)
+        with TestClient(app):
+            assert isinstance(app.state.orders_service, OrdersService)
+            assert isinstance(app.state.trades_service, TradesService)
+            assert isinstance(
+                app.state.orders_bootstrap_loader, OrdersBootstrapLoader
+            )
+            assert app.state.orders_stream_pump is None

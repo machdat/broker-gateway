@@ -4,6 +4,51 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.8] — 2026-05-10 (HTTP-API: Orders + Trades auf TWS-Backend umgestellt, AP `2a203c58` Phase 4)
+
+Karte `064fa82d`. Vierte Phase des Cutover-Hold-out-AP. Vier Order-/Trade-
+Endpoints werden im `BG_BACKEND=tws`-Pfad jetzt vom neuen
+`TWSOrdersService` + `TWSTradesService` (ib_async-basiert) bedient:
+`POST/GET/DELETE /v1/orders`, `GET /v1/orders/{id}`, `GET /v1/orders/stream`
+(SSE), `GET /v1/orders/ws` (WebSocket), `GET /v1/trades`,
+`GET /v1/trades/aggregates`. Vorher 500 wegen cp-Adapter zu nicht mehr
+existentem `cpgateway`-Hostname.
+
+- Neu: `src/broker_gateway/tws/orders.py` mit `TWSOrdersService` (place /
+  get / cancel / list-open), `TWSOrdersBootstrapLoader` (Voll-Snapshot
+  offener Orders fuer SSE/WS-Subscribe-Start) und `TWSOrdersStreamPump`
+  (haengt sich an `openOrderEvent` / `orderStatusEvent` /
+  `execDetailsEvent` und publish-t in den gemeinsamen
+  `OrdersBroadcaster` - SSE/WS-Pfade bleiben unveraendert).
+- Read-Only-Modus-Pflicht: bei `BG_TWS_READ_ONLY=yes` (= TWSClient
+  read_only=True) liefert `place_order(...)` HTTP 503 + structured-
+  error `{"code":"read_only_api"}` BEVOR ib_async-`placeOrder()` gerufen
+  wird. Test-Coverage fuer beide Modi.
+- Account-Validation: `place_order(...)` prueft `account_id` gegen
+  `IB.managedAccounts()` und liefert HTTP 400 + `invalid_account` bei
+  Drift, statt IBKR-Error 320 abzuwarten.
+- Order-ID-Strategie: `permId` (persistent) wird primaer als
+  `order_id` zurueckgegeben, mit Fallback auf `orderId` solange IBKR
+  noch keine `permId` gesetzt hat. `get_order` und `cancel_order`
+  matchen beide Varianten.
+- Neu: `src/broker_gateway/tws/trades.py` mit `TWSTradesService`
+  (`list_trades` via `reqExecutionsAsync` + Fallback auf `IB.fills()`,
+  `commissions_mtd`-Aggregat). Currency aus Contract-Currency; bei
+  Lueke faellt der Adapter auf USD zurueck und markiert Trade /
+  Aggregat als `currency_assumed=True` - bitidentisch zum cp-Pfad.
+- Backend-Switch in `src/broker_gateway/main.py`: TWS-Modus haengt
+  TWSOrdersService + TWSTradesService + TWSOrdersBootstrapLoader unter
+  `app.state` und startet/stoppt den `TWSOrdersStreamPump` als Teil
+  des Lifespans. `OrdersBroadcaster` selbst bleibt generisch und
+  wird von beiden Backends geteilt.
+- Tests: `tests/test_tws/test_orders.py` (61 Tests, 91% Coverage),
+  `tests/test_tws/test_trades.py` (34 Tests, 91% Coverage),
+  `tests/test_main_backend_switch.py` um Orders+Trades-Backend-Switch
+  ergaenzt.
+- cp-Pfad bleibt unveraendert fuer Profile `cp-legacy`.
+- Live-Verifikation auf Pi und Pi-Deploy bewusst aufgeschoben auf
+  Phase 7 (Bundle), um nur eine 2FA-Episode zu triggern.
+
 ## [2.0.7] — 2026-05-10 (HTTP-API: Quotes auf TWS-Backend umgestellt, AP `2a203c58` Phase 3)
 
 Karte `fa0f5e6c`. Dritte und komplexeste Phase des Cutover-Hold-out-AP.
