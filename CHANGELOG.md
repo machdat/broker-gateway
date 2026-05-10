@@ -4,6 +4,29 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.6] — 2026-05-10 (HTTP-API: Instruments auf TWS-Backend umgestellt, AP `2a203c58` Phase 2)
+
+Karte `50a3ba6a`. Zweite Phase des Cutover-Hold-out-AP. Analog zu Phase 1
+(Portfolio): `/v1/instruments/search` und `/v1/instruments/{conid}` werden
+im `BG_BACKEND=tws`-Pfad jetzt vom neuen `TWSInstrumentsService`
+(ib_async-basiert) bedient. Davor 500 wegen cp-Adapter zu nicht mehr
+existentem `cpgateway`-Hostname.
+
+- Neu: `src/broker_gateway/tws/instruments.py` mit
+  `TWSInstrumentsService.search / search_by_isin / info`. Schema-Identitaet
+  zur cp-Variante (Re-Export der Pydantic-Modelle aus `cp.instruments`).
+- ib_async-Patterns: `reqMatchingSymbolsAsync` (Symbol-Lookup) und
+  `reqContractDetailsAsync` (ISIN-Lookup ueber `secIdType="ISIN"`,
+  conid-Detail). Rate-Limit-Lock + 1.05s Sleep zwischen
+  `reqMatchingSymbols`-Calls (IBKR-Pacing 1 req/sec).
+- TTL-Cache 7 Tage analog zur cp-Variante (search/isin/info getrennt).
+- `src/broker_gateway/main.py`: Backend-Switch fuer
+  `app.state.instruments_service` analog zu Portfolio.
+- Tests: `tests/test_tws/test_instruments.py` (15 Tests, 95% Coverage),
+  `tests/test_main_backend_switch.py` um Instruments-Backend-Switch
+  ergaenzt. Volle Suite 904 passed.
+- cp-Pfad bleibt unveraendert fuer Profile `cp-legacy`.
+
 ## [2.0.5] — 2026-05-10 (HTTP-API: Portfolio auf TWS-Backend umgestellt, AP `2a203c58` Phase 1)
 
 Karte `23a368ee`. Erste Phase des Cutover-Hold-out-AP nach v2.0.0:

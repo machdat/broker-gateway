@@ -338,6 +338,71 @@ class TestSwitchOwnedLifecycle:
                 app.state.portfolio_service, TWSPortfolioService
             )
 
+    def test_owned_lifecycle_uses_tws_instruments_service(
+        self,
+        store: InMemoryTokenStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AP `2a203c58-...` Phase 2: BG_BACKEND=tws muss
+        TWSInstrumentsService unter app.state.instruments_service haengen."""
+        from broker_gateway.tws.instruments import TWSInstrumentsService
+
+        monkeypatch.setenv("BG_BACKEND", "tws")
+        _ensure_admin_env(monkeypatch)
+
+        connect_calls = {"n": 0}
+
+        async def _fake_connect(self: Any) -> None:
+            connect_calls["n"] += 1
+            self._client_id = 100
+
+        async def _fake_disconnect(self: Any) -> None:
+            pass
+
+        def _fake_is_connected(self: Any) -> bool:
+            return connect_calls["n"] > 0
+
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.connect", _fake_connect
+        )
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.disconnect", _fake_disconnect
+        )
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.is_connected",
+            _fake_is_connected,
+        )
+
+        app = create_app(store=store)
+        with TestClient(app):
+            assert isinstance(
+                app.state.instruments_service, TWSInstrumentsService
+            )
+
+    def test_cp_backend_uses_cp_instruments_service(
+        self,
+        store: InMemoryTokenStore,
+        cp_gateway_mock: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Schwesterfall: BG_BACKEND=cp behaelt cp.InstrumentsService."""
+        from broker_gateway.cp.instruments import InstrumentsService
+
+        monkeypatch.setenv("BG_BACKEND", "cp")
+        _ensure_admin_env(monkeypatch)
+        cp_client = CPGatewayClient(base_url=cp_gateway_mock.base_url)
+        lifecycle = AuthLifecycle(
+            cp_client,
+            tickle_interval_s=10.0,
+            reauth_max_retries=1,
+            reauth_backoff_s=0.0,
+        )
+        app = create_app(store=store, lifecycle=lifecycle)
+        with TestClient(app):
+            assert isinstance(
+                app.state.instruments_service, InstrumentsService
+            )
+
     def test_cp_backend_uses_cp_portfolio_service(
         self,
         store: InMemoryTokenStore,
