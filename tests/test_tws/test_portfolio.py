@@ -193,9 +193,7 @@ class TestPositions:
         await service.positions("U25235077")
         # Sync-Subscribe-Frame, nicht await: reqAccountUpdatesAsync haengt
         # bei Re-Subscribes (Memory project_tws_portfolio_resubscribe_hang).
-        client._ib.reqAccountUpdates.assert_called_once_with(
-            True, "U25235077"
-        )
+        client._ib.reqAccountUpdates.assert_called_once_with("U25235077")
 
     async def test_positions_without_filter_returns_all(self) -> None:
         items = [
@@ -442,9 +440,7 @@ class TestEnsureSubscribed:
         await service.positions("U25235077")
         await service.positions("U25235077")
         await service.summary("U25235077")
-        client._ib.reqAccountUpdates.assert_called_once_with(
-            True, "U25235077"
-        )
+        client._ib.reqAccountUpdates.assert_called_once_with("U25235077")
 
     async def test_subscribe_lock_serializes_concurrent_first_calls(
         self,
@@ -476,9 +472,7 @@ class TestEnsureSubscribed:
         await service.positions("U25235077")
         service.invalidate("U25235077")
         await service.positions("U25235077")
-        client._ib.reqAccountUpdates.assert_called_once_with(
-            True, "U25235077"
-        )
+        client._ib.reqAccountUpdates.assert_called_once_with("U25235077")
 
     async def test_different_accounts_subscribe_independently(self) -> None:
         # Multi-Account-Pfad: jeder Account braucht seinen eigenen
@@ -491,10 +485,10 @@ class TestEnsureSubscribed:
         await service.positions("DUP799747")
         assert client._ib.reqAccountUpdates.call_count == 2
         calls = {
-            args[0]
+            args.args[0]
             for args in client._ib.reqAccountUpdates.call_args_list
         }
-        assert calls == {(True, "U25235077"), (True, "DUP799747")}
+        assert calls == {"U25235077", "DUP799747"}
 
     async def test_missing_req_account_updates_is_tolerated(self) -> None:
         # Falls eine Mock-/Stub-Implementierung reqAccountUpdates nicht

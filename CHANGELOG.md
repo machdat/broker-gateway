@@ -4,6 +4,30 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.1.2] — 2026-05-10 (Karte `4c5b226d`: Hotfix ib_async-Signatur)
+
+Direkter Hotfix auf v2.1.1. Live-Deploy von v2.1.1 hat
+`/v1/portfolio/U25235077` mit HTTP 500 statt Hang quittiert:
+
+```
+TypeError: IB.reqAccountUpdates() takes from 1 to 2 positional arguments
+but 3 were given
+```
+
+Die ib_async-Signatur ist `IB.reqAccountUpdates(acctCode='')` - das
+Subscribe-Verhalten ergibt sich aus dem Vorhandensein eines Account-
+Codes; `cancelAccountUpdates()` ist das explizite Gegenstueck. Der
+v2.1.1-Patch hatte faelschlicherweise `req(True, account_id)` gerufen
+(zwei positional Args).
+
+- **Fix:** `tws/portfolio.py::_ensure_subscribed` ruft jetzt
+  `req(account_id)` mit nur einem Argument; Modul-Kommentar erklaert
+  die Signatur.
+- **Tests angepasst:** alle `assert_called_once_with(True, "...")` und
+  `{(True, "...")}`-Vergleiche auf die einzelne `acctCode`-Form.
+- **Test-Suite:** 1114 passed, 4 skipped (unveraendert vs v2.1.1).
+- **Live-Verifikation:** im Folge-Pi-Deploy gegen U25235077.
+
 ## [2.1.1] — 2026-05-10 (Karte `4c5b226d`: Bug-Fix Portfolio-Resubscribe-Hang)
 
 Patch-Release aus dem nachgezogenen Live-Smoke des AP `2a203c58`. Nach

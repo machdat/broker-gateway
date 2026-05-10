@@ -164,7 +164,10 @@ class TWSPortfolioService:
             ib = self._client._ib  # noqa: SLF001 - bewusste Low-Level-Bruecke
             req = getattr(ib, "reqAccountUpdates", None)
             if callable(req):
-                req(True, account_id)
+                # ib_async-Signatur: IB.reqAccountUpdates(acctCode='').
+                # Subscribe-Pfad nur ueber das Vorhandensein eines acctCode -
+                # cancelAccountUpdates() ist das explizite Gegenstueck.
+                req(account_id)
             self._subscribed_accounts.add(account_id)
 
     async def _fetch_portfolio_items(self, account_id: str) -> list[Any]:
