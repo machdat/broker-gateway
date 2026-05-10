@@ -4,6 +4,38 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.7] — 2026-05-10 (HTTP-API: Quotes auf TWS-Backend umgestellt, AP `2a203c58` Phase 3)
+
+Karte `fa0f5e6c`. Dritte und komplexeste Phase des Cutover-Hold-out-AP.
+Drei Quotes-Endpoints (`/v1/quotes/snapshot`, `/v1/quotes/stream` SSE,
+`/v1/quotes/ws` WebSocket) werden im `BG_BACKEND=tws`-Pfad jetzt vom
+neuen `TWSQuotesService` (ib_async-basiert) bedient. Vorher 500 wegen
+cp-Adapter zu nicht mehr existentem `cpgateway`-Hostname (DNS-Fail).
+
+- Neu: `src/broker_gateway/tws/quotes.py` mit `TWSQuotesService`. Eine
+  Service-Klasse fuer beide Pfade: `snapshot_with_prime(...)` (REST-
+  Snapshot via `reqMktDataAsync(snapshot=True)`) und `subscribe(...)`
+  (Live-Stream via `reqMktData(snapshot=False)` + `pendingTickersEvent`)
+  mit derselben Signatur wie `SubscriptionManager.subscribe` - Refcount
+  + Fan-Out + Ringpuffer-Replay (bis 200 Events) inklusive.
+- Field-Mapping ib_async-Ticker → IBKR-cp-Field-IDs: `last`→31, `bid`→84,
+  `ask`→86, `volume`→7762, `high`→70, `low`→71. `change_pct` (83) wird
+  aus `last/close` berechnet, weil ib_async kein direktes Aequivalent
+  hat. `availability` (6509) leitet sich aus dem konfigurierten
+  `marketDataType` ab (1=RPB realtime, 3=DPB delayed, ...).
+- `src/broker_gateway/main.py`: Backend-Switch fuer
+  `app.state.quotes_service` analog Phase 1+2; im TWS-Mode wird der
+  TWSQuotesService zusaetzlich als `app.state.subscription_manager`
+  hinterlegt (Duck-Typing - das `subscribe(...)`-Interface ist identisch
+  zum cp-`SubscriptionManager`). Die SSE/WS-Endpoints bleiben unveraendert.
+- Tests: `tests/test_tws/test_quotes.py` (39 Tests, 91% Coverage fuer
+  `tws/quotes.py`), `tests/test_main_backend_switch.py` um Quotes-
+  Backend-Switch ergaenzt. Volle Suite 945 passed.
+- cp-Pfad bleibt unveraendert fuer Profile `cp-legacy`.
+- Live-Verifikation auf Pi (curl gegen 127.0.0.1:4000) und Pi-Deploy
+  bewusst aufgeschoben auf Phase 7 (Bundle), um nur eine 2FA-Episode
+  zu triggern.
+
 ## [2.0.6] — 2026-05-10 (HTTP-API: Instruments auf TWS-Backend umgestellt, AP `2a203c58` Phase 2)
 
 Karte `50a3ba6a`. Zweite Phase des Cutover-Hold-out-AP. Analog zu Phase 1

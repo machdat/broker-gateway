@@ -83,6 +83,7 @@ from broker_gateway.tws import (
 )
 from broker_gateway.tws.instruments import TWSInstrumentsService
 from broker_gateway.tws.portfolio import TWSPortfolioService
+from broker_gateway.tws.quotes import TWSQuotesService
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -181,6 +182,7 @@ async def _build_subscription_layer(
     inst_service: InstrumentsService,
     cal_service: CalendarService,
     override_manager: SubscriptionManager | None,
+    tws_quotes_service: TWSQuotesService | None = None,
 ) -> tuple[SubscriptionManager, StatusProbe, CPWebSocketClient | None, WSPushSource | None]:
     """Baut SubscriptionManager + StatusProbe nach dem Lifecycle-Start.
 
@@ -189,9 +191,22 @@ async def _build_subscription_layer(
     den Manager verdrahtet. Sonst (oder bei Connect-Fehler) wird der
     klassische Polling-Manager gebaut. ``override_manager`` hat Vorrang
     und ueberspringt jede WS-Heuristik (Test-Pfad).
+
+    Im TWS-Backend (``tws_quotes_service`` gesetzt) wird der TWS-Quotes-
+    Service als Stream-Quelle benutzt - der bedient via ``subscribe(...)``
+    dasselbe Interface wie der ``SubscriptionManager``. cp-Polling-
+    bzw. WS-Pfad wird in dem Fall nicht aufgebaut.
     """
     if override_manager is not None:
         return override_manager, StatusProbe(), None, None
+
+    if tws_quotes_service is not None:
+        return (
+            cast(SubscriptionManager, tws_quotes_service),
+            StatusProbe(),
+            None,
+            None,
+        )
 
     requested = _read_quotes_source()
     if requested != "ws":
@@ -403,11 +418,17 @@ def create_app(
             inst_service = InstrumentsService(
                 cast(CPGatewayClient, services_client)
             )
-        qts_service = (
-            quotes_service
-            if quotes_service is not None
-            else QuotesService(cast(CPGatewayClient, services_client))
-        )
+        # AP `2a203c58-...` Phase 3: TWS-Backend bekommt TWSQuotesService
+        # (ib_async-basiert), der sowohl Snapshot als auch Stream bedient.
+        # cp-Pfad bleibt fuer Profile cp-legacy aktiv.
+        owned_tws_quotes: TWSQuotesService | None = None
+        if quotes_service is not None:
+            qts_service = quotes_service
+        elif owned_tws_for_health is not None:
+            owned_tws_quotes = TWSQuotesService(owned_tws_for_health)
+            qts_service = cast(QuotesService, owned_tws_quotes)
+        else:
+            qts_service = QuotesService(cast(CPGatewayClient, services_client))
         cal_service = (
             calendar_service
             if calendar_service is not None
@@ -521,6 +542,7 @@ def create_app(
             inst_service=inst_service,
             cal_service=cal_service,
             override_manager=subscription_manager,
+            tws_quotes_service=owned_tws_quotes,
         )
 
         actual_metrics.attach_live_collector(
