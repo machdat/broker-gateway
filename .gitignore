@@ -86,3 +86,6 @@ ops/cpgateway/clientportal.gw/
 
 # CP Gateway runtime artifacts (compose-Volume-Mount: Logs, Session-Cookies)
 var/cpgateway/
+
+# uv (Dependency-Lockfile, lokal)
+uv.lock
