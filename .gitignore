@@ -73,6 +73,9 @@ secrets/
 # Docker volume mounts
 data/
 logs/
+# Ausnahme: statische Calendar-Daten fuer den TWS-Adapter
+!src/broker_gateway/tws/data/
+!src/broker_gateway/tws/data/**
 
 # IBKR CP Gateway build inputs - Tarball wird separat von IBKR bezogen,
 # nie eingecheckt. SHA256-Pruefsumme (clientportal.gw.tar.gz.sha256) wird

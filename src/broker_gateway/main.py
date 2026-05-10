@@ -81,6 +81,7 @@ from broker_gateway.tws import (
     TWSLifecycle,
     TWSLifecycleCpAdapter,
 )
+from broker_gateway.tws.calendar import TWSCalendarService
 from broker_gateway.tws.instruments import TWSInstrumentsService
 from broker_gateway.tws.orders import (
     TWSOrdersBootstrapLoader,
@@ -435,11 +436,17 @@ def create_app(
             qts_service = cast(QuotesService, owned_tws_quotes)
         else:
             qts_service = QuotesService(cast(CPGatewayClient, services_client))
-        cal_service = (
-            calendar_service
-            if calendar_service is not None
-            else CalendarService(cast(CPGatewayClient, services_client))
-        )
+        # AP `2a203c58-...` Phase 5: TWS-Backend bekommt einen
+        # TWSCalendarService mit Static-Mapping (deterministische
+        # Trading-Hours + Holiday-Liste). cp-Pfad bleibt fuer Profile
+        # cp-legacy aktiv. Cast wegen Duck-Typing - keine Subklasse
+        # von CalendarService, aber gleiche Public-API.
+        if calendar_service is not None:
+            cal_service = calendar_service
+        elif owned_tws_for_health is not None:
+            cal_service = cast(CalendarService, TWSCalendarService())
+        else:
+            cal_service = CalendarService(cast(CPGatewayClient, services_client))
         orders_broadcaster = OrdersBroadcaster()
         sor_adapter = SorTopicAdapter()
         # AP `2a203c58-...` Phase 4: BG_BACKEND=tws bekommt einen
