@@ -1,25 +1,24 @@
-"""Tests fuer broker_gateway.tws.portfolio (Karte 23a368ee, Phase 1).
+"""Tests fuer broker_gateway.tws.portfolio (Karte 23a368ee, Phase 1;
+Subscribe-Cache-Fix in Karte 4c5b226d, v2.1.1).
 
 Coverage-Ziel: >=90% fuer src/broker_gateway/tws/portfolio.py.
 
 Mock-Strategie: TWSClient.``_ib`` wird durch einen SimpleNamespace
-ersetzt, der die ib_async-Methoden ``reqAccountUpdatesAsync``,
+ersetzt, der die ib_async-Methoden ``reqAccountUpdates`` (sync),
 ``portfolio()``, ``accountValues(account)`` simuliert. Die Test-Daten
 sind an die 18 Symbole des Live-Accounts U25235077 angelehnt (siehe
 Memory ``project_post_cutover_http_api_holdout``).
 """
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import MagicMock
 
 from broker_gateway.tws.portfolio import (
     Ledger,
-    LedgerEntry,
     PortfolioSummary,
     Position,
     TWSPortfolioService,
@@ -110,7 +109,7 @@ def _make_client(
         return list(values)
 
     ib = SimpleNamespace(
-        reqAccountUpdatesAsync=AsyncMock(return_value=None),
+        reqAccountUpdates=MagicMock(return_value=None),
         portfolio=MagicMock(return_value=list(items)),
         accountValues=MagicMock(
             side_effect=_account_values
@@ -192,8 +191,10 @@ class TestPositions:
         client = _make_client(portfolio_items=[])
         service = TWSPortfolioService(client)
         await service.positions("U25235077")
-        client._ib.reqAccountUpdatesAsync.assert_awaited_once_with(
-            "U25235077"
+        # Sync-Subscribe-Frame, nicht await: reqAccountUpdatesAsync haengt
+        # bei Re-Subscribes (Memory project_tws_portfolio_resubscribe_hang).
+        client._ib.reqAccountUpdates.assert_called_once_with(
+            True, "U25235077"
         )
 
     async def test_positions_without_filter_returns_all(self) -> None:
@@ -418,3 +419,90 @@ class TestSchemaCompat:
         service = TWSPortfolioService(client)
         # Darf nicht raisen, kein Side-Effect
         assert service.invalidate("U25235077") is None
+
+
+# --------------------------------------------------------------------------
+# _ensure_subscribed - Resubscribe-Hang-Bug-Fix (Karte 4c5b226d, v2.1.1)
+# --------------------------------------------------------------------------
+
+
+class TestEnsureSubscribed:
+    """Verriegelt den Subscribe-Cache gegen Resubscribe-Hangs.
+
+    Hintergrund: ``ib.reqAccountUpdatesAsync(account_id)`` resolvet nur
+    beim allerersten ``accountDownloadEnd``-Trigger pro Account; ein
+    zweiter Aufruf haengt indefinit. Der Service muss deshalb pro
+    Account genau einmal subscriben - und zwar synchron via
+    ``ib.reqAccountUpdates(True, account_id)`` (Fire-and-Forget).
+    """
+
+    async def test_subscribe_idempotent_across_calls(self) -> None:
+        client = _make_client(portfolio_items=[])
+        service = TWSPortfolioService(client)
+        await service.positions("U25235077")
+        await service.positions("U25235077")
+        await service.summary("U25235077")
+        client._ib.reqAccountUpdates.assert_called_once_with(
+            True, "U25235077"
+        )
+
+    async def test_subscribe_lock_serializes_concurrent_first_calls(
+        self,
+    ) -> None:
+        # Zwei parallele Calls duerfen nicht beide den Subscribe-Frame
+        # senden - der asyncio.Lock muss greifen.
+        client = _make_client(portfolio_items=[])
+        service = TWSPortfolioService(client)
+        await asyncio.gather(
+            service.positions("U25235077"),
+            service.positions("U25235077"),
+        )
+        assert client._ib.reqAccountUpdates.call_count == 1
+
+    async def test_empty_account_id_skips_subscribe(self) -> None:
+        # positions("") liest den Wildcard-Cache ohne Subscribe -
+        # ib.portfolio() liefert dann den primaer-Account-Cache.
+        client = _make_client(portfolio_items=[])
+        service = TWSPortfolioService(client)
+        await service.positions("")
+        client._ib.reqAccountUpdates.assert_not_called()
+
+    async def test_invalidate_does_not_clear_subscribe_cache(self) -> None:
+        # invalidate() bleibt no-op auch bei Subscribe-Cache - die
+        # ib_async-Daten sind durch updatePortfolio-Events frisch,
+        # ein Resubscribe wuerde nur den Hang-Bug riskieren.
+        client = _make_client(portfolio_items=[])
+        service = TWSPortfolioService(client)
+        await service.positions("U25235077")
+        service.invalidate("U25235077")
+        await service.positions("U25235077")
+        client._ib.reqAccountUpdates.assert_called_once_with(
+            True, "U25235077"
+        )
+
+    async def test_different_accounts_subscribe_independently(self) -> None:
+        # Multi-Account-Pfad: jeder Account braucht seinen eigenen
+        # Subscribe genau einmal.
+        client = _make_client(portfolio_items=[])
+        service = TWSPortfolioService(client)
+        await service.positions("U25235077")
+        await service.positions("DUP799747")
+        await service.positions("U25235077")
+        await service.positions("DUP799747")
+        assert client._ib.reqAccountUpdates.call_count == 2
+        calls = {
+            args[0]
+            for args in client._ib.reqAccountUpdates.call_args_list
+        }
+        assert calls == {(True, "U25235077"), (True, "DUP799747")}
+
+    async def test_missing_req_account_updates_is_tolerated(self) -> None:
+        # Falls eine Mock-/Stub-Implementierung reqAccountUpdates nicht
+        # exponiert (z.B. ein minimaler Test-Stub), darf das Service-
+        # Modul nicht crashen - der Subscribe-Cache wird trotzdem
+        # gefuellt.
+        client = _make_client(portfolio_items=[])
+        del client._ib.reqAccountUpdates
+        service = TWSPortfolioService(client)
+        await service.positions("U25235077")
+        assert "U25235077" in service._subscribed_accounts

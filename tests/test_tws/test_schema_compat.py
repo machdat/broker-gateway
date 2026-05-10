@@ -30,12 +30,8 @@ faellt durch Punkt 3.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import MagicMock
 
 # cp-Modelle (Single-Source-of-Truth)
 from broker_gateway.cp.calendar import (
@@ -269,7 +265,9 @@ def _make_tws_portfolio_client() -> MagicMock:
         return []
 
     ib = SimpleNamespace(
-        reqAccountUpdatesAsync=AsyncMock(return_value=None),
+        # Sync-Subscribe-Frame; Async-Variante haengt bei Re-Subscribes
+        # (Memory project_tws_portfolio_resubscribe_hang).
+        reqAccountUpdates=MagicMock(return_value=None),
         portfolio=MagicMock(return_value=[item]),
         accountValues=MagicMock(side_effect=_account_values),
     )
