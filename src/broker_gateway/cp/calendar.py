@@ -133,6 +133,24 @@ class CalendarService:
         ]
         return sorted(live)
 
+    def time_zone_for(self, exchange_id: str) -> str | None:
+        """IANA-Zone fuer ``exchange_id`` aus dem Cache - oder ``None``,
+        wenn nicht (mehr) gecacht. Wird vom /v1/exchanges-List-Endpoint
+        genutzt; spiegelbildlich zum gleichnamigen Helper im
+        TWS-Calendar-Adapter, damit der Endpoint backend-agnostisch
+        bleibt."""
+        normalized = exchange_id.strip().upper()
+        entry = self._cache.get(normalized)
+        if entry is None or self._is_expired(entry):
+            return None
+        return entry.calendar.time_zone
+
+    def description_for(self, exchange_id: str) -> str | None:
+        """Boersenbeschreibung - fuer cp gibt es keine, daher immer
+        ``None``. Existiert nur fuer API-Parity mit
+        :class:`broker_gateway.tws.calendar.TWSCalendarService`."""
+        return None
+
     def _is_expired(self, entry: _CacheEntry) -> bool:
         delta = (self._clock() - entry.fetched_at).total_seconds()
         return delta >= self._ttl_s

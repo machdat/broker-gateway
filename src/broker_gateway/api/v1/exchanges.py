@@ -1,13 +1,21 @@
 """GET /v1/exchanges und /v1/exchanges/{exchange_id}/calendar.
 
-Liefert die Daten aus dem :class:`broker_gateway.cp.calendar.CalendarService`
-gemaess K6-Sektion 5.3 / Anhang C.4.
+Liefert die Daten aus einem CalendarService-Adapter (cp oder tws). Der
+Endpoint ist backend-agnostisch und nutzt die gemeinsame Public-API
+``cached_exchanges`` / ``time_zone_for`` / ``description_for`` / ``get``,
+die sowohl ``cp.calendar.CalendarService`` als auch
+``tws.calendar.TWSCalendarService`` implementieren.
+
+AP ``2a203c58-...`` Phase 5: Bei leerem ``cached_exchanges`` antwortet
+``GET /v1/exchanges`` mit HTTP 503 + ``calendar_unavailable`` statt
+HTTP 200 + leerem Array. Damit endet die stille Regression im cp-Pfad,
+die bei DNS-Fehler auf cpgateway zu einem getarnten Defekt fuehrte.
 """
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field
 
 from broker_gateway.auth.middleware import require_scope
@@ -31,7 +39,7 @@ class ExchangeListEntry(BaseModel):
     description: str | None = None
     time_zone: str | None = Field(
         default=None,
-        description="IANA-Zone aus dem zuletzt gefetchten Schedule",
+        description="IANA-Zone aus dem Calendar-Backend",
     )
 
 
@@ -50,7 +58,7 @@ def get_calendar_service() -> CalendarService:
 @router.get(
     "",
     response_model=ExchangeListResponse,
-    summary="Liste der bisher gesehenen Boersen (aus dem Schedule-Cache)",
+    summary="Liste der bekannten Boersen",
 )
 async def list_exchanges(
     _scope: Annotated[Token, Depends(require_scope(SCOPE_INSTRUMENTS_READ))],
@@ -58,19 +66,25 @@ async def list_exchanges(
     service: Annotated[CalendarService, Depends(get_calendar_service)],
 ) -> ExchangeListResponse:
     cached = service.cached_exchanges
-    entries: list[ExchangeListEntry] = []
-    for exchange_id in cached:
-        entry_cache = service._cache.get(exchange_id)  # noqa: SLF001
-        time_zone = (
-            entry_cache.calendar.time_zone if entry_cache is not None else None
+    if not cached:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "calendar_unavailable",
+                "message": (
+                    "Keine Boersenkalender verfuegbar - das Calendar-"
+                    "Backend hat keine Daten geladen."
+                ),
+            },
         )
-        entries.append(
-            ExchangeListEntry(
-                exchange_id=exchange_id,
-                description=None,
-                time_zone=time_zone,
-            )
+    entries = [
+        ExchangeListEntry(
+            exchange_id=exchange_id,
+            description=service.description_for(exchange_id),
+            time_zone=service.time_zone_for(exchange_id),
         )
+        for exchange_id in cached
+    ]
     return ExchangeListResponse(
         exchanges=entries,
         cached_calendars=len(entries),

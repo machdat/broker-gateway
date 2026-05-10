@@ -128,11 +128,15 @@ def _schedule_payload() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def test_list_exchanges_starts_empty(client: TestClient) -> None:
+def test_list_exchanges_503_when_empty(client: TestClient) -> None:
+    """AP `2a203c58-...` Phase 5: bei leerem Calendar-Cache antwortet
+    /v1/exchanges mit HTTP 503 + ``calendar_unavailable`` statt mit
+    HTTP 200 + leerem Array. Damit endet die stille Regression im
+    cp-Pfad bei DNS-Fehler auf cpgateway."""
     response = client.get("/v1/exchanges", headers=_auth_headers())
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
-    assert body == {"exchanges": [], "cached_calendars": 0}
+    assert body["error"]["code"] == "calendar_unavailable"
 
 
 def test_list_exchanges_lists_after_calendar_fetch(

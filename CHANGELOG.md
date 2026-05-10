@@ -4,6 +4,60 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.9] — 2026-05-10 (HTTP-API: Calendar/Exchanges auf TWS-Backend umgestellt, AP `2a203c58` Phase 5)
+
+Karte `4de0be6a`. Fuenfte Phase des Cutover-Hold-out-AP. Beide Calendar-
+Endpoints werden im `BG_BACKEND=tws`-Pfad jetzt vom neuen
+`TWSCalendarService` (Static-Mapping) bedient: `GET /v1/exchanges` und
+`GET /v1/exchanges/{exchange_id}/calendar`. Vorher: HTTP 200 mit leerem
+Body `{"exchanges":[],"cached_calendars":0}` wegen DNS-Fehler auf
+cpgateway - **Defekt-getarnt unter HTTP 200**, gefaehrlicher als die
+500er der anderen Phasen.
+
+- Strategie-Entscheidung: Static-Mapping statt ib_async-Brueckenpfad
+  (`reqContractDetailsAsync` + Trading-Hours-String-Parsing).
+  Begruendung: deterministisch testbar, keine pro-Anfrage-Roundtrips
+  zum IB Gateway, keine zusaetzliche Dependency wie
+  `pandas_market_calendars`. Wartung der Holiday-Liste per jaehrlicher
+  Folgekarte.
+- Neu: `src/broker_gateway/tws/calendar.py` mit `TWSCalendarService`.
+  Public-API ist 1:1 kompatibel zu `cp.CalendarService`
+  (`get(exchange_id, *, symbol=None)` + `cached_exchanges`-Property +
+  neue `time_zone_for(...)` / `description_for(...)`-Helper).
+- Neu: `src/broker_gateway/tws/data/exchange_calendar.json` mit den
+  haeufigen US-Exchanges (NYSE, NASDAQ, ARCA, AMEX, BATS, IEX,
+  NYSENAT) und Holiday-Liste fuer 2026 + 2027 inkl. Half-Days
+  (Black Friday, Christmas Eve, Day-before-Independence-Day).
+  Quelle: NYSE Hours & Calendar.
+- `cp.CalendarService` bekommt neue `time_zone_for(...)`- und
+  `description_for(...)`-Helper, damit `api/v1/exchanges.py` nicht mehr
+  direkt auf `service._cache.get(...)` zugreift - der Endpoint ist
+  jetzt backend-agnostisch und nutzt nur noch die gemeinsame
+  Public-API.
+- 503-Fix in `api/v1/exchanges.py`: bei leerem `cached_exchanges`
+  antwortet `GET /v1/exchanges` mit HTTP 503 + structured-error
+  `{"code":"calendar_unavailable", ...}`. Damit endet die stille
+  Regression im cp-Pfad: bei DNS-Fehler oder cpgateway-Down ist die
+  Antwort jetzt eindeutig fehlerhaft, statt unter HTTP 200 zu
+  verstecken. Im TWS-Modus liefert das Static-Mapping immer eine
+  nicht-leere Liste, der 503-Pfad bleibt cp-Backend mit DNS-Fehler
+  vorbehalten.
+- Backend-Switch in `src/broker_gateway/main.py`: TWS-Modus haengt
+  `TWSCalendarService` unter `app.state.calendar_service`. Cast wegen
+  Duck-Typing - keine Subklasse von `CalendarService`, aber gleiche
+  Public-API.
+- Tests: `tests/test_tws/test_calendar.py` (34 Tests, 98 % Coverage),
+  `tests/test_main_backend_switch.py` um 2 Faelle erweitert (TWS- und
+  cp-Backend-Switch fuer den CalendarService),
+  `tests/test_exchanges_api.py` um den 503-Test erweitert (alter
+  `test_list_exchanges_starts_empty` umgebaut zu
+  `test_list_exchanges_503_when_empty`, weil er genau den Bug
+  testete, den die Karte fixt).
+- Volle Suite: 1078 passed, 4 skipped (vorher 1042).
+
+Live-Deploy aufgeschoben - kommt mit Phase 7 zusammen, damit nicht
+fuer jede Phase einzeln eine 2FA-Episode anfaellt.
+
 ## [2.0.8] — 2026-05-10 (HTTP-API: Orders + Trades auf TWS-Backend umgestellt, AP `2a203c58` Phase 4)
 
 Karte `064fa82d`. Vierte Phase des Cutover-Hold-out-AP. Vier Order-/Trade-
