@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # cp-Modelle (Single-Source-of-Truth)
 from broker_gateway.cp.calendar import (
@@ -265,9 +265,9 @@ def _make_tws_portfolio_client() -> MagicMock:
         return []
 
     ib = SimpleNamespace(
-        # Sync-Subscribe-Frame; Async-Variante haengt bei Re-Subscribes
-        # (Memory project_tws_portfolio_resubscribe_hang).
-        reqAccountUpdates=MagicMock(return_value=None),
+        # Async-Subscribe-Variante mit asyncio.wait_for-Timeout im
+        # Service (Memory project_tws_portfolio_resubscribe_hang).
+        reqAccountUpdatesAsync=AsyncMock(return_value=None),
         portfolio=MagicMock(return_value=[item]),
         accountValues=MagicMock(side_effect=_account_values),
     )
