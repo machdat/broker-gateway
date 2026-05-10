@@ -755,3 +755,132 @@ class TestCpClientHardGuard:
             # will, soll einen AttributeError sehen statt einen blinden
             # Call gegen einen nicht-funktionalen cpgateway-Container.
             assert not hasattr(app.state, "cp_client")
+
+
+# --------------------------------------------------------------------------
+# AP `2a203c58-...` Phase 7: Vollstaendigkeits-Sammelassertion
+# --------------------------------------------------------------------------
+
+
+class TestEndpointFamilyCompleteness:
+    """Pro Modus eine Sammelassertion ueber alle Endpoint-Familien
+    aus der AP-Karte (Portfolio, Instruments, Quotes, Orders, Trades,
+    Calendar, plus die Phase-6-Felder ``backend`` und ``cp_client``).
+
+    Die einzelnen Assertions sind in den Klassen oben jeweils einzeln
+    abgedeckt; dieser Sammelttest verriegelt zusaetzlich, dass keine
+    Endpoint-Familie versehentlich aus dem Backend-Switch faellt -
+    z.B. wenn jemand spaeter eine neue Service-Familie hinzufuegt und
+    vergisst, sie an den BG_BACKEND-Switch zu haengen.
+    """
+
+    def _patch_tws_connect(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        async def _fake_connect(self_: Any) -> None:
+            self_._client_id = 100
+
+        async def _fake_disconnect(self_: Any) -> None:
+            pass
+
+        def _fake_is_connected(self_: Any) -> bool:
+            return True
+
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.connect", _fake_connect
+        )
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.disconnect", _fake_disconnect
+        )
+        monkeypatch.setattr(
+            "broker_gateway.tws.client.TWSClient.is_connected",
+            _fake_is_connected,
+        )
+
+    def test_tws_mode_wires_all_endpoint_families(
+        self,
+        store: InMemoryTokenStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from broker_gateway.tws.calendar import TWSCalendarService
+        from broker_gateway.tws.instruments import TWSInstrumentsService
+        from broker_gateway.tws.orders import (
+            TWSOrdersBootstrapLoader,
+            TWSOrdersService,
+            TWSOrdersStreamPump,
+        )
+        from broker_gateway.tws.portfolio import TWSPortfolioService
+        from broker_gateway.tws.quotes import TWSQuotesService
+        from broker_gateway.tws.trades import TWSTradesService
+
+        monkeypatch.setenv("BG_BACKEND", "tws")
+        _ensure_admin_env(monkeypatch)
+        self._patch_tws_connect(monkeypatch)
+
+        app = create_app(store=store)
+        with TestClient(app):
+            # Phase 6: Backend-Selbstauskunft + Hard-Guard.
+            assert app.state.backend == "tws"
+            assert not hasattr(app.state, "cp_client")
+            # Phase 1-5: alle Endpoint-Familien.
+            assert isinstance(app.state.portfolio_service, TWSPortfolioService)
+            assert isinstance(
+                app.state.instruments_service, TWSInstrumentsService
+            )
+            assert isinstance(app.state.quotes_service, TWSQuotesService)
+            assert app.state.subscription_manager is app.state.quotes_service
+            assert isinstance(app.state.orders_service, TWSOrdersService)
+            assert isinstance(app.state.trades_service, TWSTradesService)
+            assert isinstance(
+                app.state.orders_bootstrap_loader, TWSOrdersBootstrapLoader
+            )
+            assert isinstance(
+                app.state.orders_stream_pump, TWSOrdersStreamPump
+            )
+            assert isinstance(app.state.calendar_service, TWSCalendarService)
+
+    def test_cp_mode_wires_all_endpoint_families(
+        self,
+        store: InMemoryTokenStore,
+        cp_gateway_mock: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from broker_gateway.api.v1.orders_stream import OrdersBootstrapLoader
+        from broker_gateway.cp.calendar import CalendarService
+        from broker_gateway.cp.instruments import InstrumentsService
+        from broker_gateway.cp.orders import OrdersService
+        from broker_gateway.cp.portfolio import PortfolioService
+        from broker_gateway.cp.quotes import QuotesService
+        from broker_gateway.cp.trades import TradesService
+        from broker_gateway.streams.manager import SubscriptionManager
+
+        monkeypatch.setenv("BG_BACKEND", "cp")
+        _ensure_admin_env(monkeypatch)
+        cp_client = CPGatewayClient(base_url=cp_gateway_mock.base_url)
+        lifecycle = AuthLifecycle(
+            cp_client,
+            tickle_interval_s=10.0,
+            reauth_max_retries=1,
+            reauth_backoff_s=0.0,
+        )
+        app = create_app(store=store, lifecycle=lifecycle)
+        with TestClient(app):
+            # Phase 6: Backend-Selbstauskunft + Hard-Guard exponiert.
+            assert app.state.backend == "cp"
+            assert hasattr(app.state, "cp_client")
+            assert isinstance(app.state.cp_client, CPGatewayClient)
+            # Phase 1-5: alle Endpoint-Familien gehen ueber cp.
+            assert isinstance(app.state.portfolio_service, PortfolioService)
+            assert isinstance(
+                app.state.instruments_service, InstrumentsService
+            )
+            assert isinstance(app.state.quotes_service, QuotesService)
+            assert isinstance(
+                app.state.subscription_manager, SubscriptionManager
+            )
+            assert isinstance(app.state.orders_service, OrdersService)
+            assert isinstance(app.state.trades_service, TradesService)
+            assert isinstance(
+                app.state.orders_bootstrap_loader, OrdersBootstrapLoader
+            )
+            # Im cp-Mode wird KEIN TWSOrdersStreamPump gestartet.
+            assert app.state.orders_stream_pump is None
+            assert isinstance(app.state.calendar_service, CalendarService)

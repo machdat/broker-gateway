@@ -4,6 +4,78 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.1.0] — 2026-05-10 (AP `2a203c58` Phase 7: Schema-Compat-Tests + Doku-Sweep + AP-Abschluss)
+
+Karte `90034b6f`. Siebte und letzte Phase des HTTP-API-Cutover-Hold-out-AP.
+Schliesst AP `2a203c58-63fb-4e0b-ad89-f62158ffc734` ab und ist die
+Minor-Version, weil sie den End-State des Cutovers dokumentiert (alle
+Daten-Adapter via TWS, cp-Pfad nur noch Profile cp-legacy fuer
+Roll-Back).
+
+- **Neuer Test:** `tests/test_tws/test_schema_compat.py` (22 Tests)
+  verriegelt die Schema-Identitaet zwischen cp- und tws-Adaptern auf
+  drei Ebenen: (a) Class-Identity per `tws.X.Y is cp.X.Y`-Assertion
+  (Pydantic-Klassen werden geteilt, nicht dupliziert), (b) Field-Set-
+  Snapshot pro Modell als expliziter Vertrag (Position, Ledger,
+  LedgerEntry, PortfolioSummary, Instrument, InstrumentDetail, Quote,
+  Trade, TradesAggregate, ExchangeCalendar, CalendarDay,
+  CalendarSession), (c) Service-Output-Schema (gleicher Mock-Input
+  liefert in beiden Backends ein Pydantic-Modell mit identischer Top-
+  Level-Feldmenge). Der Test ist die einzige laufende Garantie, dass
+  der HTTP-API-Vertrag (`/v1/...`) zwischen cp und tws byte-stabil
+  bleibt.
+- **Erweiterung:** `tests/test_main_backend_switch.py` bekommt eine
+  neue Klasse `TestEndpointFamilyCompleteness` mit zwei Sammelassertions
+  (cp + tws), die alle Endpoint-Familien aus der AP-Karte (Portfolio,
+  Instruments, Quotes + SubscriptionManager, Orders, Trades,
+  OrdersBootstrapLoader, OrdersStreamPump, Calendar) plus die Phase-6-
+  Felder (`backend`, `cp_client`) auf einmal verriegeln. Verhindert,
+  dass eine Endpoint-Familie versehentlich aus dem Backend-Switch
+  faellt.
+- **Doku-Sweep (5 Dateien):**
+  - `README.md`: Status-Block aktualisiert (v2.1.0 — AP-Abschluss-Stand;
+    AP-Phasen 1-7 verlinkt). Backend-Tabelle Auth-Lifecycle: tws ist
+    Default, cp nur Profile cp-legacy. ENV-Tabelle: `BG_BACKEND` Default
+    von `cp` auf `tws` korrigiert. Container-Stack-Abschnitt: tws-
+    Service ist Stack-Member, cpgateway nur Profile cp-legacy. Footer
+    auf v2.1.0.
+  - `docs/02-architecture.md` Section 5: Schema-Garantie zwischen
+    `cp/`- und `tws/`-Modulen explizit dokumentiert (gleiche Pydantic-
+    Modelle, verriegelt durch test_schema_compat.py). Section 5.1 (TWS-
+    Backend-Adapter): Ueberschrift auf "Default seit v2.0.0", Tabelle
+    auf tws-zuerst umsortiert. "Out-of-Scope dieser Karte"-Absatz aus
+    v1.34.0 ersetzt durch aktuelle Service-Schicht-Status-Tabelle (alle
+    Endpoint-Familien mit zugehoerigen TWS-Service-Klassen) plus Hard-
+    Guard-Sektion (`app.state.backend`, `app.state.cp_client`,
+    seed-cookies-503).
+  - `docs/api/v1.md` Section 14: neue Sub-Section 14.2 "HTTP-API-Cutover-
+    Hold-out (AP `2a203c58`, v2.0.5–2.1.0, Mai 2026)". Phasen-Tabelle
+    mit Karten-IDs und Versionen. Schema-Drift-Statement ("keiner") mit
+    Verweis auf test_schema_compat.py. Konsumenten-Vertrag-Stabilitaet
+    explizit dokumentiert.
+  - `docs/03-deployment.md` Section 6.1 (neu): TWS-Recovery-Workflow
+    nach Saturday-Reset / `connected=false`. Force-recreate-Schritt
+    (NICHT restart!) + 2FA-Bestaetigung am Handy + gateway-restart +
+    Verifikations-curl. Memory-Verweise: `project_live_recovery_workflow`,
+    `project_live_2fa_gnzsnz_pattern`, `project_paper_login_no_2fa`,
+    `project_paper_tws_listener_drift`.
+  - `CHANGELOG.md`: dieser Eintrag.
+- **Version-Bump:** v2.0.10 → v2.1.0 in `pyproject.toml`,
+  `compose.yaml` (image-Tag), `src/broker_gateway/__init__.py` und
+  README-Footer. Minor-Bump weil AP-Abschluss + End-State-Dokumentation,
+  nicht nur Patch.
+- **Pi-Deploy:** wird gebuendelt mit der v2.1.0-Version durchgefuehrt
+  und schliesst die Phasen 1-7 in einer einzigen 2FA-Episode ab.
+  Smoke-Tests aus den Verifikations-Punkten der Phasen 1-6 werden
+  nach dem Deploy gegen Live (U25235077) und Paper (DUP799747)
+  abgearbeitet.
+
+**End-State nach diesem Release:** broker-gateway-Live ist im echten
+Sinne TWS-only — alle HTTP-Endpoints liefern Live-Daten via ib_async
+gegen `gnzsnz/ib-gateway:stable`. cpgateway-Pfad existiert nur noch
+unter Compose-Profile `cp-legacy` fuer Roll-Back. Memory-Update:
+`project_post_cutover_http_api_holdout` ist mit Phase 7 obsolet.
+
 ## [2.0.10] — 2026-05-10 (cp-Hold-out abgesichert: seed-cookies + cp_client-Hard-Guard, AP `2a203c58` Phase 6)
 
 Karte `e3104390`. Sechste Phase des Cutover-Hold-out-AP. Schliesst die
