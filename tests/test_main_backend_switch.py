@@ -650,3 +650,108 @@ class TestSwitchOwnedLifecycle:
             assert isinstance(
                 app.state.calendar_service, CalendarService
             )
+
+
+# --------------------------------------------------------------------------
+# AP `2a203c58-...` Phase 6: app.state.backend + cp_client-Hard-Guard
+# --------------------------------------------------------------------------
+
+
+class TestBackendStateField:
+    """app.state.backend muss in beiden Modi den passenden String
+    fuehren, damit Endpoints (z.B. /v1/internal/seed-cookies) eine
+    Single-Source-Of-Truth haben."""
+
+    def test_cp_backend_sets_backend_state_cp(
+        self,
+        store: InMemoryTokenStore,
+        cp_gateway_mock: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("BG_BACKEND", "cp")
+        _ensure_admin_env(monkeypatch)
+        cp_client = CPGatewayClient(base_url=cp_gateway_mock.base_url)
+        lifecycle = AuthLifecycle(
+            cp_client,
+            tickle_interval_s=10.0,
+            reauth_max_retries=1,
+            reauth_backoff_s=0.0,
+        )
+        app = create_app(store=store, lifecycle=lifecycle)
+        with TestClient(app):
+            assert app.state.backend == "cp"
+
+    def test_tws_backend_sets_backend_state_tws(
+        self,
+        store: InMemoryTokenStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("BG_BACKEND", "tws")
+        _ensure_admin_env(monkeypatch)
+
+        ib_mock = MagicMock()
+        ib_mock.isConnected = MagicMock(return_value=True)
+        ib_mock.connectAsync = MagicMock()
+        ib_mock.disconnect = MagicMock()
+        from broker_gateway.tws.client import TWSClient
+
+        client = TWSClient(ib=ib_mock, paper=True)
+        adapter = TWSLifecycleCpAdapter(
+            TWSLifecycle(client, heartbeat_interval_s=10.0)
+        )
+        app = create_app(store=store, lifecycle=adapter)
+        with TestClient(app):
+            assert app.state.backend == "tws"
+
+
+class TestCpClientHardGuard:
+    """app.state.cp_client darf nur im cp-Mode existieren. Im tws-Mode
+    bekommen Konsumenten AttributeError - das ist der bewusste
+    Hard-Guard aus Phase 6."""
+
+    def test_cp_backend_exposes_cp_client(
+        self,
+        store: InMemoryTokenStore,
+        cp_gateway_mock: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("BG_BACKEND", "cp")
+        _ensure_admin_env(monkeypatch)
+        cp_client = CPGatewayClient(base_url=cp_gateway_mock.base_url)
+        lifecycle = AuthLifecycle(
+            cp_client,
+            tickle_interval_s=10.0,
+            reauth_max_retries=1,
+            reauth_backoff_s=0.0,
+        )
+        app = create_app(store=store, lifecycle=lifecycle)
+        with TestClient(app):
+            # Bei cp-Mode existiert app.state.cp_client (und ist ein
+            # CPGatewayClient).
+            assert hasattr(app.state, "cp_client")
+            assert isinstance(app.state.cp_client, CPGatewayClient)
+
+    def test_tws_backend_does_not_expose_cp_client(
+        self,
+        store: InMemoryTokenStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("BG_BACKEND", "tws")
+        _ensure_admin_env(monkeypatch)
+
+        ib_mock = MagicMock()
+        ib_mock.isConnected = MagicMock(return_value=True)
+        ib_mock.connectAsync = MagicMock()
+        ib_mock.disconnect = MagicMock()
+        from broker_gateway.tws.client import TWSClient
+
+        client = TWSClient(ib=ib_mock, paper=True)
+        adapter = TWSLifecycleCpAdapter(
+            TWSLifecycle(client, heartbeat_interval_s=10.0)
+        )
+        app = create_app(store=store, lifecycle=adapter)
+        with TestClient(app):
+            # Hard-Guard: kein cp_client im tws-Mode. Wer drauf zugreifen
+            # will, soll einen AttributeError sehen statt einen blinden
+            # Call gegen einen nicht-funktionalen cpgateway-Container.
+            assert not hasattr(app.state, "cp_client")

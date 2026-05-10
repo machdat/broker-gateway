@@ -353,6 +353,13 @@ def create_app(
         # ersten Lifespan-Run (uvicorn / TestClient).
         validate_runtime_config()
         actual_throttle = actual_throttle_outer
+        # AP `2a203c58-...` Phase 6: Backend-Selbstauskunft fuer
+        # Endpoint-seitige Pruefungen (z.B. /v1/internal/seed-cookies,
+        # das im tws-Mode 503 + not_applicable_in_tws_mode liefert).
+        # Single-Source: backend_kind() liest BG_BACKEND und faellt bei
+        # ungueltigem Wert mit Warning auf "cp" zurueck.
+        selected_backend = backend_kind()
+        app.state.backend = selected_backend
         owns_lifecycle = lifecycle is None
         # Karte 33cb35b1 Phase 3: BG_BACKEND=tws baut einen TWSLifecycle,
         # der per TWSLifecycleCpAdapter das Interface der CP-AuthLifecycle
@@ -363,7 +370,6 @@ def create_app(
         # und /v1/internal/tws-health bleiben aber konsistent.
         owned_tws_for_health: TWSClient | None = None
         if owns_lifecycle:
-            selected_backend = backend_kind()
             if selected_backend == "tws":
                 client = None
                 pool = ClientIdPool()
@@ -410,6 +416,15 @@ def create_app(
 
         app.state._owns_services_client = services_owned
         app.state._services_client = services_client
+
+        # AP `2a203c58-...` Phase 6: cp_client als Hard-Guard. Wird
+        # ausschliesslich im cp-Mode exponiert. Im tws-Mode existiert
+        # das Attribut bewusst nicht - Konsumenten, die den cp-Client
+        # erwarten, bekommen AttributeError und damit eine deutliche
+        # Fehlersignatur statt eines stillen Calls gegen einen
+        # nicht-funktionalen cpgateway-Container.
+        if selected_backend == "cp" and services_client is not None:
+            app.state.cp_client = services_client
 
         # AP `2a203c58-...` Phase 2: BG_BACKEND=tws → TWSInstrumentsService
         # (ib_async-basiert), sonst cp.InstrumentsService. Cast wegen Duck-

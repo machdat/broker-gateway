@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.0.9
+    image: broker-gateway:2.0.10
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den

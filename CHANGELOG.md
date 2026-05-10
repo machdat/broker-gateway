@@ -4,6 +4,36 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.0.10] — 2026-05-10 (cp-Hold-out abgesichert: seed-cookies + cp_client-Hard-Guard, AP `2a203c58` Phase 6)
+
+Karte `e3104390`. Sechste Phase des Cutover-Hold-out-AP. Schliesst die
+beiden letzten cp-Lecks im tws-Backend, bevor Phase 7 das Doku-Sweep + den
+Pi-Deploy buendelt.
+
+- `src/broker_gateway/main.py` setzt jetzt `app.state.backend = "cp"|"tws"`
+  als Single-Source-Of-Truth fuer Endpoint-seitige Backend-Pruefungen
+  (statt `os.environ.get("BG_BACKEND")` an verstreuten Stellen). Wert
+  kommt aus `backend_kind()`, der ungueltige ENV-Werte mit Warning auf
+  `"cp"` zurueckfaellt.
+- Neuer Hard-Guard: `app.state.cp_client` wird **nur noch** im cp-Mode
+  exponiert. Im tws-Mode existiert das Attribut bewusst nicht — wer
+  einen cp-Client erwartet, sieht jetzt einen `AttributeError` statt
+  einen blinden Call gegen einen nicht-funktionalen cpgateway-Container.
+- `POST /v1/internal/seed-cookies` ist backend-aware: bei `BG_BACKEND=tws`
+  antwortet der Endpoint mit HTTP 503 + structured-error
+  `{"code":"not_applicable_in_tws_mode","message":"... nur unter Profile
+  cp-legacy verfuegbar."}`, ohne den Lifecycle anzufassen. Vorher: 500
+  bei direktem Zugriff auf `lifecycle.client` (TWSLifecycleCpAdapter
+  hat kein `client`-Property). Im cp-Mode bleibt der Endpoint
+  unveraendert, inkl. ssodh/init-Trigger und Services-Client-Sync.
+- Tests: `tests/test_admin_seed_cookies.py` um 2 Faelle erweitert
+  (503 bei tws-Mode + Adapter-Schutz). `tests/test_main_backend_switch.py`
+  bekommt zwei neue Klassen: `TestBackendStateField` (string in beiden
+  Modi korrekt) und `TestCpClientHardGuard` (Attribut existiert nur
+  im cp-Mode).
+- Volle Suite: 1084 passed, 4 skipped (+6 vs 2.0.9). Phase 7 buendelt
+  den Pi-Deploy aller Phasen 1-6.
+
 ## [2.0.9] — 2026-05-10 (HTTP-API: Calendar/Exchanges auf TWS-Backend umgestellt, AP `2a203c58` Phase 5)
 
 Karte `4de0be6a`. Fuenfte Phase des Cutover-Hold-out-AP. Beide Calendar-
