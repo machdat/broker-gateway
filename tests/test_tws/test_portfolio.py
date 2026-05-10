@@ -1,10 +1,10 @@
 """Tests fuer broker_gateway.tws.portfolio (Karte 23a368ee, Phase 1;
-Subscribe-Cache-Fix in Karte 4c5b226d, v2.1.1).
+Subscribe-Cache-Fix in Karte 4c5b226d, v2.1.1+).
 
 Coverage-Ziel: >=90% fuer src/broker_gateway/tws/portfolio.py.
 
 Mock-Strategie: TWSClient.``_ib`` wird durch einen SimpleNamespace
-ersetzt, der die ib_async-Methoden ``reqAccountUpdates`` (sync),
+ersetzt, der die ib_async-Methoden ``reqAccountUpdatesAsync``,
 ``portfolio()``, ``accountValues(account)`` simuliert. Die Test-Daten
 sind an die 18 Symbole des Live-Accounts U25235077 angelehnt (siehe
 Memory ``project_post_cutover_http_api_holdout``).
@@ -15,7 +15,7 @@ import asyncio
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from broker_gateway.tws.portfolio import (
     Ledger,
@@ -109,7 +109,7 @@ def _make_client(
         return list(values)
 
     ib = SimpleNamespace(
-        reqAccountUpdates=MagicMock(return_value=None),
+        reqAccountUpdatesAsync=AsyncMock(return_value=None),
         portfolio=MagicMock(return_value=list(items)),
         accountValues=MagicMock(
             side_effect=_account_values
@@ -191,9 +191,12 @@ class TestPositions:
         client = _make_client(portfolio_items=[])
         service = TWSPortfolioService(client)
         await service.positions("U25235077")
-        # Sync-Subscribe-Frame, nicht await: reqAccountUpdatesAsync haengt
-        # bei Re-Subscribes (Memory project_tws_portfolio_resubscribe_hang).
-        client._ib.reqAccountUpdates.assert_called_once_with("U25235077")
+        # Subscribe via async-Variante mit hartem Timeout-Schutz
+        # gegen den Resubscribe-Hang (Memory
+        # project_tws_portfolio_resubscribe_hang).
+        client._ib.reqAccountUpdatesAsync.assert_awaited_once_with(
+            "U25235077"
+        )
 
     async def test_positions_without_filter_returns_all(self) -> None:
         items = [
@@ -440,7 +443,9 @@ class TestEnsureSubscribed:
         await service.positions("U25235077")
         await service.positions("U25235077")
         await service.summary("U25235077")
-        client._ib.reqAccountUpdates.assert_called_once_with("U25235077")
+        client._ib.reqAccountUpdatesAsync.assert_awaited_once_with(
+            "U25235077"
+        )
 
     async def test_subscribe_lock_serializes_concurrent_first_calls(
         self,
@@ -453,7 +458,7 @@ class TestEnsureSubscribed:
             service.positions("U25235077"),
             service.positions("U25235077"),
         )
-        assert client._ib.reqAccountUpdates.call_count == 1
+        assert client._ib.reqAccountUpdatesAsync.await_count == 1
 
     async def test_empty_account_id_skips_subscribe(self) -> None:
         # positions("") liest den Wildcard-Cache ohne Subscribe -
@@ -461,7 +466,7 @@ class TestEnsureSubscribed:
         client = _make_client(portfolio_items=[])
         service = TWSPortfolioService(client)
         await service.positions("")
-        client._ib.reqAccountUpdates.assert_not_called()
+        client._ib.reqAccountUpdatesAsync.assert_not_awaited()
 
     async def test_invalidate_does_not_clear_subscribe_cache(self) -> None:
         # invalidate() bleibt no-op auch bei Subscribe-Cache - die
@@ -472,7 +477,9 @@ class TestEnsureSubscribed:
         await service.positions("U25235077")
         service.invalidate("U25235077")
         await service.positions("U25235077")
-        client._ib.reqAccountUpdates.assert_called_once_with("U25235077")
+        client._ib.reqAccountUpdatesAsync.assert_awaited_once_with(
+            "U25235077"
+        )
 
     async def test_different_accounts_subscribe_independently(self) -> None:
         # Multi-Account-Pfad: jeder Account braucht seinen eigenen
@@ -483,20 +490,45 @@ class TestEnsureSubscribed:
         await service.positions("DUP799747")
         await service.positions("U25235077")
         await service.positions("DUP799747")
-        assert client._ib.reqAccountUpdates.call_count == 2
+        assert client._ib.reqAccountUpdatesAsync.await_count == 2
         calls = {
             args.args[0]
-            for args in client._ib.reqAccountUpdates.call_args_list
+            for args in client._ib.reqAccountUpdatesAsync.await_args_list
         }
         assert calls == {"U25235077", "DUP799747"}
 
     async def test_missing_req_account_updates_is_tolerated(self) -> None:
-        # Falls eine Mock-/Stub-Implementierung reqAccountUpdates nicht
-        # exponiert (z.B. ein minimaler Test-Stub), darf das Service-
-        # Modul nicht crashen - der Subscribe-Cache wird trotzdem
-        # gefuellt.
+        # Falls eine Mock-/Stub-Implementierung reqAccountUpdatesAsync
+        # nicht exponiert (z.B. ein minimaler Test-Stub), darf das
+        # Service-Modul nicht crashen - der Subscribe-Cache wird
+        # trotzdem gefuellt.
         client = _make_client(portfolio_items=[])
-        del client._ib.reqAccountUpdates
+        del client._ib.reqAccountUpdatesAsync
         service = TWSPortfolioService(client)
         await service.positions("U25235077")
+        assert "U25235077" in service._subscribed_accounts
+
+    async def test_subscribe_timeout_is_swallowed(self) -> None:
+        # Wenn die ib_async-Coroutine nicht innerhalb des Subscribe-
+        # Timeouts resolvet (Lifespan-Sync hat den accountDownloadEnd-
+        # Trigger schon konsumiert), darf der Service nicht propagieren -
+        # der Cache ist via updatePortfolio-Events frisch und der
+        # Account wird trotzdem als "subscribed" markiert.
+        client = _make_client(portfolio_items=[])
+
+        async def _hang(account: str) -> None:
+            await asyncio.sleep(60)
+
+        client._ib.reqAccountUpdatesAsync = AsyncMock(side_effect=_hang)
+        service = TWSPortfolioService(client)
+        # In der Test-Suite wuerde das normale Timeout den Run unnoetig
+        # in die Laenge ziehen - wir patchen es kurz.
+        from broker_gateway.tws import portfolio as portfolio_module
+
+        original_timeout = portfolio_module._SUBSCRIBE_TIMEOUT_S
+        portfolio_module._SUBSCRIBE_TIMEOUT_S = 0.05
+        try:
+            await service.positions("U25235077")
+        finally:
+            portfolio_module._SUBSCRIBE_TIMEOUT_S = original_timeout
         assert "U25235077" in service._subscribed_accounts

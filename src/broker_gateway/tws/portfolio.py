@@ -9,16 +9,22 @@ Folge-Karte zu 33cb35b1 (TWSLifecycle): die Service-Schicht macht den
 Cutover komplett, der dort begonnen wurde. AP ``2a203c58-...`` Phase 1.
 
 Subscribe-Strategie: pro Service-Instanz wird jeder Account genau einmal
-ueber ``ib.reqAccountUpdates(True, account_id)`` (sync, Fire-and-Forget)
-abonniert. Folgecalls lesen synchron aus ``ib.portfolio()`` /
+abonniert; Folgecalls lesen synchron aus ``ib.portfolio()`` /
 ``ib.accountValues(account_id)`` - ib_async pflegt den Cache via
-``updatePortfolio``-Events. Die Async-Variante ``reqAccountUpdatesAsync``
-wird **nicht** verwendet: sie resolvet nur beim allerersten
-``accountDownloadEnd``-Trigger pro Account und haengt bei Re-Subscribes
-indefinit (Memory ``project_tws_portfolio_resubscribe_hang``, v2.1.0
-Live-Bug). ``invalidate(...)`` ist ein no-op fuer Schema-Kompatibilitaet
-mit cp.portfolio.PortfolioService (der Order-Lifecycle ruft das nach
-Bestand-Aenderungen).
+``updatePortfolio``-Events. Der Initial-Subscribe lauft ueber
+``ib.reqAccountUpdatesAsync(...)`` mit hartem ``asyncio.wait_for``-
+Timeout: die Coroutine resolvet zuverlaessig nur beim allerersten
+``accountDownloadEnd``-Trigger pro Account und haengt sonst indefinit
+(Memory ``project_tws_portfolio_resubscribe_hang``, v2.1.0 Live-Bug).
+Wenn der Lifespan-``connectAsync`` den Account schon initialisiert hat
+(Log: ``Synchronization complete``), greift der Timeout - der Cache ist
+trotzdem frisch und wir markieren den Account als ``subscribed``. Die
+**synchrone** ``ib.reqAccountUpdates`` ist im FastAPI-async-Kontext
+**nicht** nutzbar: sie ruft intern ``loop.run_until_complete`` und
+crasht mit ``RuntimeError: this event loop is already running``
+(v2.1.1/v2.1.2 Live-Bugs). ``invalidate(...)`` ist ein no-op fuer
+Schema-Kompatibilitaet mit cp.portfolio.PortfolioService (der Order-
+Lifecycle ruft das nach Bestand-Aenderungen).
 """
 from __future__ import annotations
 
@@ -40,6 +46,8 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+_SUBSCRIBE_TIMEOUT_S = 2.0
 
 
 __all__ = [
@@ -162,12 +170,30 @@ class TWSPortfolioService:
             if account_id in self._subscribed_accounts:
                 return
             ib = self._client._ib  # noqa: SLF001 - bewusste Low-Level-Bruecke
-            req = getattr(ib, "reqAccountUpdates", None)
-            if callable(req):
-                # ib_async-Signatur: IB.reqAccountUpdates(acctCode='').
-                # Subscribe-Pfad nur ueber das Vorhandensein eines acctCode -
-                # cancelAccountUpdates() ist das explizite Gegenstueck.
-                req(account_id)
+            req_async = getattr(ib, "reqAccountUpdatesAsync", None)
+            if callable(req_async):
+                # Hartes Timeout: die Coroutine resolvet nur beim ersten
+                # accountDownloadEnd-Trigger pro Account. Wenn der
+                # Lifespan-connectAsync den Account schon initialisiert
+                # hat, kommt der Trigger nicht erneut und der await
+                # haengt indefinit. Im TimeoutError ist der ib_async-
+                # Cache trotzdem aktuell (updatePortfolio-Events), und
+                # der Subscribe-Cache markiert den Account als bekannt -
+                # Folgecalls lesen synchron weiter.
+                try:
+                    await asyncio.wait_for(
+                        req_async(account_id),
+                        timeout=_SUBSCRIBE_TIMEOUT_S,
+                    )
+                except asyncio.TimeoutError:
+                    logger.info(
+                        "reqAccountUpdatesAsync(%s) timeoutet nach %.1fs - "
+                        "Lifespan-connectAsync hat den Account bereits "
+                        "initialisiert, Cache ist via updatePortfolio-"
+                        "Events frisch",
+                        account_id,
+                        _SUBSCRIBE_TIMEOUT_S,
+                    )
             self._subscribed_accounts.add(account_id)
 
     async def _fetch_portfolio_items(self, account_id: str) -> list[Any]:

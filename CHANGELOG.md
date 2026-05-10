@@ -4,6 +4,35 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.1.3] — 2026-05-10 (Karte `4c5b226d`: asyncio.wait_for-Subscribe statt Sync-Wrapper)
+
+Zweiter Hotfix auf den Phase-1-Live-Bug. v2.1.2 hat den
+`reqAccountUpdates(True, ...)`-Signaturfehler ausgeraeumt, aber dabei
+einen neuen 500er gebracht:
+
+```
+RuntimeError: this event loop is already running.
+```
+
+`ib_async.IB.reqAccountUpdates` ist ein **synchroner** Wrapper, der
+intern `self._run(self.reqAccountUpdatesAsync(account))` aufruft - das
+ist `loop.run_until_complete`, der im FastAPI-async-Kontext crasht. Im
+Async-Pfad ist nur die `*Async`-Variante zulaessig.
+
+- **Fix:** `tws/portfolio.py::_ensure_subscribed` nutzt jetzt
+  `asyncio.wait_for(ib.reqAccountUpdatesAsync(account_id), timeout=2.0)`
+  und faengt `asyncio.TimeoutError` ab; im Timeout wird der Account
+  trotzdem als `subscribed` markiert (Cache via `updatePortfolio`-
+  Events ist frisch).
+- **Modul-Konstante** `_SUBSCRIBE_TIMEOUT_S = 2.0` (testbar via Patch).
+- **Tests:** Mock zurueck auf `AsyncMock(reqAccountUpdatesAsync)`,
+  Asserts auf `assert_awaited_once_with`/`await_count`/`await_args_list`.
+  Neuer Test `test_subscribe_timeout_is_swallowed` setzt eine Coroutine,
+  die laenger als das Patch-Timeout schlaeft, und verriegelt das Cache-
+  Markieren auch ohne erfolgreichen Resolve.
+- **Test-Suite:** 1115 passed (+1 vs v2.1.2), 4 skipped.
+- **Live-Verifikation:** im Folge-Pi-Deploy gegen U25235077.
+
 ## [2.1.2] — 2026-05-10 (Karte `4c5b226d`: Hotfix ib_async-Signatur)
 
 Direkter Hotfix auf v2.1.1. Live-Deploy von v2.1.1 hat
