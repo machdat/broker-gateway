@@ -353,10 +353,22 @@ gateway reconnected automatisch beim nächsten Heartbeat.
 
 Die `cp/`- und `tws/`-Module sind die einzigen Stellen, an denen IBKR-
 Spezifika adressiert werden. Außerhalb dieser Pakete darf nichts
-wissen, dass hinter dem Gateway IBKR steht. Die `cp/`-Familie spricht
-das interne Client Portal Gateway über HTTP/REST an (Default), die
-`tws/`-Familie spricht IB Gateway + IBC über die TWS-Socket-API
-(`ib_async`) — siehe Sektion 5.1. Auswahl per `BG_BACKEND=cp|tws`.
+wissen, dass hinter dem Gateway IBKR steht. Seit v2.0.0 ist die
+`tws/`-Familie der Default-Pfad: sie spricht IB Gateway + IBC über
+die TWS-Socket-API (`ib_async`) — siehe Sektion 5.1. Die `cp/`-Familie
+spricht das interne Client Portal Gateway über HTTP/REST an und ist
+seit v2.0.0 nur noch unter Compose-Profile `cp-legacy` aktiv (Notfall-
+Roll-Back). Auswahl per `BG_BACKEND=tws|cp`.
+
+**Schema-Garantie:** Beide Adapter-Familien teilen sich die
+Pydantic-Modelle. Die `tws/`-Module importieren `Position`, `Ledger`,
+`Quote`, `Trade`, `Instrument`, `ExchangeCalendar` etc. direkt aus
+`cp/` (Single-Source-of-Truth), und `tws/orders.py` nutzt die
+Backend-übergreifenden Modelle aus `broker_gateway.order_models`.
+Damit ist der HTTP-API-Vertrag (`/v1/...`) zwischen den Backends
+strukturell identisch — die Garantie wird in
+`tests/test_tws/test_schema_compat.py` (AP `2a203c58` Phase 7)
+explizit verriegelt.
 
 | IBKR-Eigenheit | Lösung im Gateway | Modul |
 |---|---|---|
@@ -374,17 +386,20 @@ das interne Client Portal Gateway über HTTP/REST an (Default), die
 Live-Snapshot-Lookup geht durch `CPGatewayClient` (`cp/client.py`),
 ein httpx-AsyncClient mit Recording-Event-Hook (s. Sektion 9).
 
-### 5.1 TWS-Backend-Adapter (Karte 33cb35b1, parallel zum CP-Pfad)
+### 5.1 TWS-Backend-Adapter (Default seit v2.0.0)
 
-Seit v1.34.0 lebt parallel zum cpgateway-Pfad ein zweites Backend in
-`tws/`, das dieselbe Trading-Session über die IBKR TWS-Socket-API
-(via `ib_async`) ausliefert. Die Wahl erfolgt über das ENV-Flag
-`BG_BACKEND` (Default `cp`):
+Seit v1.34.0 (Karte 33cb35b1) gibt es das `tws/`-Backend, das die
+IBKR-Trading-Session über die TWS-Socket-API (`ib_async` + IB Gateway
++ IBC) ausliefert. Mit v2.0.0 (Karte 5) wurde es zum Default-Pfad,
+und mit AP `2a203c58` (Phasen 1–7, v2.0.5–2.1.0, Mai 2026) wurden
+alle Daten-Adapter (Portfolio, Instruments, Quotes, Orders, Trades,
+Calendar) auf `ib_async` umgezogen. Die Wahl erfolgt über das
+ENV-Flag `BG_BACKEND`:
 
 | `BG_BACKEND` | Lifecycle | Snapshot-Quelle | Status-Werte |
 |---|---|---|---|
-| `cp` (Default) | `cp/lifecycle.py::AuthLifecycle` | Tickle-Loop alle 60 s + SSO-Validate + iserver-Bridge-Probe | `ok`, `reauth_pending`, `auth_lost`, `cp_down` |
-| `tws` | `tws/lifecycle.py::TWSLifecycle` | Heartbeat alle `BG_TWS_HEARTBEAT_SEC` (Default 60 s) über `ib.isConnected()` + `ib.client.isReady()` | `ok`, `session_lost`, `tws_down` |
+| `tws` (Default) | `tws/lifecycle.py::TWSLifecycle` | Heartbeat alle `BG_TWS_HEARTBEAT_SEC` (Default 60 s) über `ib.isConnected()` + `ib.client.isReady()` | `ok`, `session_lost`, `tws_down` |
+| `cp` (Profile cp-legacy) | `cp/lifecycle.py::AuthLifecycle` | Tickle-Loop alle 60 s + SSO-Validate + iserver-Bridge-Probe | `ok`, `reauth_pending`, `auth_lost`, `cp_down` |
 
 Der TWS-Lifecycle hat **keinen Reauth-Mechanismus** — IB Gateway + IBC
 übernehmen Daily-Restart und Saturday-Reset selbständig. Aus dem
@@ -415,16 +430,30 @@ alle bestehenden Endpunkte (`require_session_ok`, `/v1/internal/
 health`, `/v1/status`) ohne Refactor — ein Hard-Cutover des cp-Pfads
 ist Migration-Karte 6.
 
-**Out-of-Scope dieser Karte:** Order-Routing über die TWS-API
-(`read_only=False`) und die TWS-Faehigkeit der Service-Schicht
-(`PortfolioService`, `OrdersService`, `QuotesService`). Solange die
-Service-Schicht CP-orientiert bleibt, sind unter `BG_BACKEND=tws` nur
-`/v1/internal/health`, `/v1/health` und `/v1/internal/tws-health`
-funktional — Business-Endpunkte wie `/v1/orders` versuchen weiterhin
-gegen `cpgateway:5000` zu sprechen und werfen `ConnectionError`,
-sofern der cpgateway-Container nicht läuft. Karte 4 (Single-Owner-
-Coordination) macht die Service-Schicht TWS-fähig; Karte 6 reisst den
-cp-Pfad raus.
+**Service-Schicht-Status (Stand AP `2a203c58` Phase 7, v2.1.0):**
+
+Alle Daten-Adapter sind im `BG_BACKEND=tws`-Pfad nativ über `ib_async`
+implementiert und werden im Lifespan über die `app.state.<service>`-
+Felder verdrahtet:
+
+| Endpoint-Familie | TWS-Service | cp-Service (Profile cp-legacy) |
+|---|---|---|
+| Portfolio | `tws.portfolio.TWSPortfolioService` | `cp.portfolio.PortfolioService` |
+| Instruments | `tws.instruments.TWSInstrumentsService` | `cp.instruments.InstrumentsService` |
+| Quotes (Snapshot + Stream) | `tws.quotes.TWSQuotesService` (auch Stream-Quelle) | `cp.quotes.QuotesService` + `streams.manager.SubscriptionManager` |
+| Orders + Trades | `tws.orders.TWSOrdersService`, `tws.trades.TWSTradesService`, `tws.orders.TWSOrdersBootstrapLoader`, `tws.orders.TWSOrdersStreamPump` | `cp.orders.OrdersService`, `cp.trades.TradesService`, `api.v1.orders_stream.OrdersBootstrapLoader` |
+| Calendar / Exchanges | `tws.calendar.TWSCalendarService` (Static-Mapping) | `cp.calendar.CalendarService` |
+
+**Hard-Guards (AP `2a203c58` Phase 6):**
+- `app.state.backend` führt den aktiven Backend-String (`"cp"`/`"tws"`)
+  als Single-Source-of-Truth.
+- `app.state.cp_client` existiert **nur** im cp-Mode. Im tws-Mode
+  bekommen Konsumenten beim Zugriff einen `AttributeError` — bewusst
+  laute Fehlersignatur statt blinder Call gegen einen abgeschalteten
+  cpgateway-Container.
+- `POST /v1/internal/seed-cookies` antwortet im tws-Mode mit HTTP 503
+  + `not_applicable_in_tws_mode`, weil es im tws-Pfad keinen
+  Browser-Login zu seeden gibt.
 
 ---
 

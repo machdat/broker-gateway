@@ -4,7 +4,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** **v2.0.0 — Hard-Cutover auf TWS-Backend abgeschlossen** (Karte 5, 2026-05-09). broker-gateway läuft auf cma-pi-1 mit `BG_BACKEND=tws` als Default: Live (U25235077, `:4000`) und Paper (DUP799747, `:4001`) sprechen `gnzsnz/ib-gateway:stable` mit IBC + Xvfb über die TWS-Socket-API (Adapter `ib_async`). cpgateway-Service bleibt unter Compose-Profile `cp-legacy` als Notfall-Roll-Back-Material; vollständige Entfernung als Folgekarte nach 30 Tagen Stabilitäts-Beobachtung. Konsumenten-Vertrag (`/v1`) ist unverändert; `/v1/internal/health` rendert das stabile `auth_status_consumer`-Feld (`ok | down | lost`). Frühere Highlights: TWS-Refactor v1.32–v1.34 (Karten 368ccdfe Spike, 8b1781d3 Container-Slot, 441b53db Adapter, 33cb35b1 Lifecycle), v1.34.1 Doku-Update (Karte 45b03110), v1.35.x Compose-Wiring (Karten 4 Vorbereitung), Cookie-Bridge + `seed-cookies` in v1.31.0, Auto-Login-PoC in v1.30.0. Aktueller Architektur-Stand in [`docs/02-architecture.md`](docs/02-architecture.md), Deploy-Workflow in [`docs/03-deployment.md`](docs/03-deployment.md), Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
+**Status:** **v2.1.0 — HTTP-API-Cutover-Hold-out abgeschlossen** (AP `2a203c58`, 2026-05-10). Alle Daten-Adapter sind im `BG_BACKEND=tws`-Pfad nativ über `ib_async` gegen IB Gateway implementiert: Portfolio (Phase 1), Instruments (Phase 2), Quotes (Phase 3), Orders + Trades (Phase 4), Calendar (Phase 5). Phase 6 hat den letzten cp-Hold-out abgesichert (`POST /v1/internal/seed-cookies` antwortet im tws-Mode mit HTTP 503 + `not_applicable_in_tws_mode`; `app.state.backend` als Single-Source-of-Truth, `app.state.cp_client` als Hard-Guard nur im cp-Mode). Phase 7 schliesst das AP mit Schema-Compat-Tests, Doku-Sweep und gebündeltem Pi-Deploy. broker-gateway läuft auf cma-pi-1 als TWS-only-Service: Live (U25235077, `:4000`) und Paper (DUP799747, `:4001`) sprechen `gnzsnz/ib-gateway:stable` mit IBC + Xvfb über die TWS-Socket-API. cpgateway-Service bleibt unter Compose-Profile `cp-legacy` als Notfall-Roll-Back-Material; vollständige Entfernung als Folgekarte nach 30 Tagen Stabilitäts-Beobachtung. Konsumenten-Vertrag (`/v1`) ist unverändert (Pydantic-Modelle werden zwischen `cp/`- und `tws/`-Adaptern geteilt, siehe `tests/test_tws/test_schema_compat.py`); `/v1/internal/health` rendert das stabile `auth_status_consumer`-Feld (`ok | down | lost`). Frühere Highlights: v2.0.0 Hard-Cutover (Karte 5), TWS-Refactor v1.32–v1.34 (368ccdfe Spike, 8b1781d3 Container-Slot, 441b53db Adapter, 33cb35b1 Lifecycle), Cookie-Bridge in v1.31.0. Aktueller Architektur-Stand in [`docs/02-architecture.md`](docs/02-architecture.md), Deploy-Workflow in [`docs/03-deployment.md`](docs/03-deployment.md), Versionshistorie in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Architektur und Doku
 
@@ -104,22 +104,29 @@ Persistenz wahlweise über `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json`
 mit einem In-Memory-Store — Tokens gehen beim Neustart verloren, was zur
 transienten Service-Natur passt.
 
-## Auth-Lifecycle (CP- und TWS-Backend)
+## Auth-Lifecycle (TWS-Backend; cp-legacy nur Roll-Back)
 
-Der Service hält **genau eine** IBKR-Trading-Session offen. Seit
-v1.34.0 (Karte 33cb35b1) gibt es zwei Backend-Pfade, gewählt über
-`BG_BACKEND`:
+Der Service hält **genau eine** IBKR-Trading-Session offen. Seit v2.0.0
+(Karte 5) ist `BG_BACKEND=tws` der Default; der cp-Pfad bleibt unter
+Compose-Profile `cp-legacy` für Notfall-Roll-Back verfügbar:
 
 | `BG_BACKEND` | Lifecycle | Status-Werte |
 |---|---|---|
-| `cp` (Default) | `AuthLifecycle` mit Tickle-Job alle 60 s; bis zu 3× `reauthenticate` bei Verlust, sonst `auth_lost` | `ok` / `reauth_pending` / `auth_lost` / `cp_down` |
-| `tws` | `TWSLifecycle` mit Heartbeat über `ib.isConnected()` + `ib.client.isReady()`; IB Gateway + IBC machen Daily-Restart und Sat-Reset | `ok` / `session_lost` / `tws_down` |
+| `tws` (Default) | `TWSLifecycle` mit Heartbeat über `ib.isConnected()` + `ib.client.isReady()`; IB Gateway + IBC machen Daily-Restart und Sat-Reset | `ok` / `session_lost` / `tws_down` |
+| `cp` (Profile cp-legacy) | `AuthLifecycle` mit Tickle-Job alle 60 s; bis zu 3× `reauthenticate` bei Verlust, sonst `auth_lost` | `ok` / `reauth_pending` / `auth_lost` / `cp_down` |
 
 Konsumenten-Code parsen den stabilen `auth_status_consumer`-View
 (`ok | down | lost`), Operations sehen den feinen Backend-Status
 über das `auth_status`-Feld. Beide Backends liefern dasselbe Schema
 in `/v1/internal/health`. Bei `down`/`lost` antworten Business-
 Endpunkte mit `503 Service Unavailable` + `Retry-After: 30`.
+
+Im tws-Mode existiert `app.state.cp_client` bewusst nicht (Hard-Guard
+seit v2.0.10 / AP `2a203c58` Phase 6). Konsumenten, die den
+cpgateway-HTTP-Client erwarten, sehen einen `AttributeError` statt
+einen blinden Call gegen einen nicht-funktionalen Container. Der
+cp-spezifische Endpoint `POST /v1/internal/seed-cookies` antwortet
+im tws-Mode mit HTTP 503 + `not_applicable_in_tws_mode`.
 
 Der aktuelle Zustand ist über den admin-geschützten Endpunkt abrufbar:
 
@@ -132,7 +139,7 @@ Konfigurierbar über ENV:
 
 | Variable | Default | Wirkung |
 |---|---|---|
-| `BG_BACKEND` | `cp` | Backend-Auswahl. `cp` = cpgateway-HTTP-Proxy, `tws` = TWS-Socket-API über `ib_async`. |
+| `BG_BACKEND` | `tws` | Backend-Auswahl. `tws` = TWS-Socket-API über `ib_async` (Default seit v2.0.0). `cp` = cpgateway-HTTP-Proxy (nur Profile cp-legacy für Notfall-Roll-Back). |
 | `BG_CP_BASE_URL` | `http://cpgateway:5000/v1/api` | Base-URL des internen CP Gateways inkl. `/v1/api`-Prefix — der Override **muss** den Suffix enthalten, sonst landen alle Calls in der CP-Gateway-Default-Proxy-Route nach `https://api.ibkr.com` (HTTP 302). |
 | `BG_CP_TICKLE_INTERVAL_S` | `60` | Tickle-Intervall in Sekunden (CP-Backend). |
 | `BG_TWS_HEARTBEAT_SEC` | `60` | Heartbeat-Intervall in Sekunden (TWS-Backend). |
@@ -266,17 +273,18 @@ docker compose up -d
 curl http://localhost:4000/v1/health
 ```
 
-Stack besteht heute aus `gateway` (FastAPI, intern 8000, extern 4000)
-und `cpgateway` (IBKR Client Portal Gateway, nur intern). Beim
-Lifespan-Start wählt der Service den Backend-Pfad über `BG_BACKEND`
-(Default `cp` — verwendet `cpgateway`; `tws` verwendet eine externe
-IB-Gateway-Instanz über die TWS-Socket-API, bisher Spike/Test-Setup).
-Der `tws`-Compose-Service zieht erst Karte 6 (Hard-Cutover) ein.
-Vollständige Deploy-Anleitung — Pfad-Konventionen, Workflow,
-Restart-Disziplin, Rollback, ENV-Variablen Live vs Paper — in
-[`docs/03-deployment.md`](docs/03-deployment.md). CP-Gateway-Tarball-
-Bezug und SHA256-Verifikation: [`ops/cpgateway/README.md`](ops/cpgateway/README.md).
-Login mit Browser-2FA: [`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md).
+Stack besteht aus `gateway` (FastAPI, intern 8000, extern 4000) und
+`tws` (`gnzsnz/ib-gateway:stable` mit IBC + Xvfb für IB Gateway 10.46,
+Java-API auf Port 4002 intern). Beim Lifespan-Start wählt der Service
+den Backend-Pfad über `BG_BACKEND` — Default `tws` seit v2.0.0. Der
+`cpgateway`-Service ist unter Compose-Profile `cp-legacy` definiert
+und wird nur bei `--profile cp-legacy` mitgestartet (Roll-Back für
+den Notfall). Vollständige Deploy-Anleitung — Pfad-Konventionen,
+Workflow, Restart-Disziplin, Recovery nach Saturday-Reset, Rollback,
+ENV-Variablen Live vs Paper — in
+[`docs/03-deployment.md`](docs/03-deployment.md). Login mit
+Browser-2FA für den cp-Pfad (Notfall):
+[`docs/runbooks/cpgateway-login.md`](docs/runbooks/cpgateway-login.md).
 Troubleshooting: [`docs/runbooks/cpgateway-troubleshooting.md`](docs/runbooks/cpgateway-troubleshooting.md).
 
 ## Warum dieser Service existiert, Boundary, Stack
@@ -301,4 +309,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 1.34.1*
+*Version 2.1.0*

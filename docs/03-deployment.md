@@ -239,6 +239,55 @@ Karten setzen das `deployment_required`-Flag in KanPrompt entsprechend:
 - `true` (Default bei Code-Änderungen) → Pi-Deploy nötig.
 - `false` (Doku/Skill/Skript-only) → kein Restart.
 
+### 6.1 TWS-Recovery-Workflow (force-recreate nach Saturday-Reset)
+
+Symptom: `/v1/internal/tws-health` antwortet mit `connected=false` oder
+`/v1/internal/health` liefert `auth_status=session_lost`/`tws_down`. Tritt
+typischerweise nach dem IB-Saturday-Reset auf (IBKR resettet die
+Authentifizierungssession sonntags früh) oder wenn der `tws`-Container
+seine TCP-Verbindung zum Broker verliert, ohne dass der Heartbeat das
+sauber detektiert hat. Memory `project_live_recovery_workflow`.
+
+**Nicht** `docker compose restart tws` benutzen — IBC startet zwar IB
+Gateway neu, behält aber die abgelaufenen Lockfiles und Login-Caches,
+und der erste Login schlägt mit `Already logged in elsewhere` oder
+`Session expired` fehl. Stattdessen einen kompletten Force-Recreate:
+
+```bash
+# Auf cma-pi-1, im Repo-Verzeichnis (Live: /mnt/ssd/broker-gateway,
+# Paper: /mnt/ssd/broker-gateway-paper).
+ssh cma@cma-pi-1
+cd /mnt/ssd/broker-gateway
+
+# Force-Recreate des tws-Containers (entsorgt Lockfiles + Caches).
+docker compose up -d --force-recreate --no-deps tws
+
+# 2FA am Handy bestätigen — IBC triggert den Login innerhalb von
+# 30–60 s, der "IB Key"-Dialog erscheint in der IBKR-Mobile-App.
+# Memory project_live_2fa_gnzsnz_pattern: TWOFA_DEVICE=IB Key ist
+# in compose.yaml fest eingestellt, IBC klickt OK selbst — Operator
+# nur noch am Handy bestätigen.
+
+# Nach erfolgreicher 2FA: gateway-Service neu starten, damit der
+# heartbeat-Loop einen frischen ib_async-Connect macht.
+docker compose restart gateway
+
+# Verifikation:
+curl -s http://localhost:4000/v1/internal/tws-health \
+    -H "Authorization: Bearer $BG_BOOTSTRAP_ADMIN_TOKEN" | jq .
+# erwartet: connected=true, paper=false (Live) bzw. true (Paper)
+curl -s http://localhost:4000/v1/internal/health \
+    -H "Authorization: Bearer $BG_BOOTSTRAP_ADMIN_TOKEN" | jq .auth_status
+# erwartet: "ok"
+```
+
+Paper-Stack analog mit `cd /mnt/ssd/broker-gateway-paper`,
+Port 4001, `--env=paper`. Paper hat kein 2FA — der Login läuft
+skriptbar durch (Memory `project_paper_login_no_2fa`). Bekanntes
+Ärgernis: Paper-TWS hat seit Mai 2026 einen Listener-Drift, bei dem
+nach dem Force-Recreate kein Java-API-Port 4002 erscheint (Memory
+`project_paper_tws_listener_drift`). Live-Stack ist davon unberührt.
+
 ## 7. Tooling-Hinweise
 
 ### 7.1 Bash-Hook blockiert cma-pi-1 direkt
