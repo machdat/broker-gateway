@@ -2,8 +2,16 @@
 
 Pruefen: Auth-Schutz (401/403), Body-Validation (422), Jar-Befuellung,
 sofortiger Tick-Trigger, Services-Client-Sync.
+
+AP ``2a203c58-...`` Phase 6 erweitert die Suite um die
+Backend-Pruefung: bei BG_BACKEND=tws antwortet der Endpoint mit
+HTTP 503 + ``not_applicable_in_tws_mode``, ohne den Cookie-Jar
+anzufassen.
 """
 from __future__ import annotations
+
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,6 +22,7 @@ from broker_gateway.auth.store import InMemoryTokenStore
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.lifecycle import AuthLifecycle
 from broker_gateway.main import create_app
+from broker_gateway.tws.lifecycle import TWSLifecycle, TWSLifecycleCpAdapter
 
 
 _BOOTSTRAP_VALUE = "admin-seed-cookies-token-aaaaaaaaaaaa"
@@ -257,6 +266,73 @@ def test_seed_cookies_handles_ssodh_init_error(
     assert body["ssodh_init_status"] == "error"
     # Cookies trotzdem geseedet — die Hauptfunktion hat geklappt.
     assert lifecycle.client.cookies.get("JSESSIONID") == "session-from-browser"
+
+
+# ---- AP 2a203c58 Phase 6: Backend-Hold-out (BG_BACKEND=tws) ----
+
+
+def _make_tws_adapter() -> TWSLifecycleCpAdapter:
+    """Baut einen TWSLifecycleCpAdapter, der ohne echte ib_async-
+    Connection fuer ``with TestClient(app)`` reicht.
+
+    Der Mock-IB simuliert eine bereits verbundene Session, damit der
+    Lifespan keinen connectAsync ausloest und der Lifecycle als healthy
+    snapshot()-bar bleibt.
+    """
+    from broker_gateway.tws.client import TWSClient  # noqa: PLC0415
+
+    ib_mock = MagicMock()
+    ib_mock.isConnected = MagicMock(return_value=True)
+    ib_mock.connectAsync = MagicMock()
+    ib_mock.disconnect = MagicMock()
+    inner = TWSClient(ib=ib_mock, paper=True)
+    return TWSLifecycleCpAdapter(TWSLifecycle(inner, heartbeat_interval_s=10.0))
+
+
+def test_seed_cookies_returns_503_in_tws_mode(
+    store: InMemoryTokenStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AP `2a203c58-...` Phase 6: Im tws-Mode ist Cookie-Seeding nicht
+    anwendbar. Der Endpoint antwortet mit HTTP 503 + structured-error
+    ``not_applicable_in_tws_mode``, ohne den Lifecycle anzufassen.
+    """
+    monkeypatch.setenv("BG_BACKEND", "tws")
+    application = create_app(store=store, lifecycle=_make_tws_adapter())
+    with TestClient(application) as client:
+        response = client.post(
+            "/v1/internal/seed-cookies",
+            headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
+            json=_VALID_BODY,
+        )
+    assert response.status_code == 503
+    body = response.json()
+    assert body["error"]["code"] == "not_applicable_in_tws_mode"
+    assert "cp-legacy" in body["error"]["message"]
+
+
+def test_seed_cookies_503_does_not_touch_lifecycle(
+    store: InMemoryTokenStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Der Backend-Guard greift VOR dem Lifecycle-Zugriff: der Adapter
+    hat keinen ``client``-Property, also wuerde ein direkter
+    ``lifecycle.client``-Zugriff zu einem AttributeError fuehren. Wenn
+    der 503-Pfad sauber abkuerzt, sehen wir die strukturierte 503
+    statt eines 500.
+    """
+    monkeypatch.setenv("BG_BACKEND", "tws")
+    adapter = _make_tws_adapter()
+    application = create_app(store=store, lifecycle=adapter)
+    with TestClient(application) as client:
+        response = client.post(
+            "/v1/internal/seed-cookies",
+            headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
+            json=_VALID_BODY,
+        )
+    assert response.status_code == 503
+    # AttributeError haette 500 ergeben, nicht 503.
+    assert response.json()["error"]["code"] == "not_applicable_in_tws_mode"
 
 
 def test_seed_cookies_does_not_seed_services_client_when_shared(

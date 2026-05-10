@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from broker_gateway.auth.middleware import require_scope
@@ -124,7 +124,26 @@ async def seed_cookies(
     Klartext-Cookies werden nicht geloggt — nur die Cookie-Namen und
     der resultierende Auth-Status. Der Wire-Logger redaktiert den
     folgenden Tickle-Roundtrip ohnehin (Header-Filter).
+
+    AP ``2a203c58-...`` Phase 6: Cookie-Seeding ist semantisch nur
+    fuer cpgateway sinnvoll. Im tws-Mode existiert kein cp-Client und
+    keine Browser-Login-Recovery — der Endpoint antwortet mit 503 +
+    ``not_applicable_in_tws_mode``, statt blind auf einen nicht-
+    vorhandenen Cookie-Jar zu schreiben.
     """
+    if getattr(request.app.state, "backend", "cp") == "tws":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "not_applicable_in_tws_mode",
+                "message": (
+                    "Cookie-Seeding ist nur unter Profile cp-legacy "
+                    "verfuegbar. Im tws-Mode gibt es keinen cpgateway-"
+                    "Browser-Login zu seeden."
+                ),
+            },
+        )
+
     _seed_into(lifecycle.client, body.jsessionid, body.x_sess_uuid)
 
     services_client: CPGatewayClient | None = getattr(
