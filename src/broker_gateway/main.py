@@ -82,8 +82,14 @@ from broker_gateway.tws import (
     TWSLifecycleCpAdapter,
 )
 from broker_gateway.tws.instruments import TWSInstrumentsService
+from broker_gateway.tws.orders import (
+    TWSOrdersBootstrapLoader,
+    TWSOrdersService,
+    TWSOrdersStreamPump,
+)
 from broker_gateway.tws.portfolio import TWSPortfolioService
 from broker_gateway.tws.quotes import TWSQuotesService
+from broker_gateway.tws.trades import TWSTradesService
 
 
 _BOOTSTRAP_CALLER_ID = "bootstrap-admin"
@@ -436,9 +442,23 @@ def create_app(
         )
         orders_broadcaster = OrdersBroadcaster()
         sor_adapter = SorTopicAdapter()
-        orders_bootstrap = OrdersBootstrapLoader(
-            cast(CPGatewayClient, services_client), sor_adapter
-        )
+        # AP `2a203c58-...` Phase 4: BG_BACKEND=tws bekommt einen
+        # TWSOrdersBootstrapLoader, der dieselbe ``load(account)``-API
+        # wie der cp-Loader bedient. Cast wegen Duck-Typing - es ist
+        # keine Subklasse von OrdersBootstrapLoader.
+        orders_pump: TWSOrdersStreamPump | None = None
+        if owned_tws_for_health is not None:
+            orders_bootstrap = cast(
+                OrdersBootstrapLoader,
+                TWSOrdersBootstrapLoader(owned_tws_for_health),
+            )
+            orders_pump = TWSOrdersStreamPump(
+                owned_tws_for_health, orders_broadcaster
+            )
+        else:
+            orders_bootstrap = OrdersBootstrapLoader(
+                cast(CPGatewayClient, services_client), sor_adapter
+            )
         # SubscriptionManager + StatusProbe werden nach cp_lifecycle.start()
         # gebaut, damit der WS-Pfad (BG_QUOTES_SOURCE=ws, AP-11 K9) eine
         # gueltige Session-ID + Cookies vom AuthLifecycle uebernehmen
@@ -464,19 +484,30 @@ def create_app(
             pf_service = PortfolioService(
                 cast(CPGatewayClient, services_client)
             )
-        ord_service = (
-            orders_service
-            if orders_service is not None
-            else OrdersService(cast(CPGatewayClient, services_client))
-        )
+        # AP `2a203c58-...` Phase 4: TWS-Backend bekommt
+        # TWSOrdersService + TWSTradesService. read_only zieht der
+        # OrdersService aus dem TWSClient, damit READ_ONLY_API=yes auf
+        # der ib_async-Verbindung 1:1 in den 503-Pfad fliesst. cp-Pfad
+        # bleibt fuer Profile cp-legacy aktiv.
+        if orders_service is not None:
+            ord_service = orders_service
+        elif owned_tws_for_health is not None:
+            ord_service = cast(
+                OrdersService, TWSOrdersService(owned_tws_for_health)
+            )
+        else:
+            ord_service = OrdersService(cast(CPGatewayClient, services_client))
         idem_store = (
             idempotency_store if idempotency_store is not None else IdempotencyStore()
         )
-        trd_service = (
-            trades_service
-            if trades_service is not None
-            else TradesService(cast(CPGatewayClient, services_client))
-        )
+        if trades_service is not None:
+            trd_service = trades_service
+        elif owned_tws_for_health is not None:
+            trd_service = cast(
+                TradesService, TWSTradesService(owned_tws_for_health)
+            )
+        else:
+            trd_service = TradesService(cast(CPGatewayClient, services_client))
         evt_bus = event_bus if event_bus is not None else EventBus()
 
         app.state.instruments_service = inst_service
@@ -532,6 +563,13 @@ def create_app(
 
         await cp_lifecycle.start()
 
+        # AP `2a203c58-...` Phase 4: TWS-Order-Events in den
+        # OrdersBroadcaster pumpen. start() ist idempotent und no-op,
+        # falls die ib_async-Events nicht existieren (Test-Stubs).
+        if orders_pump is not None:
+            orders_pump.start()
+        app.state.orders_stream_pump = orders_pump
+
         # WS-Lifespan-Verdrahtung (AP-11 K9): opt-in via BG_QUOTES_SOURCE=ws.
         # Setzt voraus, dass cp_lifecycle nach dem ersten Tickle eine
         # session_id liefert und den Status auf OK gesetzt hat. Bei
@@ -566,6 +604,13 @@ def create_app(
             yield
         finally:
             await evt_bus.shutdown()
+            if orders_pump is not None:
+                try:
+                    orders_pump.stop()
+                except Exception:  # noqa: BLE001
+                    _logger.warning(
+                        "TWSOrdersStreamPump.stop fehlgeschlagen", exc_info=True
+                    )
             if ws_source is not None:
                 try:
                     await ws_source.stop()
