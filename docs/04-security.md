@@ -70,8 +70,18 @@ sicherer Speicherung, Verschlüsselung-at-rest für die Token-Datei.
 
 | Backend | Aktivierung | Eigenschaften |
 |---|---|---|
-| `InMemoryTokenStore` | Default (kein `BG_TOKEN_FILE`) | Thread-sicher, verliert State beim Neustart. Konsistent mit dem transienten Service-Charakter. |
-| `FileTokenStore` | `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json` | JSON, atomare Writes (temp-file + `os.replace`). Nur lesen/schreiben durch den Service-User. |
+| `InMemoryTokenStore` | Kein `BG_TOKEN_FILE`-ENV — kein Compose-Default, nur Fallback wenn jemand das ENV explizit auf leer setzt. | Thread-sicher, verliert State beim Neustart. Konsistent mit dem transienten Service-Charakter. |
+| `FileTokenStore` | **Compose-Default ab v2.1.4** via `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json` und Volume-Mount `${BG_TOKEN_DIR_HOST:-./var/broker-gateway}:/var/lib/broker-gateway`. | JSON, atomare Writes (temp-file + `os.replace`). Nur lesen/schreiben durch den Service-User. |
+
+Bis v2.1.3 mussten Operatoren `BG_TOKEN_FILE` und einen Volume-Mount
+manuell ergänzen. Ab v2.1.4 (Karte `b05206c7`) ist der `FileTokenStore`
+Compose-Default, weil die kombinierte Klasse aus „InMemoryStore + lang
+laufender Service" Operatoren in die Falle gelaufen ist: Token wird
+erzeugt, Service wird Wochen später für ein Image-Update neugestartet,
+und alle Konsumenten-Tokens sind weg — der bootstrap-`admin:*`-Token
+kommt aus dem ENV zurück, der Rest nicht. Auf cma-pi-1 zeigt
+`BG_TOKEN_DIR_HOST` standardmäßig auf `/var/lib/broker-gateway` (Mode
+0700 root:root), das Container-File auf 0600 nach dem ersten `put()`.
 
 Persistenz im File-Backend ist ausschließlich `tokens.json`. Der
 `FileTokenStore` (AP-10 K1, ab v1.15.0) prüft beim Init die
@@ -112,6 +122,60 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
   Konfiguration (PSM, trading-robot — eigenes Konfig-Repo, ggf. Secrets-
   Manager). Es gibt keine zentrale Rotation; Operator triggert sie
   bewusst.
+
+#### 2.4.1 Konkretes Rezept: Scope-Vergabe / -Erweiterung
+
+Tokens sind immutable — eine Scope-Erweiterung ist immer ein neuer
+Token + Revoke des alten. Das Token-Modell kennt absichtlich kein
+PATCH-Endpoint, weil das die Threat-Sicht („was darf dieser Wert?")
+auf einen einzigen Lifetime-Lookup reduziert.
+
+Für eine Vergabe oder Scope-Erweiterung an einen Konsumenten auf
+cma-pi-1:
+
+```bash
+# 1. Admin-Token aus dem laufenden Container-ENV holen
+TOKEN_ADMIN=$(docker inspect broker-gateway \
+    --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    | awk -F= '/^BG_BOOTSTRAP_ADMIN_TOKEN=/{print $2}')
+
+# 2. Neuen Token mit Ziel-Scopes erzeugen
+curl -sS -X POST http://localhost:4000/v1/auth/token \
+    -H "Authorization: Bearer $TOKEN_ADMIN" \
+    -H "Content-Type: application/json" \
+    -d '{"caller_id":"psm","scopes":["instruments:read","quotes:read"]}'
+# Antwort enthaelt das Feld "value" - das ist der Bearer-Token-Wert.
+
+# 3. Token-Wert in eine consumer-eigene Default-Datei auf dem Pi schreiben
+#    (Mode 0640 root:cma, damit der Operator per scp/SSH lesen kann).
+sudo install -m 0640 -o root -g cma /dev/null /etc/default/broker-gateway-psm.env
+sudo tee /etc/default/broker-gateway-psm.env <<'EOF'
+# Wert des PSM-Tokens (BROKER_GATEWAY_TOKEN im PSM-.env).
+# Erzeugt: <ISO-Datum>; Scopes: instruments:read, quotes:read.
+BROKER_GATEWAY_TOKEN=<VALUE_AUS_POST_/v1/auth/token>
+EOF
+
+# 4. Konsument (PSM/.env) auf den neuen Wert umstellen, dann testen.
+curl -sS -H "Authorization: Bearer <neuer-token>" \
+    http://cma-pi-1:4000/v1/quotes/snapshot?conid=265598
+# 200 -> Scopes greifen. 403 missing_scope -> Vergabe schief.
+
+# 5. Alten Token revoken (per Wert, mit Admin-Token):
+curl -sS -X DELETE \
+    "http://localhost:4000/v1/auth/token?value=<ALTER_TOKEN_WERT>" \
+    -H "Authorization: Bearer $TOKEN_ADMIN"
+# 204 -> revoked. 404 -> Wert nicht im Store (z.B. nach Service-Restart
+# unter v2.1.3 InMemoryStore - dann ist er sowieso schon weg).
+```
+
+Tokens-Werte landen niemals in einem Karten-Log, einem Commit oder
+einem PR-Body — die Default-Datei auf dem Pi (`/etc/default/broker-
+gateway-{consumer}.env`, 0640 root:cma) ist die einzige
+nicht-ephemere Spur außerhalb des `FileTokenStore`.
+
+Folge-Scopes (`events:read`, `portfolio:read`, `orders:write`) folgen
+demselben Rezept — `scopes`-Liste im POST anpassen, Konsumenten-
+Default-Datei wegen Audit aktualisieren.
 
 ### 2.5 Revocation
 
@@ -554,6 +618,6 @@ forensische Rekonstruktion läuft über `inbound.log` (Body 1:1) und
 
 ---
 
-*Stand: v1.15.0 (2026-05-02). Karten mit Auth-, Logging-, Recording-
+*Stand: v2.1.4 (2026-05-16). Karten mit Auth-, Logging-, Recording-
 oder Tokenmodell-Wirkung aktualisieren dieses Dokument oder verweisen
 explizit auf die Sektion, die zu pflegen ist.*
