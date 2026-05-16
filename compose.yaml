@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.1.3
+    image: broker-gateway:2.1.4
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den
@@ -35,14 +35,28 @@ services:
     # cpgateway-Pfad braucht (Notfall-Roll-Back), ruft
     # ops/rollback-to-cp.sh, das compose.cp-legacy.yaml zieht und
     # BG_BACKEND=cp ueberschreibt.
+    #
+    # BG_TOKEN_FILE (Karte b05206c7, v2.1.4): persistierende Token-
+    # Datei via FileTokenStore (docs/04-security.md Sektion 2.2).
+    # Ohne diese Variable nutzt der Service InMemoryTokenStore -
+    # erzeugte API-Tokens verlieren ihren State beim Service-Restart.
+    # Default-Pfad /var/lib/broker-gateway/tokens.json kommt aus dem
+    # gemounteten Host-Verzeichnis (siehe volumes-Block unten).
     environment:
       - BG_BACKEND=${BG_BACKEND:-tws}
       - BG_TWS_HOST=${BG_TWS_HOST:-tws}
       - BG_TWS_PORT=${BG_TWS_PORT:-4004}
       - BG_TWS_HEARTBEAT_SEC=${BG_TWS_HEARTBEAT_SEC:-60}
+      - BG_TOKEN_FILE=${BG_TOKEN_FILE:-/var/lib/broker-gateway/tokens.json}
     env_file:
       - path: ${BG_ENV_FILE:-.env}
         required: false
+    volumes:
+      # Persistiert die Token-Datei ueber Service-Restarts hinweg.
+      # Host-Pfad standardmaessig im Stack-Repo (./var/broker-gateway);
+      # auf cma-pi-1 zeigt BG_TOKEN_DIR_HOST auf /var/lib/broker-gateway
+      # (Mode 0700 root:root, im Container ueber FileTokenStore-chmod 0600).
+      - ${BG_TOKEN_DIR_HOST:-./var/broker-gateway}:/var/lib/broker-gateway
     depends_on:
       tws:
         condition: service_healthy
