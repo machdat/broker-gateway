@@ -309,4 +309,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 2.1.4*
+*Version 2.2.0*
