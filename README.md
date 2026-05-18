@@ -102,7 +102,9 @@ curl -X DELETE -H "Authorization: Bearer <value>" http://localhost:8000/v1/auth/
 Persistenz wahlweise über `BG_TOKEN_FILE=/var/lib/broker-gateway/tokens.json`
 (JSON-Backend, atomare Writes). Ohne diese Variable arbeitet der Service
 mit einem In-Memory-Store — Tokens gehen beim Neustart verloren, was zur
-transienten Service-Natur passt.
+transienten Service-Natur passt. Operator-Pfad bei Token-Store-Verlust
+oder veraltetem Konsumenten-`.env` nach `docker compose up --force-recreate`:
+[`docs/runbooks/token-store-recreate.md`](docs/runbooks/token-store-recreate.md).
 
 ## Auth-Lifecycle (TWS-Backend; cp-legacy nur Roll-Back)
 
@@ -309,4 +311,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 2.2.0*
+*Version 2.2.1*

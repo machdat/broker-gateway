@@ -171,3 +171,7 @@ mit HTTP 503.
 - Reverse-Engineering: `docs/research/cpgateway-login-flow.md`.
 - Architektur-Pfad: `docs/02-architecture.md` Sektion 6.4.
 - Sicherheits-Modell: `docs/04-security.md` Sektion 7.4.
+- **Token-Store-Recovery nach Container-Recreate:**
+  [`token-store-recreate.md`](token-store-recreate.md). Auto-Login fixt die
+  cpgateway-Session, aber Konsumenten-Tokens koennen vor v2.1.4 oder bei
+  geloeschtem Volume trotzdem 401 liefern.
