@@ -4,6 +4,44 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.2.2] — 2026-05-19 (Karte `cdb262f7`: Doku-Vorbereitung Account-Identitaet-Wechsel)
+
+Reine Doku-Karte (Phase 1 von drei). Architektur-/Security-/Glossar-/
+CLAUDE.md-Stellen, die U25235077 als kanonischen Live-Account
+festnageln, werden auf "heute aktiver Live-Account; Cutover auf
+dediziertes Service-Konto in Vorbereitung" parametrisiert. U25235077
+bleibt sichtbar — keine Verweise entfernt, keine IDs umbenannt. Damit
+ist der spaetere Cutover (Phase 2, Karte `0ef946c8`) ein reiner ID-/
+Credentials-Tausch ohne erneute Doku-Schleife.
+
+- **Neu:** `docs/runbooks/account-cutover.md` (high-level Cutover-Pfad,
+  sieben Sektionen — Wann/Voraussetzungen/Schritte/Smoke/Rollback/
+  Was-nicht-abgedeckt/Bezug).
+- **CLAUDE.md:** Status-Block-Zeile um Account-Wechsel-Hinweis ergaenzt
+  + neuer Abschnitt "Konto-Migrations-Plan" mit Drei-Phasen-Tabelle
+  und Karten-Verlinkung.
+- **docs/02-architecture.md:**
+  - Sektion 3.1 ("Singular-Halter") um "Identitaet austauschbar"-
+    Hinweis ergaenzt.
+  - Sektion 7.2 (K4-Live-Test-Tabelle) und 9.2 (Live-Recordings)
+    kontextualisieren U25235077.
+  - Sektion 11.1 listet das neue Runbook.
+  - Sektion 11.2 neuer offener Punkt "Account-Identitaet-Wechsel —
+    Status" mit Drei-Phasen-Plan.
+- **docs/04-security.md:** Sektion 6.4, 10.3, 12.2 mit Account-Wechsel-
+  Annotationen; 12.2 ergaenzt um neuen Punkt "Konto-Trennung User vs.
+  Service".
+- **docs/06-glossary.md:** `allowedAssetTypes` umformuliert; neuer
+  Eintrag "Service-Konto vs. Privat-Konto" in Sektion 2.
+- **README.md:** Live-2FA-Lifecycle-Header kontextualisiert U25235077;
+  Footer auf 2.2.2.
+- **Version-Bump 2.2.1 -> 2.2.2** in pyproject.toml +
+  `src/broker_gateway/__init__.py` + compose.yaml image-Tag + README-
+  Footer (Patch laut CLAUDE.md Regel 3 — Doku-only-Aenderung).
+- **Keine Code-/Service-/Memory-/Compose-Aenderung**, kein Service-
+  Restart noetig. Cassettes unter `tests/fixtures/recorded/live/`
+  unveraendert.
+
 ## [2.2.1] — 2026-05-19 (Karte `0de305f0`: Runbook Token-Store-Verlust nach Container-Recreate)
 
 Reine Doku-Karte. Neues Runbook `docs/runbooks/token-store-recreate.md`

@@ -161,6 +161,18 @@ Es gibt **genau eine** Instanz von `broker-gateway` pro IBKR-Konto.
 Das ist keine Skalierungs-Entscheidung, sondern Hard-Constraint von
 IBKR (siehe 2.1). Skalierung passiert auf Consumer-Seite, nicht hier.
 
+Die **Konto-Identität hinter dem Singular-Halter ist austauschbar**:
+das Prinzip "eine Instanz pro Konto" bleibt unverändert, wenn die
+broker-gateway-Live-Instanz von Konto A auf Konto B umgezogen wird.
+Heute ist die Live-Instanz an U25235077 (Privatkonto des Operators)
+gebunden; ein Cutover auf ein dediziertes Service-Konto ist seit
+2026-05-18 in Vorbereitung — Operator-Pfad in
+[`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md),
+Status in Sektion 11.2 ("Account-Identitaet-Wechsel"). Motivation:
+jeder Operator-Login auf U25235077 im Browser oder in der IBKR-App
+kollidiert mit der broker-gateway-Live-Session (Single-Session-
+Constraint 2.1); das Service-Konto entkoppelt das.
+
 ### 3.2 Stateless-Außen, Stateful-Innen
 
 Nach außen verhält sich `/v1` wie ein klassischer REST-Service: jeder
@@ -613,7 +625,7 @@ Phase 1 von AP-04 hat den IBKR-CP-Gateway-WebSocket
 Findings sind in `docs/research/ibkr-cpapi-websockets-findings.md`
 mit Topic-Reife-Ranking konsolidiert:
 
-| Topic | Reife (K4 Live-Test U25235077) | Bemerkung |
+| Topic | Reife (K4 Live-Test U25235077, heute aktiver Live-Account — Cutover auf dediziertes Service-Konto geplant, siehe Sektion 11.2) | Bemerkung |
 |---|---|---|
 | `smd` (Marktdaten) | grün | Subscribe-Format `smd+<conid>+{...}`, Felder als Deltas, mixed-type values |
 | `sor` (Order-Updates) | grün | volle Order-Lifecycle-Frames, kompakter als REST-Polling |
@@ -789,9 +801,13 @@ der Live-HTTP-Verkehr als deterministische JSON-Fixtures unter
   Platzhalter ersetzt (`cp/normalize.py`).
 
 Konzept und Diff-Bewertung in `docs/cp-recordings.md`. Live-Recordings
-gegen U25235077 leben unter `tests/fixtures/recorded/live/`,
-WebSocket-Mitschnitte (AP-04 K2/K4) unter
-`tests/fixtures/recorded/ws/`.
+gegen U25235077 (heute aktiver Live-Account; Cutover auf dediziertes
+Service-Konto geplant — siehe Sektion 11.2 und
+[`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md))
+leben unter `tests/fixtures/recorded/live/`, WebSocket-Mitschnitte
+(AP-04 K2/K4) unter `tests/fixtures/recorded/ws/`. Cassettes bleiben
+nach dem Cutover unverändert — sie sind deterministische Mocks, kein
+Hinweis auf das aktive Live-Konto.
 
 ### 9.3 Drift-Detection (AP-03, ab v1.5.0 in Betrieb)
 
@@ -859,6 +875,7 @@ gleichzeitig eine wachsende Cassette-Schicht in
 - Troubleshooting: [`docs/runbooks/cpgateway-troubleshooting.md`](runbooks/cpgateway-troubleshooting.md)
 - Doc-Drift: [`docs/runbooks/doc-drift-check.md`](runbooks/doc-drift-check.md)
 - Mock-Drift: [`docs/runbooks/mock-drift-check.md`](runbooks/mock-drift-check.md)
+- Account-Cutover: [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)
 - Bootstrap-Historie: [`docs/01-context-from-bootstrap-session.md`](01-context-from-bootstrap-session.md)
 
 ### 11.2 Offene Architektur-Fragen
@@ -895,6 +912,20 @@ eigenmächtig entschieden:
   ersetzt den `cpgateway`-Compose-Service durch einen `tws`-Service
   mit Healthcheck. Bis dahin sind die Order/Portfolio/Quotes-Pfade
   unter `BG_BACKEND=tws` nicht funktional.
+- **Account-Identitaet-Wechsel — Status:** seit 2026-05-18 ist ein
+  zweites IBKR-Konto als dediziertes Service-Konto beantragt; die
+  konkrete Account-ID und die Login-Credentials sind noch nicht
+  verfügbar. Ziel: broker-gateway-Live hängt zukünftig am Service-
+  Konto, das Privatkonto U25235077 bleibt frei für Operator-Browser-
+  Logins ohne Single-Session-Hijack der Service-Instanz (3.1 / 2.1).
+  Pfad in drei Karten: Phase 1 (Doku-Vorbereitung, diese Sektion +
+  3.1 + 6.4/10.3/12.2 in `04-security.md` + Glossar-Eintrag +
+  [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)),
+  Phase 2 (eigentlicher Cutover, blocked bis Account-Daten vorliegen),
+  Phase 3 (U25235077-Bereinigung in Doku + Memory, blocked durch
+  Phase 2). U25235077 bleibt bis zur Phase 3 in Doku-Texten als
+  "heute aktiv" sichtbar; Cassettes unter
+  `tests/fixtures/recorded/live/` werden **nicht** umgeschrieben.
 
 ---
 
