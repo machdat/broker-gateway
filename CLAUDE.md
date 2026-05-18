@@ -5,7 +5,7 @@ Anweisungen für Claude Code in diesem Repository.
 ## Projekt-Identität
 
 - **Name:** broker-gateway
-- **Status:** v1.24.0 deployed auf cma-pi-1 (Live-Stack Port 4000, Paper-Stack Port 4001). AP-01..AP-08, AP-10, AP-11 (K1..K9) abgeschlossen; AP-12 (L2/L3 Paper-Tests) in Arbeit.
+- **Status:** v2.1.4 deployed auf cma-pi-1. Paper-Stack (Port 4001, DUP799747) aktiv, Live-Stack (Port 4000, U25235077) während der PSM-Client-Entwicklung abgeschaltet. TWS-Backend-Cutover (AP `2a203c58` Phase 1-7) abgeschlossen; aktuell offen: historical/fundamentals-Endpoints (Karte `a5c7ff1c`).
 - **KanPrompt-Projekt-ID:** `a6a45428-ac37-48f5-b295-d3ff26f31711`
 - **GitHub:** https://github.com/machdat/broker-gateway (public)
 - **Lokal:** `C:\Users\christian.mangold\git\broker-gateway`
