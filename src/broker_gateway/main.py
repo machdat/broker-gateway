@@ -19,7 +19,10 @@ from broker_gateway.api.v1.errors import (
     default_code_for,
 )
 from broker_gateway.api.v1.exchanges import get_calendar_service
-from broker_gateway.api.v1.instruments import get_instruments_service
+from broker_gateway.api.v1.instruments import (
+    get_historical_service,
+    get_instruments_service,
+)
 from broker_gateway.api.v1.internal_tws_health import get_tws_client
 from broker_gateway.api.v1.orders_stream import (
     OrdersBootstrapLoader,
@@ -82,6 +85,7 @@ from broker_gateway.tws import (
     TWSLifecycleCpAdapter,
 )
 from broker_gateway.tws.calendar import TWSCalendarService
+from broker_gateway.tws.historical import TWSHistoricalService
 from broker_gateway.tws.instruments import TWSInstrumentsService
 from broker_gateway.tws.orders import (
     TWSOrdersBootstrapLoader,
@@ -440,6 +444,14 @@ def create_app(
             inst_service = InstrumentsService(
                 cast(CPGatewayClient, services_client)
             )
+        # Karte a5c7ff1c: TWSHistoricalService bedient /v1/instruments/
+        # {conid}/historical/* und /v1/instruments/{conid}/fundamentals.
+        # cp-Backend hat keinen Pendant — der Endpoint liefert dort 503.
+        historical_service: TWSHistoricalService | None = (
+            TWSHistoricalService(owned_tws_for_health)
+            if owned_tws_for_health is not None
+            else None
+        )
         # AP `2a203c58-...` Phase 3: TWS-Backend bekommt TWSQuotesService
         # (ib_async-basiert), der sowohl Snapshot als auch Stream bedient.
         # cp-Pfad bleibt fuer Profile cp-legacy aktiv.
@@ -533,6 +545,7 @@ def create_app(
         evt_bus = event_bus if event_bus is not None else EventBus()
 
         app.state.instruments_service = inst_service
+        app.state.historical_service = historical_service
         app.state.quotes_service = qts_service
         app.state.calendar_service = cal_service
         app.state.orders_broadcaster = orders_broadcaster
@@ -550,6 +563,12 @@ def create_app(
         app.dependency_overrides[get_instruments_service] = (
             lambda: cast(InstrumentsService, app.state.instruments_service)
         )
+        if historical_service is not None:
+            app.dependency_overrides[get_historical_service] = (
+                lambda: cast(
+                    TWSHistoricalService, app.state.historical_service
+                )
+            )
         app.dependency_overrides[get_quotes_service] = (
             lambda: cast(QuotesService, app.state.quotes_service)
         )
