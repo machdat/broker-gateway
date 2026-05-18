@@ -4,6 +4,48 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.2.1] — 2026-05-19 (Karte `0de305f0`: Runbook Token-Store-Verlust nach Container-Recreate)
+
+Reine Doku-Karte. Neues Runbook `docs/runbooks/token-store-recreate.md`
+mit Operator-Pfad fuer den haeufigsten 401-Vorfall nach
+`docker compose up --force-recreate`: Persistenz-Check, Konsumenten-Token-
+Neu-Provisionierung (direkter `curl`-Pfad sowie Konsumenten-eigene
+Rotations-Skripte, etwa `trading_robot/scripts/issue-bot-token.sh`),
+Recreate des Konsumenten-Containers, Smoke-Test. Verlinkung im README
+unter "Authentifizierung" und Querverweis aus `auto-login-paper-setup.md`.
+
+- **Neu:** `docs/runbooks/token-store-recreate.md` (acht Sektionen,
+  Trigger / Pruefung Token-Store / Rotation / Recreate / Smoke / Persistenz /
+  Negativfaelle / Querverweise).
+- **Geaendert:** README.md (Token-Store-Recovery-Link unter
+  "Authentifizierung"), `docs/runbooks/auto-login-paper-setup.md`
+  (Sektion 8 verlinkt das neue Runbook).
+- **Keine Code-Aenderung**, kein Service-Restart noetig.
+
+## [2.2.0] — 2026-05-18 (Karte `a5c7ff1c`: historical/fundamentals-Endpoints)
+
+Vier neue historische-Bars-Endpoints (daily/hourly/15min/1min) und ein
+Reuters-Fundamentals-Endpoint als duenner Passthrough auf `ib_async`,
+mit IBKR-Pacing-Disziplin (10.5 s Mindestabstand) und 20 s-Timeout pro
+Reuters-Report. Nur im TWS-Backend; `BG_BACKEND=cp` antwortet 503.
+
+- **Neu:** `src/broker_gateway/tws/historical.py`
+  (`TWSHistoricalService` + Response-Schemas + `parse_report_types`).
+- **Neu:** Endpoints unter `/v1/instruments/{conid}/historical/{daily,hourly,15min,1min}`
+  und `/v1/instruments/{conid}/fundamentals`. Query-Parameter `useRTH`
+  und `duration` (Bar-spezifischer Default).
+- **Neu:** Scopes `historical:read` und `fundamentals:read`
+  (`src/broker_gateway/auth/models.py`).
+- **Geaendert:** `src/broker_gateway/main.py` haengt
+  `TWSHistoricalService` an `app.state.historical_service` im
+  TWS-Lifespan.
+- **Doku:** `docs/api/v1.md` Section 4.3 + 4.4 + Scope-Tabelle.
+- **Tests:** `tests/test_tws/test_historical.py` (19 Tests, Pacing +
+  Error-Mapping + Reuters-Edge-Cases) + `tests/test_instruments_historical.py`
+  (16 Tests, Scope-Gating + Query-Passthrough + OpenAPI-Listing).
+- **Test-Suite:** 1150 passed.
+- **Deployed:** Paper + Live auf cma-pi-1 (PR #36 gemerged 2026-05-18).
+
 ## [2.1.3] — 2026-05-10 (Karte `4c5b226d`: asyncio.wait_for-Subscribe statt Sync-Wrapper)
 
 Zweiter Hotfix auf den Phase-1-Live-Bug. v2.1.2 hat den
