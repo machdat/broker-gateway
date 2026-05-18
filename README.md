@@ -61,7 +61,7 @@ cp .env.paper.template .env.paper  # einmalig, Token + DU-Konto + BG_TWS_*
 (`.env.example`, `.env.live.template`, `.env.paper.template`) werden
 committed.
 
-**Live-2FA-Lifecycle (chmangold/U25235077):** Bei jedem
+**Live-2FA-Lifecycle (chmangold/U25235077 — heute aktiver Live-Account, Cutover auf dediziertes Service-Konto in Vorbereitung, siehe [`docs/runbooks/account-cutover.md`](docs/runbooks/account-cutover.md)):** Bei jedem
 Container-Recreate triggert IBC den IBKR-Login. Der `Second Factor
 Authentication`-Dialog erscheint, der Operator muss via VNC die
 Methode "IB" auswählen und am Handy zweimal die Push-Bestätigung
@@ -311,4 +311,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 2.2.1*
+*Version 2.2.2*

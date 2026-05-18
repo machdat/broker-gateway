@@ -371,8 +371,11 @@ Format (`{ts, dir, topic, raw, parsed}`). Die WS-Subscribe-Frames
 enthalten weder Bearer-Tokens (Auth läuft per Cookie aus dem
 HTTP-Login) noch URL-safe-Token-ähnliche Strings — Header-Redaktion
 greift dort nicht (es gibt keine Header in WS-Frames). Sensitive Felder
-auf der WS-Seite sind der Account-Identifier (`U25235077`) und
-`session_id` aus dem ersten Tickle.
+auf der WS-Seite sind der aktive Live-Account-Identifier (heute
+`U25235077`; Cutover auf dediziertes Service-Konto geplant — siehe
+[`docs/02-architecture.md`](02-architecture.md) Sektion 11.2 und
+[`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md))
+und `session_id` aus dem ersten Tickle.
 
 ---
 
@@ -554,7 +557,11 @@ Eine bereits committed/gepushte Fixture mit Token-/Cookie-Werten:
 2. `BG_TOKEN_FILE` (falls genutzt) als gelöscht markieren — alle
    Tokens müssen als kompromittiert gelten.
 3. cpgateway-Session muss als kompromittiert gelten — Browser-2FA-
-   Reset auf Konto U25235077 in Erwägung ziehen (Operator-Entscheidung).
+   Reset auf dem aktiven Live-Konto (heute U25235077; Cutover auf
+   dediziertes Service-Konto geplant — siehe
+   [`docs/02-architecture.md`](02-architecture.md) Sektion 11.2 und
+   [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md))
+   in Erwägung ziehen (Operator-Entscheidung).
 4. Host neu aufsetzen, neuen Bootstrap-Token generieren, Consumer
    einzeln re-authenticaten.
 
@@ -615,6 +622,17 @@ forensische Rekonstruktion läuft über `inbound.log` (Body 1:1) und
   `audit.log`-Strang für Admin-Schreibaktionen ist denkbar.
 - **TLS-Endpunkt.** Solange Tailscale-internal genügt, brauchen wir kein
   externes TLS — die Frage muss bei Bedarf erneut geprüft werden.
+- **Konto-Trennung User vs. Service.** Hintergrund: jeder Browser-/App-
+  Login des Operators auf U25235077 kollidiert mit der broker-gateway-
+  Live-Session (Single-Session-Constraint
+  [`02-architecture.md`](02-architecture.md) Sektion 2.1 / 3.1) und kostet
+  Service-Verfügbarkeit + 2FA-Re-Login. Lösungsweg: dediziertes IBKR-
+  Service-Konto ausschließlich für broker-gateway-Live, beantragt
+  2026-05-18; U25235077 bleibt nach dem Cutover Operator-Privatkonto.
+  Operator-Pfad und Phasenplan in
+  [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md);
+  Status in [`02-architecture.md`](02-architecture.md) Sektion 11.2
+  ("Account-Identitaet-Wechsel").
 
 ---
 

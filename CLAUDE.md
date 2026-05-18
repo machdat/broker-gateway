@@ -5,11 +5,23 @@ Anweisungen für Claude Code in diesem Repository.
 ## Projekt-Identität
 
 - **Name:** broker-gateway
-- **Status:** v2.1.4 deployed auf cma-pi-1. Paper-Stack (Port 4001, DUP799747) aktiv, Live-Stack (Port 4000, U25235077) während der PSM-Client-Entwicklung abgeschaltet. TWS-Backend-Cutover (AP `2a203c58` Phase 1-7) abgeschlossen; aktuell offen: historical/fundamentals-Endpoints (Karte `a5c7ff1c`).
+- **Status:** v2.2.2 deployed auf cma-pi-1. Paper-Stack (Port 4001, DUP799747) aktiv, Live-Stack (Port 4000, U25235077 als heute aktiver Live-Account — Cutover auf dediziertes Service-Konto in Vorbereitung, siehe Konto-Migrations-Plan) während der PSM-Client-Entwicklung abgeschaltet. TWS-Backend-Cutover (AP `2a203c58` Phase 1-7) abgeschlossen; historical/fundamentals-Endpoints (Karte `a5c7ff1c`) seit v2.2.0 live; Token-Store-Recreate-Runbook (Karte `0de305f0`) seit v2.2.1.
 - **KanPrompt-Projekt-ID:** `a6a45428-ac37-48f5-b295-d3ff26f31711`
 - **GitHub:** https://github.com/machdat/broker-gateway (public)
 - **Lokal:** `C:\Users\christian.mangold\git\broker-gateway`
 - **Session-Farbe:** yellow
+
+## Konto-Migrations-Plan
+
+Seit 2026-05-18 ist ein dediziertes Service-Konto für broker-gateway-Live bei IBKR beantragt. Ziel: Entkopplung von U25235077, das der Operator parallel im Browser/in der IBKR-App nutzt — jeder Operator-Login dort kollidiert mit der Service-Session (Single-Session-Constraint). Drei-Phasen-Plan:
+
+| Phase | Karte | Stand |
+|-------|-------|-------|
+| 1 — Doku-Vorbereitung (Architektur, Security, Glossar, Runbook, CLAUDE.md auf "U25235077 = heute aktiv, Ersatz geplant") | `cdb262f7` | in dieser Karte umgesetzt (v2.2.2) |
+| 2 — Cutover (Credentials-Tausch + Compose-Recreate + Smoke + Doku-Aktualisierung) | `0ef946c8` | blocked: wartet auf Account-ID + Login |
+| 3 — Bereinigung U25235077 in Doku + Memory | `07b244b1` | blocked durch Phase 2 |
+
+Detail-Pfad: [`docs/runbooks/account-cutover.md`](docs/runbooks/account-cutover.md). Status-Sektion: [`docs/02-architecture.md`](docs/02-architecture.md) Sektion 11.2.
 
 ## Lese-Pflicht für neue Sessions
 
