@@ -5,7 +5,7 @@ Anweisungen für Claude Code in diesem Repository.
 ## Projekt-Identität
 
 - **Name:** broker-gateway
-- **Status:** v2.2.2 deployed auf cma-pi-1. Paper-Stack (Port 4001, DUP799747) aktiv, Live-Stack (Port 4000, U25235077 als heute aktiver Live-Account — Cutover auf dediziertes Service-Konto in Vorbereitung, siehe Konto-Migrations-Plan) während der PSM-Client-Entwicklung abgeschaltet. TWS-Backend-Cutover (AP `2a203c58` Phase 1-7) abgeschlossen; historical/fundamentals-Endpoints (Karte `a5c7ff1c`) seit v2.2.0 live; Token-Store-Recreate-Runbook (Karte `0de305f0`) seit v2.2.1.
+- **Status:** Repo-Stand v2.2.3. Auf cma-pi-1 läuft Service-Image v2.2.0 (v2.2.1–v2.2.3 sind reine Doku-Patches ohne Image-Rebuild). Paper-Stack (Port 4001, DUP799747) und Live-Stack (Port 4000, U25235077 als heute aktiver Live-Account — Cutover auf dediziertes Service-Konto in Vorbereitung, siehe Konto-Migrations-Plan) sind beide aktiv. TWS-Backend-Cutover (AP `2a203c58` Phase 1-7) abgeschlossen; historical/fundamentals-Endpoints (Karte `a5c7ff1c`) seit v2.2.0 live; Token-Store-Recreate-Runbook (Karte `0de305f0`) seit v2.2.1.
 - **KanPrompt-Projekt-ID:** `a6a45428-ac37-48f5-b295-d3ff26f31711`
 - **GitHub:** https://github.com/machdat/broker-gateway (public)
 - **Lokal:** `C:\Users\christian.mangold\git\broker-gateway`
@@ -25,7 +25,7 @@ Detail-Pfad: [`docs/runbooks/account-cutover.md`](docs/runbooks/account-cutover.
 
 ## Lese-Pflicht für neue Sessions
 
-Erste Anlaufstelle ist [`docs/02-architecture.md`](docs/02-architecture.md) — dort liegen Architektur-Prinzipien, Komponenten-Übersicht, IBKR-Adaptions-Schicht, Auth-/Streaming-/Logging-Modell, Test-Strategie und alle aktuell offenen Architektur-Fragen. Deploy-Workflow, Pfade, Restart-Disziplin und Rollback in [`docs/03-deployment.md`](docs/03-deployment.md). Security-Konventionen (Token, Scopes, Header-Redaktion, 2FA-Lifecycle, Vorfall-Reaktion) in [`docs/04-security.md`](docs/04-security.md). API-Konsumenten-Einstieg in [`docs/05-api.md`](docs/05-api.md), formale v1-Spec in [`docs/api/v1.md`](docs/api/v1.md) — Stand v1.23.0 (Drift-Bericht in Section 14, gegen Live-Paper-Stack DUP799747 kalibriert). Begriffsklärungen (IBKR-Vokabular und broker-gateway-Eigenvokabular) in [`docs/06-glossary.md`](docs/06-glossary.md). README.md verlinkt die übrige operationelle Doku (Login, Recordings, Runbooks); KanPrompt liefert die Karten und ihre Detail-Beschreibungen.
+Erste Anlaufstelle ist [`docs/02-architecture.md`](docs/02-architecture.md) — dort liegen Architektur-Prinzipien, Komponenten-Übersicht, IBKR-Adaptions-Schicht, Auth-/Streaming-/Logging-Modell, Test-Strategie und alle aktuell offenen Architektur-Fragen. Deploy-Workflow, Pfade, Restart-Disziplin und Rollback in [`docs/03-deployment.md`](docs/03-deployment.md). Security-Konventionen (Token, Scopes, Header-Redaktion, 2FA-Lifecycle, Vorfall-Reaktion) in [`docs/04-security.md`](docs/04-security.md). API-Konsumenten-Einstieg in [`docs/05-api.md`](docs/05-api.md), formale v1-Spec in [`docs/api/v1.md`](docs/api/v1.md) — Stand v1.34.1 (Drift-Bericht in Section 14, gegen Live-Paper-Stack DUP799747 kalibriert). Begriffsklärungen (IBKR-Vokabular und broker-gateway-Eigenvokabular) in [`docs/06-glossary.md`](docs/06-glossary.md). README.md verlinkt die übrige operationelle Doku (Login, Recordings, Runbooks); KanPrompt liefert die Karten und ihre Detail-Beschreibungen.
 
 ## Verbindliche Regeln
 
