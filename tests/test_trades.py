@@ -230,7 +230,15 @@ async def test_commissions_mtd_marks_assumption_when_currency_missing(
 # ---- Endpunkte ----
 
 
-def test_list_endpoint_returns_trades(client: TestClient) -> None:
+def test_list_endpoint_returns_trades(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `_today_utc` auf die feste Test-Referenz pinnen, damit der
+    # Lookback-Check (max. 30 Tage) zeitunabhaengig bleibt — sonst kippt
+    # der Test, sobald das reale Datum > _TODAY + 30 Tage liegt.
+    monkeypatch.setattr(
+        "broker_gateway.api.v1.trades._today_utc", lambda: _TODAY
+    )
     response = client.get(
         "/v1/trades?from=2026-04-20&to=2026-04-25",
         headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
