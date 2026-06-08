@@ -31,6 +31,7 @@ AP ``2a203c58-...`` Phase 4.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
@@ -38,8 +39,9 @@ from typing import TYPE_CHECKING, Any
 from fastapi import HTTPException, status
 
 from broker_gateway.cp.topics.sor import SorFrame
-from broker_gateway.money import normalize_money
+from broker_gateway.money import Money, normalize_money
 from broker_gateway.order_models import (
+    MarginImpact,
     Order,
     OrderCancellation,
     OrderRequest,
@@ -47,6 +49,8 @@ from broker_gateway.order_models import (
     OrderStatus,
     OrderType,
     TimeInForce,
+    WhatIfPreview,
+    WhatIfWarning,
 )
 from broker_gateway.streams.orders import OrdersBroadcaster
 
@@ -219,6 +223,70 @@ class TWSOrdersService:
     async def list_open(self) -> list[Order]:
         ib = self._client._ib  # noqa: SLF001
         return [_trade_to_order(trade) for trade in _open_trades(ib)]
+
+    # ---- What-If-Vorschau --------------------------------------------
+
+    async def whatif_order(self, request: OrderRequest) -> WhatIfPreview:
+        """Margin-/Risk-Vorschau ohne Order-Platzierung.
+
+        Bewusst NICHT durch den ``_read_only``-503-Gate geschuetzt:
+        ``whatIfOrder`` platziert nichts, der Scope ist ``orders:read``.
+        Lehnt das IB-Gateway den Call im readonly-Modus dennoch ab,
+        eskaliert das als 502 (``tws_whatif_failed``) - ehrlicher als
+        eine vorgetaeuschte Preview.
+
+        ``whatIfOrderAsync`` ist die async-Variante - der synchrone
+        Wrapper wuerde den FastAPI-Event-Loop blockieren (siehe Memory
+        ``project_tws_portfolio_resubscribe_hang``).
+        """
+        ib = self._client._ib  # noqa: SLF001
+        managed = list(ib.managedAccounts() or [])
+        if managed and request.account_id not in managed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "invalid_account",
+                    "message": (
+                        f"account_id={request.account_id} ist nicht in den "
+                        f"verfuegbaren Accounts ({', '.join(managed)})"
+                    ),
+                },
+            )
+
+        contract_class = await self._import_contract_class()
+        qualified = await self._qualify(contract_class, int(request.conid))
+        if qualified is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "invalid_conid",
+                    "message": f"conid={request.conid} konnte nicht qualifiziert werden",
+                },
+            )
+
+        order_obj = _build_ib_order(request)
+        try:
+            state = await ib.whatIfOrderAsync(qualified, order_obj)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("whatIfOrderAsync fehlgeschlagen: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "tws_whatif_failed",
+                    "message": f"whatIfOrder via TWS fehlgeschlagen: {exc}",
+                },
+            ) from exc
+        if state is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "tws_whatif_empty",
+                    "message": "whatIfOrder lieferte kein OrderState",
+                },
+            )
+
+        base_currency = _account_base_currency(ib, request.account_id)
+        return _order_state_to_whatif(state, request, qualified, base_currency)
 
     # ---- Helpers -----------------------------------------------------
 
@@ -628,6 +696,138 @@ def _commission_from_trade(trade: Any, currency: str) -> Any:
     if not seen:
         return None
     return normalize_money(total, currency)
+
+
+# ---- What-If-Mapping -------------------------------------------------
+
+
+# IBKR-Warning-Code (raw_id) -> semantischer code. Quelle:
+# docs/research/ibkr-whatif-warnings.md. Unbekannte Codes -> "whatif_warning".
+_WHATIF_WARNING_CODES: dict[int, str] = {
+    1: "no_market_data_subscription",
+    4: "price_check_unavailable",
+    21: "no_market_data_subscription",
+    23: "market_order_confirmation",
+    26: "mandatory_cap_price",
+}
+
+
+def _account_base_currency(ib: Any, account: str) -> str | None:
+    """Ermittelt die Account-Base-Currency aus dem ib_async-Cache.
+
+    Spiegelt das Pattern aus ``tws.portfolio`` (NetLiquidation/
+    EquityWithLoanValue tragen die Base-Currency). ``None``, wenn der
+    Account (noch) nicht subscribed ist - dann bleiben die Margin-Money-
+    Felder ``None`` statt erfunden.
+    """
+    try:
+        values = ib.accountValues(account)
+    except TypeError:
+        values = ib.accountValues()
+    except Exception:  # noqa: BLE001 - best effort, fehlende Subscription
+        return None
+    for av in values or []:
+        tag = getattr(av, "tag", "")
+        currency = getattr(av, "currency", "") or ""
+        if not currency or currency == "BASE":
+            continue
+        if tag in ("NetLiquidation", "EquityWithLoanValue", "TotalCashValue"):
+            return currency
+    return None
+
+
+def _first_finite(*values: Any) -> Any | None:
+    """Erstes finites (nicht-nan/inf) numerisches Element, sonst ``None``."""
+    for value in values:
+        if value is None:
+            continue
+        if _is_finite_number(value):
+            return value
+    return None
+
+
+def _parse_whatif_warning(text: str) -> WhatIfWarning:
+    """Parst eine IBKR-Warning. Format ``"21/message..."`` -> raw_id=21.
+
+    ib_async ``OrderState.warningText`` ist meist reiner Freitext ohne
+    Code-Praefix; dann bleibt ``raw_id`` ``None`` und ``code`` generisch.
+    """
+    stripped = text.strip()
+    match = re.match(r"^\s*(\d+)\s*/\s*(.*)$", stripped, re.DOTALL)
+    if match:
+        raw_id = int(match.group(1))
+        message = match.group(2).strip()
+        code = _WHATIF_WARNING_CODES.get(raw_id, "whatif_warning")
+        return WhatIfWarning(code=code, raw_id=raw_id, message=message)
+    return WhatIfWarning(code="whatif_warning", raw_id=None, message=stripped)
+
+
+def _order_state_to_whatif(
+    state: Any,
+    request: OrderRequest,
+    contract: Any,
+    base_currency: str | None,
+) -> WhatIfPreview:
+    """Wandelt ein ib_async ``OrderState`` in unser ``WhatIfPreview``."""
+    contract_currency = getattr(contract, "currency", None) or _FALLBACK_CURRENCY
+
+    # Commission: maxCommission konservativ, sonst commission.
+    commission_currency = getattr(state, "commissionCurrency", None) or contract_currency
+    comm_value = _first_finite(
+        getattr(state, "maxCommission", None),
+        getattr(state, "commission", None),
+    )
+    estimated_commission = (
+        normalize_money(comm_value, commission_currency) if comm_value is not None else None
+    )
+
+    # Betrag: quantity * limit_price - nur wenn ein Limit-Preis vorliegt.
+    estimated_amount: Money | None = None
+    if request.limit_price is not None:
+        try:
+            amount = Decimal(request.quantity) * Decimal(request.limit_price)
+            estimated_amount = normalize_money(amount, contract_currency)
+        except (InvalidOperation, ValueError):
+            estimated_amount = None
+
+    # Total: amount + commission, nur bei identischer Currency summierbar.
+    estimated_total: Money | None = None
+    if estimated_amount is not None and estimated_commission is not None:
+        if estimated_amount.currency == estimated_commission.currency:
+            total = Decimal(estimated_amount.value) + Decimal(estimated_commission.value)
+            estimated_total = normalize_money(total, estimated_amount.currency)
+    elif estimated_amount is not None and estimated_commission is None:
+        estimated_total = estimated_amount
+
+    margin = MarginImpact(
+        current_funds=normalize_money(
+            _to_decimal(getattr(state, "equityWithLoanBefore", None)), base_currency
+        ),
+        after_funds=normalize_money(
+            _to_decimal(getattr(state, "equityWithLoanAfter", None)), base_currency
+        ),
+        init_margin_after=normalize_money(
+            _to_decimal(getattr(state, "initMarginAfter", None)), base_currency
+        ),
+        maint_margin_after=normalize_money(
+            _to_decimal(getattr(state, "maintMarginAfter", None)), base_currency
+        ),
+    )
+
+    warnings: list[WhatIfWarning] = []
+    warning_text = getattr(state, "warningText", None)
+    if warning_text and str(warning_text).strip():
+        warnings.append(_parse_whatif_warning(str(warning_text)))
+
+    return WhatIfPreview(
+        account_id=request.account_id,
+        conid=int(request.conid),
+        estimated_amount=estimated_amount,
+        estimated_commission=estimated_commission,
+        estimated_total=estimated_total,
+        margin_impact=margin,
+        warnings=warnings,
+    )
 
 
 def _decimal_str(value: Any) -> str | None:

@@ -23,7 +23,12 @@ from broker_gateway.cp.lifecycle import AuthLifecycle, require_session_ok
 from broker_gateway.cp.orders import OrdersService
 from broker_gateway.cp.portfolio import PortfolioService
 from broker_gateway.idempotency import IdempotencyStore
-from broker_gateway.order_models import Order, OrderCancellation, OrderRequest
+from broker_gateway.order_models import (
+    Order,
+    OrderCancellation,
+    OrderRequest,
+    WhatIfPreview,
+)
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -89,6 +94,25 @@ async def place_order(
         portfolio.invalidate(request.account_id)
 
     return payload
+
+
+@router.post(
+    "/whatif",
+    response_model=WhatIfPreview,
+    summary="What-If-/Margin-Vorschau (platziert nichts)",
+)
+async def whatif_order(
+    request: OrderRequest,
+    _scope: Annotated[
+        Token, Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))
+    ],
+    _session: Annotated[AuthLifecycle, Depends(require_session_ok)],
+    service: Annotated[OrdersService, Depends(get_orders_service)],
+) -> WhatIfPreview:
+    # Reine Vorschau - kein Idempotency-Key, keine Cache-Invalidation.
+    # Scope-Semantik wie GET /{order_id}: orders:read genuegt, orders:write
+    # schliesst das Leserecht mit ein (require_any_scope).
+    return await service.whatif_order(request)
 
 
 @router.get(

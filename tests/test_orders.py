@@ -657,3 +657,85 @@ def test_place_endpoint_invalidates_portfolio_cache(
     assert response.status_code == 201
     # Place hat invalidate(_ACCOUNT_ID) gerufen -> Cache leer.
     assert len(portfolio._positions_cache) == 0
+
+
+# ---- POST /v1/orders/whatif (Auth + Routing, cp-Pfad liefert 503) ----
+#
+# Diese Tests laufen ueber den cp-`client`-Fixture. Der cp-Pfad ist seit
+# v2.0.0 nur noch Roll-Back-Profil und liefert bei /whatif bewusst 503
+# (whatif_not_supported_on_cp). Erreicht der Request den Service-Stub,
+# belegt das: Routing zu /whatif + Scope-Gate haben durchgelassen. Die
+# echte Preview-Logik (TWS) ist in tests/test_tws/test_orders.py getestet.
+
+
+def test_whatif_endpoint_routes_and_returns_503_on_cp(client: TestClient) -> None:
+    # Routing zu /whatif (nicht als order_id="whatif" gematcht) + cp-Stub.
+    response = client.post(
+        "/v1/orders/whatif",
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+        json=_valid_payload(),
+    )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "whatif_not_supported_on_cp"
+
+
+def test_whatif_endpoint_read_scope_reaches_service(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    # Spec-Scope orders:read genuegt fuer die Vorschau -> erreicht den
+    # Service (cp -> 503), wird also nicht vom Scope-Gate mit 403 gestoppt.
+    reader = generate_token_value()
+    store.put(Token(value=reader, caller_id="psm", scopes=[SCOPE_ORDERS_READ]))
+    response = client.post(
+        "/v1/orders/whatif",
+        headers={"Authorization": f"Bearer {reader}"},
+        json=_valid_payload(),
+    )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "whatif_not_supported_on_cp"
+
+
+def test_whatif_endpoint_write_scope_reaches_service(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    # Write-Consumer (trading-robot) darf vor dem Platzieren previewen.
+    writer = generate_token_value()
+    store.put(
+        Token(value=writer, caller_id="trading-robot", scopes=[SCOPE_ORDERS_WRITE])
+    )
+    response = client.post(
+        "/v1/orders/whatif",
+        headers={"Authorization": f"Bearer {writer}"},
+        json=_valid_payload(),
+    )
+    assert response.status_code == 503
+
+
+def test_whatif_endpoint_without_orders_scope_returns_403(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    bad = generate_token_value()
+    store.put(Token(value=bad, caller_id="psm", scopes=[SCOPE_QUOTES_READ]))
+    response = client.post(
+        "/v1/orders/whatif",
+        headers={"Authorization": f"Bearer {bad}"},
+        json=_valid_payload(),
+    )
+    assert response.status_code == 403
+
+
+def test_whatif_endpoint_without_token_returns_401(client: TestClient) -> None:
+    response = client.post("/v1/orders/whatif", json=_valid_payload())
+    assert response.status_code == 401
+
+
+def test_whatif_endpoint_invalid_payload_returns_422(client: TestClient) -> None:
+    # LMT ohne limit_price -> Pydantic-Validation (gleiche Regeln wie POST).
+    payload = _valid_payload()
+    payload.pop("limit_price")
+    response = client.post(
+        "/v1/orders/whatif",
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+        json=payload,
+    )
+    assert response.status_code == 422
