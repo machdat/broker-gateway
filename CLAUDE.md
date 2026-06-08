@@ -5,7 +5,7 @@ Anweisungen für Claude Code in diesem Repository.
 ## Projekt-Identität
 
 - **Name:** broker-gateway
-- **Status:** Repo-Stand v2.3.1. Auf cma-pi-1 läuft Service-Image v2.3.1 (v2.2.4 war der letzte Code-Bump davor, deployed; v2.2.1–v2.2.3 reine Doku-Patches ohne Image-Rebuild). Paper-Stack (Port 4001, DUP799747) und Live-Stack (Port 4000, U25235077 als heute aktiver Live-Account — Cutover auf dediziertes Service-Konto in Vorbereitung, siehe Konto-Migrations-Plan) sind beide aktiv. TWS-Backend-Cutover (AP `2a203c58` Phase 1-7) abgeschlossen; historical/fundamentals-Endpoints (Karte `a5c7ff1c`) seit v2.2.0 live; Token-Store-Recreate-Runbook (Karte `0de305f0`) seit v2.2.1; Order-Status-Scope-Fix (Karte `baba6beb`) seit v2.2.4; What-If-Preview `POST /v1/orders/whatif` (Karte `fe164f56`) seit v2.3.0 — **erfordert eine write-fähige Session** (IBKR Warning 321), liefert im read-only-Modus beider Stacks `503 whatif_requires_write_session` (Hang-Fix v2.3.1).
+- **Status:** Repo-Stand v2.5.0. Auf cma-pi-1 läuft Service-Image v2.5.0 (v2.4.0 whatToShow/ADJUSTED_LAST war der vorige deployte Code-Bump; v2.5.0 ist der Konto-Cutover — funktional ein reiner `.env`/Session-Wechsel, per gateway-only-Recreate deployt ohne tws-Session-Verlust). Paper-Stack (Port 4001, DUP799747) und Live-Stack (Port 4000, seit dem Cutover am 2026-06-08 am dedizierten Service-Konto statt U25235077 — siehe Konto-Migrations-Plan, Phase 2 vollzogen) sind beide aktiv. TWS-Backend-Cutover (AP `2a203c58` Phase 1-7) abgeschlossen; historical/fundamentals-Endpoints (Karte `a5c7ff1c`) seit v2.2.0 live; Token-Store-Recreate-Runbook (Karte `0de305f0`) seit v2.2.1; Order-Status-Scope-Fix (Karte `baba6beb`) seit v2.2.4; What-If-Preview `POST /v1/orders/whatif` (Karte `fe164f56`) seit v2.3.0 — **erfordert eine write-fähige Session** (IBKR Warning 321), liefert im read-only-Modus beider Stacks `503 whatif_requires_write_session` (Hang-Fix v2.3.1); whatToShow/ADJUSTED_LAST für Historical-Bars (Karte `6c1da48e`) seit v2.4.0; Live-Account-Cutover auf das dedizierte Service-Konto (Karte `0ef946c8`) seit v2.5.0.
 - **KanPrompt-Projekt-ID:** `a6a45428-ac37-48f5-b295-d3ff26f31711`
 - **GitHub:** https://github.com/machdat/broker-gateway (public)
 - **Lokal:** `C:\Users\christian.mangold\git\broker-gateway`
@@ -13,13 +13,13 @@ Anweisungen für Claude Code in diesem Repository.
 
 ## Konto-Migrations-Plan
 
-Seit 2026-05-18 ist ein dediziertes Service-Konto für broker-gateway-Live bei IBKR beantragt. Ziel: Entkopplung von U25235077, das der Operator parallel im Browser/in der IBKR-App nutzt — jeder Operator-Login dort kollidiert mit der Service-Session (Single-Session-Constraint). Drei-Phasen-Plan:
+Am 2026-06-08 wurde broker-gateway-Live per Cutover (Phase 2) vom Privatkonto U25235077 auf ein dediziertes IBKR-Service-Konto umgestellt. Damit ist U25235077 entkoppelt: der Operator kann es parallel im Browser/in der IBKR-App nutzen, ohne die Service-Session zu verdrängen (Single-Session-Constraint). Account-ID und Credentials liegen ausschließlich in der Pi-`.env` und im Passwort-Manager — bewusst nicht im öffentlichen Repo. Drei-Phasen-Plan:
 
 | Phase | Karte | Stand |
 |-------|-------|-------|
 | 1 — Doku-Vorbereitung (Architektur, Security, Glossar, Runbook, CLAUDE.md auf "U25235077 = heute aktiv, Ersatz geplant") | `cdb262f7` | in dieser Karte umgesetzt (v2.2.2) |
-| 2 — Cutover (Credentials-Tausch + Compose-Recreate + Smoke + Doku-Aktualisierung) | `0ef946c8` | blocked: wartet auf Account-ID + Login |
-| 3 — Bereinigung U25235077 in Doku + Memory | `07b244b1` | blocked durch Phase 2 |
+| 2 — Cutover (Credentials-Tausch + Compose-Recreate + Smoke + Doku-Aktualisierung) | `0ef946c8` | vollzogen am 2026-06-08 (v2.5.0) |
+| 3 — Bereinigung U25235077 in Doku + Memory | `07b244b1` | entblockt, offen (Phase 2 done) |
 
 Detail-Pfad: [`docs/runbooks/account-cutover.md`](docs/runbooks/account-cutover.md). Status-Sektion: [`docs/02-architecture.md`](docs/02-architecture.md) Sektion 11.2.
 
