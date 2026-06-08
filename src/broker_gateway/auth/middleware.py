@@ -90,3 +90,33 @@ def require_scope(required: str):
         return token
 
     return _dep
+
+
+def require_any_scope(*required: str):
+    """Dependency-Factory wie `require_scope`, aber mit OR-Semantik: der
+    Token muss MINDESTENS einen der `required`-Scopes besitzen. `admin:*`
+    matcht alles.
+
+    Gedacht für Lese-Endpunkte, die sowohl Read- als auch Write-Consumer
+    erreichen müssen - eine Schreibberechtigung schließt das Leserecht auf
+    dieselbe Ressource mit ein. So bleibt z.B. `GET /v1/orders/{id}` für
+    `orders:read` UND `orders:write` offen, ohne dass ein Write-only-Token
+    bricht.
+    """
+
+    def _dep(token: Annotated[Token, Depends(get_current_token)]) -> Token:
+        if not any(token.has_scope(scope) for scope in required):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "missing_scope",
+                    "message": (
+                        "Token besitzt keinen der erforderlichen Scopes: "
+                        + ", ".join(required)
+                    ),
+                    "required_scope": required[0],
+                },
+            )
+        return token
+
+    return _dep

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from broker_gateway.auth.models import (
     SCOPE_ADMIN_ALL,
+    SCOPE_ORDERS_READ,
     SCOPE_ORDERS_WRITE,
     SCOPE_QUOTES_READ,
     Token,
@@ -444,6 +445,65 @@ def test_get_endpoint_money_when_filled(client: TestClient) -> None:
     assert body["status"] == "Filled"
     assert body["commission"] is not None
     assert body["commission"]["currency"] == "USD"
+
+
+def _place_for_get(client: TestClient, idem_key: str) -> str:
+    place = client.post(
+        "/v1/orders",
+        headers={
+            "Authorization": f"Bearer {_ADMIN_VALUE}",
+            "Idempotency-Key": idem_key,
+        },
+        json=_valid_payload(),
+    )
+    return place.json()["order_id"]
+
+
+def test_get_endpoint_with_read_scope_returns_200(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    # Kern der Karte: ein reiner Lese-Consumer (orders:read) kann den
+    # Order-Status abrufen.
+    order_id = _place_for_get(client, "key-get-read-scope")
+    reader = generate_token_value()
+    store.put(Token(value=reader, caller_id="psm", scopes=[SCOPE_ORDERS_READ]))
+    response = client.get(
+        f"/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {reader}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["order_id"] == order_id
+
+
+def test_get_endpoint_with_write_scope_returns_200(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    # Kein Vertragsbruch: ein Write-only-Consumer (z.B. trading-robot)
+    # behaelt den Lesezugriff auf den Order-Status.
+    order_id = _place_for_get(client, "key-get-write-scope")
+    writer = generate_token_value()
+    store.put(
+        Token(value=writer, caller_id="trading-robot", scopes=[SCOPE_ORDERS_WRITE])
+    )
+    response = client.get(
+        f"/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {writer}"},
+    )
+    assert response.status_code == 200
+
+
+def test_get_endpoint_without_orders_scope_returns_403(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    # Least-Privilege bleibt gewahrt: ohne orders:* kein Order-Lesezugriff.
+    order_id = _place_for_get(client, "key-get-no-scope")
+    bad = generate_token_value()
+    store.put(Token(value=bad, caller_id="psm", scopes=[SCOPE_QUOTES_READ]))
+    response = client.get(
+        f"/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {bad}"},
+    )
+    assert response.status_code == 403
 
 
 # ---- DELETE /v1/orders/{order_id} ----
