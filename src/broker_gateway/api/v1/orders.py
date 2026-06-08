@@ -17,8 +17,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Response, status
 from fastapi.encoders import jsonable_encoder
 
-from broker_gateway.auth.middleware import require_scope
-from broker_gateway.auth.models import SCOPE_ORDERS_WRITE, Token
+from broker_gateway.auth.middleware import require_any_scope, require_scope
+from broker_gateway.auth.models import SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE, Token
 from broker_gateway.cp.lifecycle import AuthLifecycle, require_session_ok
 from broker_gateway.cp.orders import OrdersService
 from broker_gateway.cp.portfolio import PortfolioService
@@ -98,7 +98,9 @@ async def place_order(
 )
 async def get_order(
     order_id: Annotated[str, Path(min_length=1)],
-    _scope: Annotated[Token, Depends(require_scope(SCOPE_ORDERS_WRITE))],
+    _scope: Annotated[
+        Token, Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))
+    ],
     _session: Annotated[AuthLifecycle, Depends(require_session_ok)],
     service: Annotated[OrdersService, Depends(get_orders_service)],
 ) -> Order:
