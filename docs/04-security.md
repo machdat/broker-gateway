@@ -201,7 +201,7 @@ Single Source of Truth für Scope-Namen: [`src/broker_gateway/auth/models.py`](.
 | `quotes:read` | `/v1/quotes/snapshot`, `/v1/quotes/stream` | analog |
 | `portfolio:read` | `/v1/portfolio/{accountId}/*`, `/v1/trades` | analog |
 | `events:read` | `/v1/events/stream` | analog |
-| `orders:read` | `GET /v1/orders/{id}` (Order-Status; auch mit `orders:write` erreichbar) | `Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))` |
+| `orders:read` | `GET /v1/orders/{id}` (Order-Status), `POST /v1/orders/whatif` (Margin-Preview, platziert nichts) — beide auch mit `orders:write` erreichbar | `Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))` |
 | `orders:write` | `POST /v1/orders`, `DELETE /v1/orders/{id}` | analog |
 | `admin:*` | Token-Verwaltung; matcht **alle** Scope-Checks | analog (Wildcard in `Token.has_scope`) |
 

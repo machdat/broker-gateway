@@ -25,15 +25,20 @@ from broker_gateway.order_models import (
     OrderStatus,
     OrderType,
     TimeInForce,
+    WhatIfPreview,
 )
 from broker_gateway.streams.orders import OrdersBroadcaster
 from broker_gateway.tws.orders import (
     TWSOrdersBootstrapLoader,
     TWSOrdersService,
     TWSOrdersStreamPump,
+    _account_base_currency,
     _build_ib_order,
     _decimal_str,
+    _first_finite,
     _is_finite_number,
+    _order_state_to_whatif,
+    _parse_whatif_warning,
     _to_decimal,
     _trade_to_order,
     _trade_to_sor_frame,
@@ -760,3 +765,274 @@ class TestBuildIbOrder:
         assert order.orderType == "STP LMT"
         assert order.lmtPrice == 200.5
         assert order.auxPrice == 195.0
+
+
+# --------------------------------------------------------------------------
+# whatif_order (What-If-/Margin-Vorschau)
+# --------------------------------------------------------------------------
+
+
+def _make_order_state(
+    *,
+    commission: float = 1.0,
+    max_commission: float = 1.5,
+    commission_currency: str = "USD",
+    equity_before: str = "179.54",
+    equity_after: str = "91.00",
+    init_margin_after: str = "88.00",
+    maint_margin_after: str = "80.00",
+    warning_text: str = "",
+) -> SimpleNamespace:
+    """Minimaler ib_async-``OrderState``-Stub fuer whatif-Tests."""
+    return SimpleNamespace(
+        status="PreSubmitted",
+        commission=commission,
+        minCommission=0.0,
+        maxCommission=max_commission,
+        commissionCurrency=commission_currency,
+        equityWithLoanBefore=equity_before,
+        equityWithLoanAfter=equity_after,
+        initMarginBefore="0.00",
+        initMarginAfter=init_margin_after,
+        maintMarginBefore="0.00",
+        maintMarginAfter=maint_margin_after,
+        warningText=warning_text,
+    )
+
+
+def _make_account_value(
+    tag: str, value: str, currency: str, account: str = "U25235077"
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        tag=tag, value=value, currency=currency, account=account, modelCode=""
+    )
+
+
+def _default_account_values() -> list[SimpleNamespace]:
+    return [_make_account_value("NetLiquidation", "200.00", "EUR")]
+
+
+def _make_whatif_client(
+    *,
+    state: SimpleNamespace | None = None,
+    managed_accounts: list[str] | None = None,
+    qualify_results: list[Any] | None = None,
+    whatif_side_effect: Any = None,
+    account_values: list[SimpleNamespace] | None = None,
+    read_only: bool = True,
+) -> MagicMock:
+    qualified_default = [_make_contract()]
+    ib = SimpleNamespace(
+        managedAccounts=MagicMock(
+            return_value=list(managed_accounts) if managed_accounts is not None else ["U25235077"]
+        ),
+        qualifyContractsAsync=AsyncMock(
+            return_value=qualify_results if qualify_results is not None else qualified_default
+        ),
+        whatIfOrderAsync=AsyncMock(
+            return_value=state if state is not None else _make_order_state(),
+            side_effect=whatif_side_effect,
+        ),
+        accountValues=MagicMock(
+            return_value=account_values if account_values is not None else _default_account_values()
+        ),
+    )
+    client = MagicMock()
+    client._ib = ib
+    client.read_only = read_only
+    return client
+
+
+class TestWhatIfOrder:
+    async def test_returns_preview_with_commission_and_margin(self) -> None:
+        client = _make_whatif_client()
+        service = TWSOrdersService(client, read_only=True)
+        preview = await service.whatif_order(_order_request())
+        assert isinstance(preview, WhatIfPreview)
+        assert preview.account_id == "U25235077"
+        assert preview.conid == 265598
+        # estimated_amount = quantity(10) * limit_price(200.50) = 2005.00
+        assert preview.estimated_amount is not None
+        assert Decimal(preview.estimated_amount.value) == Decimal("2005.00")
+        assert preview.estimated_amount.currency == "USD"
+        # estimated_commission = maxCommission (1.5), commissionCurrency USD
+        assert preview.estimated_commission is not None
+        assert Decimal(preview.estimated_commission.value) == Decimal("1.5")
+        # estimated_total = amount + commission (gleiche Currency)
+        assert preview.estimated_total is not None
+        assert Decimal(preview.estimated_total.value) == Decimal("2006.5")
+        # margin_impact in Base-Currency (EUR aus accountValues)
+        assert preview.margin_impact.current_funds is not None
+        assert preview.margin_impact.current_funds.currency == "EUR"
+        assert Decimal(preview.margin_impact.current_funds.value) == Decimal("179.54")
+        assert preview.margin_impact.after_funds is not None
+        assert Decimal(preview.margin_impact.after_funds.value) == Decimal("91.00")
+        assert preview.margin_impact.init_margin_after is not None
+        assert preview.margin_impact.maint_margin_after is not None
+
+    async def test_works_in_read_only_mode(self) -> None:
+        # Kern der Karte: whatif platziert nichts und darf NICHT vom
+        # read_only-503-Gate (place_order) blockiert werden.
+        client = _make_whatif_client(read_only=True)
+        service = TWSOrdersService(client, read_only=True)
+        preview = await service.whatif_order(_order_request())
+        assert isinstance(preview, WhatIfPreview)
+        client._ib.whatIfOrderAsync.assert_awaited_once()
+
+    async def test_mkt_order_has_no_estimated_amount(self) -> None:
+        client = _make_whatif_client()
+        service = TWSOrdersService(client, read_only=True)
+        preview = await service.whatif_order(
+            _order_request(order_type=OrderType.MKT, limit_price=None, stop_price=None)
+        )
+        # Ohne Limit-Preis keine Betragsschaetzung, Commission/Margin bleiben.
+        assert preview.estimated_amount is None
+        assert preview.estimated_total is None
+        assert preview.estimated_commission is not None
+        assert preview.margin_impact.current_funds is not None
+
+    async def test_parses_warning_with_code(self) -> None:
+        state = _make_order_state(
+            warning_text=(
+                "21/You are trying to submit an order without having market data "
+                "for this instrument."
+            )
+        )
+        client = _make_whatif_client(state=state)
+        service = TWSOrdersService(client, read_only=True)
+        preview = await service.whatif_order(_order_request())
+        assert len(preview.warnings) == 1
+        warn = preview.warnings[0]
+        assert warn.raw_id == 21
+        assert warn.code == "no_market_data_subscription"
+        assert "market data" in warn.message
+
+    async def test_no_warnings_when_warning_text_empty(self) -> None:
+        client = _make_whatif_client(state=_make_order_state(warning_text=""))
+        service = TWSOrdersService(client, read_only=True)
+        preview = await service.whatif_order(_order_request())
+        assert preview.warnings == []
+
+    async def test_validates_account(self) -> None:
+        client = _make_whatif_client(managed_accounts=["DUP799747"])
+        service = TWSOrdersService(client, read_only=True)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.whatif_order(_order_request())
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail["code"] == "invalid_account"
+
+    async def test_invalid_conid_when_qualify_empty(self) -> None:
+        client = _make_whatif_client(qualify_results=[])
+        service = TWSOrdersService(client, read_only=True)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.whatif_order(_order_request())
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail["code"] == "invalid_conid"
+
+    async def test_propagates_backend_error_as_502(self) -> None:
+        client = _make_whatif_client(whatif_side_effect=RuntimeError("ibkr down"))
+        service = TWSOrdersService(client, read_only=True)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.whatif_order(_order_request())
+        assert exc_info.value.status_code == 502
+        assert exc_info.value.detail["code"] == "tws_whatif_failed"
+
+    async def test_empty_state_returns_502(self) -> None:
+        client = _make_whatif_client()
+        client._ib.whatIfOrderAsync = AsyncMock(return_value=None)
+        service = TWSOrdersService(client, read_only=True)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.whatif_order(_order_request())
+        assert exc_info.value.status_code == 502
+        assert exc_info.value.detail["code"] == "tws_whatif_empty"
+
+    async def test_margin_none_when_base_currency_unknown(self) -> None:
+        # accountValues ohne verwertbare Currency -> Margin-Money None,
+        # aber Commission (eigene Currency) bleibt befuellt.
+        client = _make_whatif_client(account_values=[])
+        service = TWSOrdersService(client, read_only=True)
+        preview = await service.whatif_order(_order_request())
+        assert preview.margin_impact.current_funds is None
+        assert preview.margin_impact.after_funds is None
+        assert preview.estimated_commission is not None
+
+
+class TestWhatIfHelpers:
+    def test_parse_whatif_warning_with_code(self) -> None:
+        warn = _parse_whatif_warning("21/blind trading warning")
+        assert warn.raw_id == 21
+        assert warn.code == "no_market_data_subscription"
+        assert warn.message == "blind trading warning"
+
+    def test_parse_whatif_warning_unknown_code(self) -> None:
+        warn = _parse_whatif_warning("999/some new warning")
+        assert warn.raw_id == 999
+        assert warn.code == "whatif_warning"
+
+    def test_parse_whatif_warning_without_code(self) -> None:
+        warn = _parse_whatif_warning("Just a freetext warning")
+        assert warn.raw_id is None
+        assert warn.code == "whatif_warning"
+        assert warn.message == "Just a freetext warning"
+
+    def test_account_base_currency_from_values(self) -> None:
+        ib = SimpleNamespace(
+            accountValues=MagicMock(
+                return_value=[
+                    _make_account_value("AccountType", "INDIVIDUAL", ""),
+                    _make_account_value("CashBalance", "100", "BASE"),
+                    _make_account_value("NetLiquidation", "200", "EUR"),
+                ]
+            )
+        )
+        assert _account_base_currency(ib, "U25235077") == "EUR"
+
+    def test_account_base_currency_none_when_no_currency(self) -> None:
+        ib = SimpleNamespace(
+            accountValues=MagicMock(
+                return_value=[_make_account_value("AccountType", "INDIVIDUAL", "")]
+            )
+        )
+        assert _account_base_currency(ib, "U25235077") is None
+
+    def test_account_base_currency_typeerror_fallback(self) -> None:
+        def _account_values(*args: Any) -> list[SimpleNamespace]:
+            if args:
+                raise TypeError("kein positional arg")
+            return [_make_account_value("NetLiquidation", "200", "USD")]
+
+        ib = SimpleNamespace(accountValues=_account_values)
+        assert _account_base_currency(ib, "U25235077") == "USD"
+
+    def test_account_base_currency_swallows_generic_error(self) -> None:
+        ib = SimpleNamespace(
+            accountValues=MagicMock(side_effect=RuntimeError("not subscribed"))
+        )
+        assert _account_base_currency(ib, "U25235077") is None
+
+    def test_first_finite_returns_first_valid(self) -> None:
+        assert _first_finite(None, float("nan"), 1.5, 2.0) == 1.5
+
+    def test_first_finite_returns_none_when_all_invalid(self) -> None:
+        assert _first_finite(None, float("nan"), float("inf")) is None
+
+    def test_order_state_total_none_on_currency_mismatch(self) -> None:
+        # estimated_amount USD, commission EUR -> total nicht summierbar.
+        state = _make_order_state(commission_currency="EUR", max_commission=1.0)
+        request = _order_request(limit_price="100")
+        contract = _make_contract(currency="USD")
+        preview = _order_state_to_whatif(state, request, contract, "EUR")
+        assert preview.estimated_amount is not None
+        assert preview.estimated_amount.currency == "USD"
+        assert preview.estimated_commission is not None
+        assert preview.estimated_commission.currency == "EUR"
+        assert preview.estimated_total is None
+
+    def test_order_state_commission_falls_back_to_commission_field(self) -> None:
+        # maxCommission nan -> commission-Feld wird genutzt.
+        state = _make_order_state(commission=2.0, max_commission=float("nan"))
+        request = _order_request()
+        contract = _make_contract(currency="USD")
+        preview = _order_state_to_whatif(state, request, contract, "USD")
+        assert preview.estimated_commission is not None
+        assert Decimal(preview.estimated_commission.value) == Decimal("2.0")

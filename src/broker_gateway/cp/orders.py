@@ -110,6 +110,29 @@ class OrdersService:
             )
         return _entry_to_order(response.json(), None, [])
 
+    async def whatif_order(self, request: OrderRequest) -> Any:
+        """What-If-Vorschau ist im cp-Pfad nicht verfuegbar.
+
+        Das CP-Gateway liefert bei ``/orders/whatif`` ein Object mit
+        vorformatierten Strings (z.B. ``"267.26 USD (1 Shares)"``), das
+        sich nicht verlustfrei auf das maschinenlesbare
+        :class:`WhatIfPreview`-Schema mappen laesst. Da der cp-Pfad seit
+        v2.0.0 nur noch Roll-Back-Profil (``cp-legacy``) ist, liefert
+        diese Methode bewusst einen klaren 503 statt einer halbgaren
+        Preview. Der aktive TWS-Pfad (:class:`TWSOrdersService`)
+        implementiert die echte Vorschau.
+        """
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "whatif_not_supported_on_cp",
+                "message": (
+                    "What-If-Vorschau ist nur im TWS-Backend verfuegbar; "
+                    "das cp-legacy-Profil unterstuetzt /v1/orders/whatif nicht"
+                ),
+            },
+        )
+
     async def cancel_order(self, account_id: str, order_id: str) -> OrderCancellation:
         response = await self._client.delete(
             f"/iserver/account/{account_id}/order/{order_id}"

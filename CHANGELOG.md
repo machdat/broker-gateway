@@ -4,6 +4,57 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.3.0] — 2026-06-08 (Karte `fe164f56`: Spec-Drift POST /v1/orders/whatif beseitigen, Variante A)
+
+Neuer Endpoint `POST /v1/orders/whatif` (Margin-/What-If-Vorschau). Die
+Spec (Section 7.4) fuehrte ihn seit jeher, der Code lieferte ihn nicht —
+dieser Drift ist behoben, Spec == Code.
+
+- **Neu:** `POST /v1/orders/whatif` im TWS-Backend via
+  `ib_async.whatIfOrder` (`OrderState`). Reine Vorschau, platziert
+  nichts, kein `Idempotency-Key`.
+- **Scope:** `require_any_scope(orders:read, orders:write)` — analog
+  `GET /v1/orders/{id}` (Karte `baba6beb`). Ein Write-Consumer
+  (trading-robot) kann vor dem Platzieren previewen.
+- **Read-Only-sicher:** NICHT durch den `read_only`-503-Gate von
+  `POST /v1/orders` geschuetzt (whatif platziert nichts). Lehnt das
+  IB-Gateway den Call im readonly-Modus dennoch ab, kommt `502
+  tws_whatif_failed`.
+- **Neue Modelle** (`order_models.py`, SSOT): `WhatIfPreview`,
+  `MarginImpact`, `WhatIfWarning`. Alle Geldfelder optional — nie
+  geschaetzt, wenn das Backend keinen Wert liefert.
+- **cp-legacy:** liefert bewusst `503 whatif_not_supported_on_cp` — das
+  CP-Gateway-Object mappt nicht verlustfrei, cp ist nur Roll-Back-Profil.
+- **Doku:** `docs/api/v1.md` Section 7.4 (Schema + Feld-Semantik),
+  Status-Tabelle, Section 14.3 (Drift-Behebung), Spec-Stand v1.35.0;
+  `docs/04-security.md` Scope-Matrix.
+- **Tests:** `tests/test_tws/test_orders.py` (Mapping + Helper +
+  read-only-Pfad), `tests/test_orders.py` (HTTP-Auth/Routing + cp-503).
+- **Version-Bump 2.2.4 -> 2.3.0** (Minor, neuer Endpoint) in
+  pyproject.toml + `__init__.py` + compose.yaml image-Tag + README.
+
+## [2.2.4] — 2026-06-08 (Karte `baba6beb`: GET /v1/orders/{id} auf orders:read lockern)
+
+- **Fix:** `GET /v1/orders/{order_id}` verlangte faelschlich
+  `orders:write`. Neue Dependency-Factory `require_any_scope(*scopes)`
+  mit OR-Semantik; der Status-Endpoint akzeptiert jetzt `orders:read`
+  **oder** `orders:write` (kein Vertragsbruch fuer Write-only-Consumer).
+- **Doku:** `docs/api/v1.md` GET-Scope-Beispiel, `docs/04-security.md`
+  Scope-Matrix (neue `orders:read`-Zeile).
+- **Tests:** read-/write-/no-scope-Pfade in `tests/test_orders.py`.
+- **Deploy:** v2.2.4 auf Live + Paper (gateway-only, Session erhalten,
+  kein 2FA).
+
+## [2.2.3] — 2026-06-08 (Karte `f5d7e086`: Versions-Drift-Doku + Trades-Test-Stabilisierung)
+
+- **Doku:** Versions-Drift zwischen Repo-Stand und Doku beseitigt
+  (`docs/api/v1.md` Implementation-Status-Header, CLAUDE.md-Status,
+  README-Status-Block SSOT-konform).
+- **Test-Fix:** zeitabhaengigen `test_list_endpoint_returns_trades`
+  stabilisiert (Monkeypatch von `_today_utc` statt hartkodierter Daten —
+  CI-Zeitbombe behoben, die unabhaengig von der Karte rot war).
+- **Version-Bump 2.2.2 -> 2.2.3** (Patch, Doku/Test).
+
 ## [2.2.2] — 2026-05-19 (Karte `cdb262f7`: Doku-Vorbereitung Account-Identitaet-Wechsel)
 
 Reine Doku-Karte (Phase 1 von drei). Architektur-/Security-/Glossar-/

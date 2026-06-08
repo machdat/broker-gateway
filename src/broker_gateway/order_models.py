@@ -141,6 +141,53 @@ class OrderCancellation(BaseModel):
     cancelled_at: datetime | None = None
 
 
+class WhatIfWarning(BaseModel):
+    """Eine Pre-Trade-Warnung aus der What-If-Vorschau.
+
+    `raw_id` ist der IBKR-Warning-Code (z.B. 21), sofern das Backend ihn
+    liefert. Der ib_async/TWS-Pfad gibt nur Freitext (`warningText`) -
+    dort bleibt `raw_id` `None` und `code` faellt auf `whatif_warning`
+    zurueck, wenn kein bekannter Code abgeleitet werden kann.
+    """
+
+    code: str
+    raw_id: int | None = None
+    message: str
+
+
+class MarginImpact(BaseModel):
+    """Margin-/Funds-Auswirkung der vorgeschlagenen Order.
+
+    Alle Felder sind optional - das Backend liefert sie nur, wenn der
+    Account subscribed ist und die Base-Currency bekannt ist. Quelle im
+    TWS-Pfad: `ib_async.OrderState` (equityWithLoan/initMargin/
+    maintMargin before/after).
+    """
+
+    current_funds: Money | None = None
+    after_funds: Money | None = None
+    init_margin_after: Money | None = None
+    maint_margin_after: Money | None = None
+
+
+class WhatIfPreview(BaseModel):
+    """Ausgehende What-If-/Margin-Vorschau (`POST /v1/orders/whatif`).
+
+    Reine Vorschau - es wird keine Order platziert. Geldfelder sind
+    optional, weil das Backend je nach Order-Typ und Marktdaten-Lage
+    nicht alle Werte liefert (z.B. kein `estimated_amount` bei MKT ohne
+    Limit-Preis).
+    """
+
+    account_id: str
+    conid: int
+    estimated_amount: Money | None = None
+    estimated_commission: Money | None = None
+    estimated_total: Money | None = None
+    margin_impact: MarginImpact = Field(default_factory=MarginImpact)
+    warnings: list[WhatIfWarning] = Field(default_factory=list)
+
+
 __all__ = [
     "OrderType",
     "OrderSide",
@@ -149,4 +196,7 @@ __all__ = [
     "OrderRequest",
     "Order",
     "OrderCancellation",
+    "WhatIfWarning",
+    "MarginImpact",
+    "WhatIfPreview",
 ]
