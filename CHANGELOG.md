@@ -4,7 +4,31 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.3.1] — 2026-06-08 (Karte `fe164f56`: whatif Read-Only-Hang-Fix, Paper-Smoke-Befund)
+
+Folge-Fix zu v2.3.0: Der erste Paper-Smoke (DUP799747, read_only=yes)
+deckte auf, dass IBKR `whatIfOrder` im Read-Only-API-Modus mit
+`Warning 321` ablehnt — **ohne** OrderState, sodass `whatIfOrderAsync`
+endlos haengt (HTTP 000 / Worker blockiert).
+
+- **Fix:** Proaktiver `503 whatif_requires_write_session` im
+  read_only-Modus (kein Hang mehr) — whatif ist damit wie
+  `POST /v1/orders` an eine nicht-read-only Session gebunden. Die
+  v2.3.0-Annahme "whatif ist read-only-sicher" war falsch.
+- **Hang-Schutz:** 15s-`asyncio.wait_for`-Timeout um
+  `whatIfOrderAsync` -> `504 tws_whatif_timeout` statt blockiertem
+  Worker (Memory `project_tws_portfolio_resubscribe_hang`).
+- **Doku:** `docs/api/v1.md` Section 7.4 + 14.3 (Read-Only-Befund);
+  Tests `test_503_in_read_only` + `test_timeout_returns_504`.
+- **Version-Bump 2.3.0 -> 2.3.1** (Patch).
+- **Konsequenz:** Auf den heutigen cma-pi-1-Stacks (beide read_only)
+  liefert der Endpoint den dokumentierten 503; echte Vorschau erst auf
+  einem Stack mit `READ_ONLY_API=no`.
+
 ## [2.3.0] — 2026-06-08 (Karte `fe164f56`: Spec-Drift POST /v1/orders/whatif beseitigen, Variante A)
+
+> ⚠️ v2.3.0 nahm an, whatif sei im read-only-Modus nutzbar — das ist
+> falsch (siehe v2.3.1). Der read-only-Hang ist erst ab v2.3.1 behoben.
 
 Neuer Endpoint `POST /v1/orders/whatif` (Margin-/What-If-Vorschau). Die
 Spec (Section 7.4) fuehrte ihn seit jeher, der Code lieferte ihn nicht —
