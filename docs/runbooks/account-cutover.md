@@ -13,6 +13,33 @@ die Identitaet hinter ihm wechselt.
 > vorliegen. Bis dahin ist dieser Runbook eine Pruef-Checkliste, kein
 > Schritt-fuer-Schritt-Skript.
 
+## 0. Durchgefuehrt am 2026-06-08 (v2.5.0, Karte `0ef946c8`)
+
+Der Cutover wurde am 2026-06-08 vollzogen. **Drei Korrekturen gegenueber
+dem urspruenglich angenommenen Pfad unten** — die Checklisten-Abschnitte
+2-5 sind entsprechend zu lesen:
+
+1. **Credentials liegen in `/mnt/ssd/broker-gateway/.env`** (Keys
+   `BG_TWS_USERNAME` / `BG_TWS_PASSWORD` / `BG_TWS_TRADING_MODE`),
+   **nicht** in `/etc/default/broker-gateway` (dort steht nur
+   `BG_TOKEN_DIR_HOST`). Tausch + Backup (`.env.bak` = Original mit
+   U25235077) erfolgten in dieser Datei.
+2. **`tws-health` enthaelt kein `account_id`-Feld** (nur `connected`,
+   `host`, `port`, `paper`, `read_only`, `client_id`). Die Konto-
+   Identitaet wird ueber die Portfolio-Summary verifiziert.
+3. **Summary-Pfad ist `GET /v1/portfolio/{accountId}`** (ohne
+   `/summary`-Suffix; `/summary` liefert `404 not_found`).
+
+Tatsaechlicher Ablauf: `.env`-Credentials auf das Service-Konto getauscht
+(Operator), `docker compose down && up -d` auf dem Live-Stack, einmaliger
+2FA-Push (IB Key), ~60 s Warmup. Verifikation: `tws-health`
+`connected=true` / `paper=false`; Portfolio-Summary des Service-Kontos
+HTTP 200 mit echten Daten; Gegencheck `U25235077` liefert nur
+`null`-Werte (entkoppelt). Rollback-Pfad (`cp .env.bak .env` -> recreate
+-> 2FA U25235077) validiert, nicht ausgeloest. Account-ID + Credentials
+bewusst **nicht** im oeffentlichen Repo — nur Pi-`.env` +
+Passwort-Manager.
+
 ## 1. Wann tritt das auf
 
 Einmalig, wenn das dediziertes Service-Konto bei IBKR aktiv ist
@@ -28,8 +55,8 @@ Phase-Plan in drei Karten:
 | Phase | KanPrompt-Karte | Scope |
 |-------|-----------------|-------|
 | 1 (heute) | `cdb262f7` (Doku-Vorbereitung) | Architektur-/Security-/Glossar-/CLAUDE.md-Edits + dieser Runbook |
-| 2 (blocked, wartet auf Account-Daten) | `0ef946c8` (Konto-Cutover) | Credentials-Tausch + Compose-Recreate + Smoke + Doku-Aktualisierung |
-| 3 (blocked durch 2) | `07b244b1` (U25235077-Bereinigung) | "heute aktiv"-Phrasen entfernen, Memory-Sweep, Cassette-Kontextualisierung |
+| 2 (vollzogen 2026-06-08, v2.5.0) | `0ef946c8` (Konto-Cutover) | Credentials-Tausch + Compose-Recreate + Smoke + Doku-Aktualisierung |
+| 3 (entblockt, offen) | `07b244b1` (U25235077-Bereinigung) | "heute aktiv"-Phrasen entfernen, Memory-Sweep, Cassette-Kontextualisierung |
 
 ## 2. Voraussetzungen (vor Phase 2)
 

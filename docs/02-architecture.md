@@ -912,20 +912,26 @@ eigenmächtig entschieden:
   ersetzt den `cpgateway`-Compose-Service durch einen `tws`-Service
   mit Healthcheck. Bis dahin sind die Order/Portfolio/Quotes-Pfade
   unter `BG_BACKEND=tws` nicht funktional.
-- **Account-Identitaet-Wechsel — Status:** seit 2026-05-18 ist ein
-  zweites IBKR-Konto als dediziertes Service-Konto beantragt; die
-  konkrete Account-ID und die Login-Credentials sind noch nicht
-  verfügbar. Ziel: broker-gateway-Live hängt zukünftig am Service-
-  Konto, das Privatkonto U25235077 bleibt frei für Operator-Browser-
-  Logins ohne Single-Session-Hijack der Service-Instanz (3.1 / 2.1).
-  Pfad in drei Karten: Phase 1 (Doku-Vorbereitung, diese Sektion +
-  3.1 + 6.4/10.3/12.2 in `04-security.md` + Glossar-Eintrag +
-  [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)),
-  Phase 2 (eigentlicher Cutover, blocked bis Account-Daten vorliegen),
-  Phase 3 (U25235077-Bereinigung in Doku + Memory, blocked durch
-  Phase 2). U25235077 bleibt bis zur Phase 3 in Doku-Texten als
-  "heute aktiv" sichtbar; Cassettes unter
-  `tests/fixtures/recorded/live/` werden **nicht** umgeschrieben.
+- **Account-Identitaet-Wechsel — Status: Phase 2 (Cutover) vollzogen
+  am 2026-06-08 (v2.5.0).** broker-gateway-Live haengt seit dem Cutover
+  am dedizierten IBKR-Service-Konto. Die konkrete Account-ID und die
+  Credentials liegen ausschliesslich in der Pi-`.env` und im
+  Passwort-Manager — bewusst **nicht** im oeffentlichen Repo (Karte
+  `0ef946c8` Constraint 1). Das Privatkonto U25235077 ist entkoppelt
+  und bleibt frei fuer Operator-Browser-Logins ohne Single-Session-
+  Hijack der Service-Instanz (3.1 / 2.1). Verifikation beim Cutover:
+  `tws-health` `connected=true` / `paper=false`, Portfolio-Summary des
+  Service-Kontos HTTP 200 mit echten Daten, Gegencheck U25235077
+  liefert nur `null`-Werte. Pfad in drei Karten: Phase 1
+  (Doku-Vorbereitung, v2.2.2) + Phase 2 (Cutover, v2.5.0, Karte
+  `0ef946c8`) + Phase 3 (U25235077-Bereinigung in Doku + Memory, jetzt
+  entblockt, Karte `07b244b1`). U25235077 bleibt bis zur Phase 3 in den
+  uebrigen Doku-Texten als historischer Verweis sichtbar; Cassettes
+  unter `tests/fixtures/recorded/live/` werden **nicht** umgeschrieben.
+  Runbook-Korrekturen aus dem realen Cutover: Live-Creds in `.env`
+  statt `/etc/default/broker-gateway`, `tws-health` ohne
+  `account_id`-Feld, Summary-Pfad `GET /v1/portfolio/{id}` (siehe
+  [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)).
 
 ---
 

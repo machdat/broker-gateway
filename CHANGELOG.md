@@ -4,6 +4,47 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.5.0] — 2026-06-08 (Karte `0ef946c8`: Live-Account-Cutover auf dediziertes Service-Konto)
+
+broker-gateway-Live haengt ab diesem Cutover am dedizierten IBKR-
+Service-Konto statt am Privatkonto U25235077 (Phase 2 des
+Konto-Migrations-Plans). Damit entfallen die Single-Session-Hijacks,
+wenn der Operator U25235077 parallel im Browser / in der IBKR-App nutzt.
+
+- **Cutover:** Live-Credentials in der Pi-`.env` getauscht
+  (`BG_TWS_USERNAME`/`BG_TWS_PASSWORD`), `docker compose down && up -d`,
+  einmaliger 2FA-Push fuer das Service-Konto. Reiner `.env`/Session-
+  Wechsel, kein Code-Change am Service.
+- **Verifiziert:** `tws-health` `connected=true` / `paper=false`,
+  Portfolio-Summary des Service-Kontos HTTP 200 mit echten Daten,
+  Gegencheck U25235077 liefert nur `null`-Werte (entkoppelt).
+- **Doku:** `docs/runbooks/account-cutover.md` mit tatsaechlichen
+  Schritten + drei Runbook-Korrekturen (Live-Creds in `.env` statt
+  `/etc/default/broker-gateway`; `tws-health` ohne `account_id`-Feld;
+  Summary-Pfad `GET /v1/portfolio/{id}`). `docs/02-architecture.md`
+  Sektion 11.2 auf "Phase 2 vollzogen". Phase 3 (`07b244b1`) entblockt.
+- **Sicherheit:** Service-Konto-ID + Credentials bewusst NICHT im
+  oeffentlichen Repo — nur Pi-`.env` + Passwort-Manager (Constraint 1).
+- **Kein Image-Rebuild:** `git pull` auf cma-pi-1 genuegt; der
+  Container-Recreate lief bereits beim Credential-Wechsel.
+- **Version-Bump 2.4.0 -> 2.5.0** (Minor — funktionale Aenderung am
+  aktiven Service).
+
+## [2.4.0] — 2026-06-08 (Karte `6c1da48e`: Historical-Bars whatToShow / ADJUSTED_LAST)
+
+Optionaler `whatToShow`-Query-Param fuer die vier
+`/v1/instruments/{conid}/historical/*`-Endpunkte (Default `TRADES`,
+neu `ADJUSTED_LAST` fuer split- UND dividend-adjustierte Bars,
+Anforderung algotrade-backtest).
+
+- **Neu:** `whatToShow` mit Whitelist-Validierung (`TRADES`,
+  `ADJUSTED_LAST`, `MIDPOINT`, `BID`, `ASK`) -> `422
+  unsupported_what_to_show`; `what_to_show` jetzt Teil der
+  `HistoricalBarsResponse`.
+- **Doku:** `docs/api/v1.md` Section 4.3 + Spec-Bump v1.36.0.
+- **Rueckwaertskompatibel:** ohne Param unveraendert `TRADES`.
+- **Version-Bump 2.3.1 -> 2.4.0** (Minor).
+
 ## [2.3.1] — 2026-06-08 (Karte `fe164f56`: whatif Read-Only-Hang-Fix, Paper-Smoke-Befund)
 
 Folge-Fix zu v2.3.0: Der erste Paper-Smoke (DUP799747, read_only=yes)
