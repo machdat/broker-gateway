@@ -27,10 +27,12 @@ from broker_gateway.tws.historical import (
     DEFAULT_DURATION_1MIN,
     DEFAULT_DURATION_DAILY,
     DEFAULT_DURATION_HOURLY,
+    DEFAULT_WHAT_TO_SHOW,
     FundamentalsResponse,
     HistoricalBarsResponse,
     TWSHistoricalService,
     parse_report_types,
+    validate_what_to_show,
 )
 
 
@@ -142,7 +144,9 @@ async def get_instrument(
 # Vier Endpoints mit identischem Vertrag, nur Bar-Size + Default-Duration
 # unterscheiden sich. IBKR-Pacing (60 Requests / 10 min) wird im Service
 # enforced. useRTH defaultet auf True — wer Pre-/Post-Market braucht,
-# setzt es explizit auf False.
+# setzt es explizit auf False. whatToShow defaultet auf TRADES (split-,
+# aber nicht dividend-adjustiert); ADJUSTED_LAST liefert zusaetzlich
+# dividend-adjustierte Tagesbars (Karte 6c1da48e).
 # ---------------------------------------------------------------------------
 
 
@@ -152,6 +156,7 @@ async def _historical_endpoint(
     bar_size: str,
     duration: str,
     use_rth: bool,
+    what_to_show: str,
     service: TWSHistoricalService,
 ) -> HistoricalBarsResponse:
     return await service.historical_bars(
@@ -159,6 +164,7 @@ async def _historical_endpoint(
         bar_size=bar_size,
         duration=duration,
         use_rth=use_rth,
+        what_to_show=validate_what_to_show(what_to_show),
     )
 
 
@@ -182,12 +188,23 @@ async def get_historical_daily(
         bool,
         Query(description="Regular Trading Hours only (Default True)"),
     ] = True,
+    whatToShow: Annotated[  # noqa: N803 — externes API-Naming
+        str,
+        Query(
+            description=(
+                "IBKR-whatToShow. Default TRADES (split-, nicht "
+                "dividend-adjustiert). ADJUSTED_LAST = split- UND "
+                "dividend-adjustiert. Weiter erlaubt: MIDPOINT, BID, ASK."
+            ),
+        ),
+    ] = DEFAULT_WHAT_TO_SHOW,
 ) -> HistoricalBarsResponse:
     return await _historical_endpoint(
         conid=conid,
         bar_size=BAR_SIZE_DAILY,
         duration=duration,
         use_rth=useRTH,
+        what_to_show=whatToShow,
         service=service,
     )
 
@@ -211,12 +228,23 @@ async def get_historical_hourly(
     useRTH: Annotated[  # noqa: N803
         bool, Query(description="Regular Trading Hours only (Default True)")
     ] = True,
+    whatToShow: Annotated[  # noqa: N803
+        str,
+        Query(
+            description=(
+                "IBKR-whatToShow. Default TRADES (split-, nicht "
+                "dividend-adjustiert). ADJUSTED_LAST = split- UND "
+                "dividend-adjustiert. Weiter erlaubt: MIDPOINT, BID, ASK."
+            ),
+        ),
+    ] = DEFAULT_WHAT_TO_SHOW,
 ) -> HistoricalBarsResponse:
     return await _historical_endpoint(
         conid=conid,
         bar_size=BAR_SIZE_HOURLY,
         duration=duration,
         use_rth=useRTH,
+        what_to_show=whatToShow,
         service=service,
     )
 
@@ -238,12 +266,23 @@ async def get_historical_15min(
     useRTH: Annotated[  # noqa: N803
         bool, Query(description="Regular Trading Hours only (Default True)")
     ] = True,
+    whatToShow: Annotated[  # noqa: N803
+        str,
+        Query(
+            description=(
+                "IBKR-whatToShow. Default TRADES (split-, nicht "
+                "dividend-adjustiert). ADJUSTED_LAST = split- UND "
+                "dividend-adjustiert. Weiter erlaubt: MIDPOINT, BID, ASK."
+            ),
+        ),
+    ] = DEFAULT_WHAT_TO_SHOW,
 ) -> HistoricalBarsResponse:
     return await _historical_endpoint(
         conid=conid,
         bar_size=BAR_SIZE_15MIN,
         duration=duration,
         use_rth=useRTH,
+        what_to_show=whatToShow,
         service=service,
     )
 
@@ -265,12 +304,23 @@ async def get_historical_1min(
     useRTH: Annotated[  # noqa: N803
         bool, Query(description="Regular Trading Hours only (Default True)")
     ] = True,
+    whatToShow: Annotated[  # noqa: N803
+        str,
+        Query(
+            description=(
+                "IBKR-whatToShow. Default TRADES (split-, nicht "
+                "dividend-adjustiert). ADJUSTED_LAST = split- UND "
+                "dividend-adjustiert. Weiter erlaubt: MIDPOINT, BID, ASK."
+            ),
+        ),
+    ] = DEFAULT_WHAT_TO_SHOW,
 ) -> HistoricalBarsResponse:
     return await _historical_endpoint(
         conid=conid,
         bar_size=BAR_SIZE_1MIN,
         duration=duration,
         use_rth=useRTH,
+        what_to_show=whatToShow,
         service=service,
     )
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "broker-gateway"
-version = "2.3.1"
+version = "2.4.0"
 description = "Versionierte HTTP-API zwischen Consumern und broker-vermittelten Diensten (IBKR Client Portal Gateway)."
 readme = "README.md"
 requires-python = ">=3.12"

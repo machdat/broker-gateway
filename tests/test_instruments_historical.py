@@ -142,12 +142,13 @@ def _auth(value: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {value}"}
 
 
-def _make_bar_response() -> HistoricalBarsResponse:
+def _make_bar_response(what_to_show: str = "TRADES") -> HistoricalBarsResponse:
     return HistoricalBarsResponse(
         conid=265598,
         bar_size="1 day",
         duration="1 Y",
         use_rth=True,
+        what_to_show=what_to_show,
         records=[
             Bar(
                 timestamp=datetime(2026, 5, 16, tzinfo=UTC),
@@ -230,6 +231,71 @@ class TestHistoricalDaily:
         assert call_kwargs["duration"] == "6 M"
         assert call_kwargs["use_rth"] is False
         assert call_kwargs["bar_size"] == "1 day"
+
+
+class TestHistoricalWhatToShow:
+    async def test_default_what_to_show_is_trades(
+        self,
+        client_with_historical: TestClient,
+        historical_mock: MagicMock,
+    ) -> None:
+        historical_mock.historical_bars.return_value = _make_bar_response()
+        r = client_with_historical.get(
+            "/v1/instruments/265598/historical/daily",
+            headers=_auth(_HISTORICAL_VALUE),
+        )
+        assert r.status_code == 200
+        assert r.json()["what_to_show"] == "TRADES"
+        call_kwargs = historical_mock.historical_bars.await_args.kwargs
+        assert call_kwargs["what_to_show"] == "TRADES"
+
+    async def test_passes_what_to_show_query_through(
+        self,
+        client_with_historical: TestClient,
+        historical_mock: MagicMock,
+    ) -> None:
+        historical_mock.historical_bars.return_value = _make_bar_response(
+            what_to_show="ADJUSTED_LAST"
+        )
+        r = client_with_historical.get(
+            "/v1/instruments/265598/historical/daily?whatToShow=ADJUSTED_LAST",
+            headers=_auth(_HISTORICAL_VALUE),
+        )
+        assert r.status_code == 200
+        assert r.json()["what_to_show"] == "ADJUSTED_LAST"
+        call_kwargs = historical_mock.historical_bars.await_args.kwargs
+        assert call_kwargs["what_to_show"] == "ADJUSTED_LAST"
+
+    async def test_invalid_what_to_show_returns_422(
+        self,
+        client_with_historical: TestClient,
+        historical_mock: MagicMock,
+    ) -> None:
+        r = client_with_historical.get(
+            "/v1/instruments/265598/historical/daily?whatToShow=FOO",
+            headers=_auth(_HISTORICAL_VALUE),
+        )
+        assert r.status_code == 422
+        assert r.json()["error"]["code"] == "unsupported_what_to_show"
+        # Bei Validierungsfehler darf der Service gar nicht erst gerufen werden.
+        historical_mock.historical_bars.assert_not_awaited()
+
+    async def test_what_to_show_applies_to_all_four_routes(
+        self,
+        client_with_historical: TestClient,
+        historical_mock: MagicMock,
+    ) -> None:
+        historical_mock.historical_bars.return_value = _make_bar_response(
+            what_to_show="ADJUSTED_LAST"
+        )
+        for path in ("daily", "hourly", "15min", "1min"):
+            r = client_with_historical.get(
+                f"/v1/instruments/265598/historical/{path}?whatToShow=ADJUSTED_LAST",
+                headers=_auth(_HISTORICAL_VALUE),
+            )
+            assert r.status_code == 200, path
+            call_kwargs = historical_mock.historical_bars.await_args.kwargs
+            assert call_kwargs["what_to_show"] == "ADJUSTED_LAST", path
 
 
 class TestHistoricalHourly:
