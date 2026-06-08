@@ -76,6 +76,28 @@ ALLOWED_FUNDAMENTAL_REPORTS: frozenset[str] = frozenset(
 )
 
 
+# Default-whatToShow. TRADES = ungeadjustierte (split-adjustierte, aber
+# NICHT dividend-adjustierte) Trade-Bars. Rueckwaertskompatibler Default,
+# damit bestehende Consumer ohne Param unveraendert bedient werden.
+DEFAULT_WHAT_TO_SHOW = "TRADES"
+
+
+# Whitelist der akzeptierten whatToShow-Werte. ADJUSTED_LAST liefert
+# split- UND dividend-adjustierte Tagesbars (Anforderung algotrade-
+# backtest, Karte 6c1da48e). MIDPOINT/BID/ASK fuer FX- und Quote-Bars.
+# IBKR unterstuetzt weitere Werte (BID_ASK, HISTORICAL_VOLATILITY, ...),
+# die hier bewusst nicht freigeschaltet sind.
+ALLOWED_WHAT_TO_SHOW: frozenset[str] = frozenset(
+    {
+        "TRADES",
+        "ADJUSTED_LAST",
+        "MIDPOINT",
+        "BID",
+        "ASK",
+    }
+)
+
+
 # bar-size-Mapping fuer die vier Endpoints. ib_async erwartet die
 # IBKR-Strings, nicht unsere internen Aliase.
 BAR_SIZE_DAILY = "1 day"
@@ -101,6 +123,9 @@ class HistoricalBarsResponse(BaseModel):
     bar_size: str = Field(description="IBKR-Bar-Size-String, z.B. '1 day'")
     duration: str = Field(description="IBKR-Duration-String, z.B. '1 Y'")
     use_rth: bool
+    what_to_show: str = Field(
+        description="Effektiv genutztes IBKR-whatToShow, z.B. 'TRADES', 'ADJUSTED_LAST'"
+    )
     records: list[Bar]
 
 
@@ -153,7 +178,7 @@ class TWSHistoricalService:
         bar_size: str,
         duration: str,
         use_rth: bool = True,
-        what_to_show: str = "TRADES",
+        what_to_show: str = DEFAULT_WHAT_TO_SHOW,
     ) -> HistoricalBarsResponse:
         contract = await self._resolve_contract(conid)
         bars_raw = await self._reqHistoricalData(
@@ -169,6 +194,7 @@ class TWSHistoricalService:
             bar_size=bar_size,
             duration=duration,
             use_rth=use_rth,
+            what_to_show=what_to_show,
             records=records,
         )
 
@@ -386,6 +412,29 @@ def _map_ib_error(exc: Exception) -> HTTPException:
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail={"code": "ib_async_error", "message": message},
     )
+
+
+def validate_what_to_show(value: str) -> str:
+    """Validiert den ``?whatToShow=``-Query-Param gegen die Whitelist.
+
+    Gibt den Wert unveraendert zurueck, wenn er in
+    ``ALLOWED_WHAT_TO_SHOW`` enthalten ist (exakter, case-sensitiver
+    Match wie bei den Reuters-Report-Typen). Andernfalls HTTP 422 mit
+    ``code=unsupported_what_to_show`` nach dem Error-Modell (Section
+    1.6) — analog zur Fundamentals-Whitelist.
+    """
+    if value not in ALLOWED_WHAT_TO_SHOW:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "unsupported_what_to_show",
+                "message": (
+                    f"whatToShow={value!r} nicht unterstuetzt. Erlaubt: "
+                    f"{sorted(ALLOWED_WHAT_TO_SHOW)}"
+                ),
+            },
+        )
+    return value
 
 
 def parse_report_types(raw: str | None) -> list[str]:

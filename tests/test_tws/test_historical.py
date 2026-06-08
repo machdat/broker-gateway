@@ -17,14 +17,17 @@ import pytest
 from fastapi import HTTPException
 
 from broker_gateway.tws.historical import (
+    ALLOWED_WHAT_TO_SHOW,
     BAR_SIZE_15MIN,
     BAR_SIZE_DAILY,
     BAR_SIZE_HOURLY,
     DEFAULT_FUNDAMENTAL_REPORTS,
+    DEFAULT_WHAT_TO_SHOW,
     FundamentalReport,
     HistoricalBarsResponse,
     TWSHistoricalService,
     parse_report_types,
+    validate_what_to_show,
 )
 
 
@@ -119,6 +122,29 @@ class TestParseReportTypes:
 
 
 # --------------------------------------------------------------------------
+# validate_what_to_show
+# --------------------------------------------------------------------------
+
+
+class TestValidateWhatToShow:
+    def test_default_is_trades_and_whitelisted(self) -> None:
+        assert DEFAULT_WHAT_TO_SHOW == "TRADES"
+        assert DEFAULT_WHAT_TO_SHOW in ALLOWED_WHAT_TO_SHOW
+
+    def test_accepts_trades(self) -> None:
+        assert validate_what_to_show("TRADES") == "TRADES"
+
+    def test_accepts_adjusted_last(self) -> None:
+        assert validate_what_to_show("ADJUSTED_LAST") == "ADJUSTED_LAST"
+
+    def test_rejects_unknown_with_422(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            validate_what_to_show("FOO")
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.detail["code"] == "unsupported_what_to_show"
+
+
+# --------------------------------------------------------------------------
 # historical_bars
 # --------------------------------------------------------------------------
 
@@ -143,6 +169,29 @@ class TestHistoricalBars:
         first = result.records[0]
         assert first.timestamp.tzinfo == UTC
         assert float(first.close) == 105.0
+
+    async def test_default_what_to_show_is_trades(self) -> None:
+        client = _make_client(bars=[_make_bar(day=date(2026, 5, 17))])
+        service = TWSHistoricalService(client, historical_pacing_s=0.0)
+        result = await service.historical_bars(
+            265598, bar_size=BAR_SIZE_DAILY, duration="1 Y"
+        )
+        assert result.what_to_show == "TRADES"
+        call = client._ib.reqHistoricalDataAsync.await_args
+        assert call.kwargs["whatToShow"] == "TRADES"
+
+    async def test_passes_what_to_show_adjusted_last(self) -> None:
+        client = _make_client(bars=[_make_bar(day=date(2026, 5, 17))])
+        service = TWSHistoricalService(client, historical_pacing_s=0.0)
+        result = await service.historical_bars(
+            265598,
+            bar_size=BAR_SIZE_DAILY,
+            duration="1 Y",
+            what_to_show="ADJUSTED_LAST",
+        )
+        assert result.what_to_show == "ADJUSTED_LAST"
+        call = client._ib.reqHistoricalDataAsync.await_args
+        assert call.kwargs["whatToShow"] == "ADJUSTED_LAST"
 
     async def test_passes_use_rth_false(self) -> None:
         client = _make_client(bars=[_make_bar(day=date(2026, 5, 17))])
