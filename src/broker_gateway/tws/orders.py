@@ -30,6 +30,7 @@ AP ``2a203c58-...`` Phase 4.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -69,6 +70,12 @@ __all__ = [
 
 
 _FALLBACK_CURRENCY = "USD"
+
+# Hartes Timeout um ``whatIfOrderAsync``. IBKR liefert bei manchen
+# Fehlersituationen (z.B. fehlende Marktdaten in einer Write-Session)
+# keinen OrderState und auch kein Order-Ende - ib_async wartet dann
+# endlos. Defense-in-Depth zusaetzlich zum read_only-Gate.
+_WHATIF_TIMEOUT_S = 15.0
 
 
 # IBKR-Status (ib_async ``Order.status``/``Trade.orderStatus.status``) ->
@@ -229,16 +236,35 @@ class TWSOrdersService:
     async def whatif_order(self, request: OrderRequest) -> WhatIfPreview:
         """Margin-/Risk-Vorschau ohne Order-Platzierung.
 
-        Bewusst NICHT durch den ``_read_only``-503-Gate geschuetzt:
-        ``whatIfOrder`` platziert nichts, der Scope ist ``orders:read``.
-        Lehnt das IB-Gateway den Call im readonly-Modus dennoch ab,
-        eskaliert das als 502 (``tws_whatif_failed``) - ehrlicher als
-        eine vorgetaeuschte Preview.
+        **Erfordert eine nicht-read-only TWS-Session.** IBKR behandelt
+        ``whatIfOrder`` als Order-Validierung und lehnt ihn im
+        Read-Only-API-Modus ab (``Warning 321: The API interface is
+        currently in Read-Only mode``) - liefert dabei aber **keinen**
+        OrderState, sodass ``whatIfOrderAsync`` endlos haengen wuerde.
+        Daher: im read_only-Modus sofort 503 (wie ``place_order``).
+        whatif gehoert funktional zum Schreib-Workflow - wer nicht
+        platzieren darf, hat fuer eine Vorschau keinen Nutzen. Der
+        Token-*Scope* (``orders:read``) regelt nur die Berechtigung; die
+        Session-*Faehigkeit* (write) ist davon unabhaengig. Verifiziert
+        2026-06-08 im Paper-Smoke (DUP799747, read_only=yes).
 
-        ``whatIfOrderAsync`` ist die async-Variante - der synchrone
-        Wrapper wuerde den FastAPI-Event-Loop blockieren (siehe Memory
-        ``project_tws_portfolio_resubscribe_hang``).
+        ``whatIfOrderAsync`` ist die async-Variante (der synchrone
+        Wrapper wuerde den FastAPI-Event-Loop blockieren), zusaetzlich
+        mit ``asyncio.wait_for`` gegen Haenger abgesichert.
         """
+        if self._read_only:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "whatif_requires_write_session",
+                    "message": (
+                        "What-If-Vorschau erfordert eine nicht-read-only "
+                        "TWS-Session; IBKR lehnt whatIfOrder im "
+                        "Read-Only-API-Modus ab (Warning 321)"
+                    ),
+                },
+            )
+
         ib = self._client._ib  # noqa: SLF001
         managed = list(ib.managedAccounts() or [])
         if managed and request.account_id not in managed:
@@ -266,7 +292,22 @@ class TWSOrdersService:
 
         order_obj = _build_ib_order(request)
         try:
-            state = await ib.whatIfOrderAsync(qualified, order_obj)
+            state = await asyncio.wait_for(
+                ib.whatIfOrderAsync(qualified, order_obj),
+                timeout=_WHATIF_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError as exc:
+            logger.warning("whatIfOrderAsync Timeout nach %ss", _WHATIF_TIMEOUT_S)
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail={
+                    "code": "tws_whatif_timeout",
+                    "message": (
+                        f"whatIfOrder lieferte kein OrderState binnen "
+                        f"{_WHATIF_TIMEOUT_S:g}s"
+                    ),
+                },
+            ) from exc
         except Exception as exc:  # noqa: BLE001
             logger.warning("whatIfOrderAsync fehlgeschlagen: %s", exc)
             raise HTTPException(

@@ -9,6 +9,7 @@ ersetzt, der die ib_async-Methoden ``placeOrder``, ``cancelOrder``,
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -844,9 +845,28 @@ def _make_whatif_client(
 
 
 class TestWhatIfOrder:
+    async def test_503_in_read_only(self) -> None:
+        # IBKR lehnt whatIfOrder im Read-Only-API-Modus ab (Warning 321)
+        # ohne OrderState -> der Call wuerde haengen. Proaktiver 503,
+        # whatIfOrderAsync wird gar nicht erst gerufen.
+        client = _make_whatif_client(read_only=True)
+        service = TWSOrdersService(client, read_only=True)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.whatif_order(_order_request())
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["code"] == "whatif_requires_write_session"
+        client._ib.whatIfOrderAsync.assert_not_called()
+
+    async def test_pulls_read_only_from_client_default(self) -> None:
+        client = _make_whatif_client(read_only=True)
+        service = TWSOrdersService(client)  # read_only=None -> vom Client
+        with pytest.raises(HTTPException) as exc_info:
+            await service.whatif_order(_order_request())
+        assert exc_info.value.status_code == 503
+
     async def test_returns_preview_with_commission_and_margin(self) -> None:
         client = _make_whatif_client()
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         preview = await service.whatif_order(_order_request())
         assert isinstance(preview, WhatIfPreview)
         assert preview.account_id == "U25235077"
@@ -870,18 +890,9 @@ class TestWhatIfOrder:
         assert preview.margin_impact.init_margin_after is not None
         assert preview.margin_impact.maint_margin_after is not None
 
-    async def test_works_in_read_only_mode(self) -> None:
-        # Kern der Karte: whatif platziert nichts und darf NICHT vom
-        # read_only-503-Gate (place_order) blockiert werden.
-        client = _make_whatif_client(read_only=True)
-        service = TWSOrdersService(client, read_only=True)
-        preview = await service.whatif_order(_order_request())
-        assert isinstance(preview, WhatIfPreview)
-        client._ib.whatIfOrderAsync.assert_awaited_once()
-
     async def test_mkt_order_has_no_estimated_amount(self) -> None:
         client = _make_whatif_client()
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         preview = await service.whatif_order(
             _order_request(order_type=OrderType.MKT, limit_price=None, stop_price=None)
         )
@@ -899,7 +910,7 @@ class TestWhatIfOrder:
             )
         )
         client = _make_whatif_client(state=state)
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         preview = await service.whatif_order(_order_request())
         assert len(preview.warnings) == 1
         warn = preview.warnings[0]
@@ -909,13 +920,13 @@ class TestWhatIfOrder:
 
     async def test_no_warnings_when_warning_text_empty(self) -> None:
         client = _make_whatif_client(state=_make_order_state(warning_text=""))
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         preview = await service.whatif_order(_order_request())
         assert preview.warnings == []
 
     async def test_validates_account(self) -> None:
         client = _make_whatif_client(managed_accounts=["DUP799747"])
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         with pytest.raises(HTTPException) as exc_info:
             await service.whatif_order(_order_request())
         assert exc_info.value.status_code == 400
@@ -923,7 +934,7 @@ class TestWhatIfOrder:
 
     async def test_invalid_conid_when_qualify_empty(self) -> None:
         client = _make_whatif_client(qualify_results=[])
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         with pytest.raises(HTTPException) as exc_info:
             await service.whatif_order(_order_request())
         assert exc_info.value.status_code == 400
@@ -931,16 +942,32 @@ class TestWhatIfOrder:
 
     async def test_propagates_backend_error_as_502(self) -> None:
         client = _make_whatif_client(whatif_side_effect=RuntimeError("ibkr down"))
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         with pytest.raises(HTTPException) as exc_info:
             await service.whatif_order(_order_request())
         assert exc_info.value.status_code == 502
         assert exc_info.value.detail["code"] == "tws_whatif_failed"
 
+    async def test_timeout_returns_504(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Haengender whatIfOrderAsync -> asyncio.wait_for greift -> 504,
+        # statt den Request endlos zu binden (Read-Only-Hang-Schutz).
+        monkeypatch.setattr("broker_gateway.tws.orders._WHATIF_TIMEOUT_S", 0.01)
+
+        async def _hang(*_a: Any, **_k: Any) -> Any:
+            await asyncio.sleep(1.0)
+
+        client = _make_whatif_client()
+        client._ib.whatIfOrderAsync = _hang
+        service = TWSOrdersService(client, read_only=False)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.whatif_order(_order_request())
+        assert exc_info.value.status_code == 504
+        assert exc_info.value.detail["code"] == "tws_whatif_timeout"
+
     async def test_empty_state_returns_502(self) -> None:
         client = _make_whatif_client()
         client._ib.whatIfOrderAsync = AsyncMock(return_value=None)
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         with pytest.raises(HTTPException) as exc_info:
             await service.whatif_order(_order_request())
         assert exc_info.value.status_code == 502
@@ -950,7 +977,7 @@ class TestWhatIfOrder:
         # accountValues ohne verwertbare Currency -> Margin-Money None,
         # aber Commission (eigene Currency) bleibt befuellt.
         client = _make_whatif_client(account_values=[])
-        service = TWSOrdersService(client, read_only=True)
+        service = TWSOrdersService(client, read_only=False)
         preview = await service.whatif_order(_order_request())
         assert preview.margin_impact.current_funds is None
         assert preview.margin_impact.after_funds is None
