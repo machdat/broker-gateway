@@ -22,14 +22,13 @@ Alphabetisch.
 Feld im IBKR-Account-Endpoint, das die Asset-Klassen listet, die der
 Account-Typ grundsätzlich handeln **könnte** (z.B. `STK,OPT,FUT,...`).
 Tatsächliche Trading-Permissions sind eine separate Anfrage pro
-Asset-Klasse im IBKR-Portal — der heute aktive Live-Account
-(U25235077, Pre-Pro AT) hat Aktien + Cash/FX, alles andere ist
-Anfrage-pflichtig. Das geplante dediziertes Service-Konto (siehe
-"Service-Konto vs. Privat-Konto" in Sektion 2,
+Asset-Klasse im IBKR-Portal — der aktive Live-Account (dediziertes
+Service-Konto, siehe "Service-Konto vs. Privat-Konto" in Sektion 2)
+hat denselben Permission-Bundle wie das frühere Live-Konto U25235077
+(Pre-Pro AT): Aktien + Cash/FX, alles andere ist Anfrage-pflichtig
+(beim Cutover 2026-06-08 geprüft — siehe
 [`docs/02-architecture.md`](02-architecture.md) Sektion 11.2 und
-[`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md))
-braucht voraussichtlich denselben Permission-Bundle — beim Cutover
-zu prüfen, vor dem Recreate.
+[`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)).
 *Quelle:* [`docs/01-context-from-bootstrap-session.md`](01-context-from-bootstrap-session.md)
 Sektion (eingangs zitiert in Memory `project_ibkr_session_owner`).
 
@@ -244,18 +243,19 @@ JSON-File pro CP-Gateway-Roundtrip mit Header (gefiltert) und Body
 
 ### Service-Konto vs. Privat-Konto
 
-broker-gateway-Begriffspaar für die Konto-Trennung, die mit der
-Phase-2-Cutover-Karte aktiv wird. **Privat-Konto** ist das heutige
+broker-gateway-Begriffspaar für die Konto-Trennung, die seit dem
+Cutover am 2026-06-08 (v2.5.0) aktiv ist. **Privat-Konto** ist
 U25235077 (chmangold), das der Operator parallel im IBKR-Browser und
-in der IBKR-App nutzt — jeder Login dort kollidiert mit der broker-
-gateway-Live-Session (Single-Session-Constraint
+in der IBKR-App nutzt — bis zum Cutover kollidierte jeder Login dort
+mit der broker-gateway-Live-Session (Single-Session-Constraint
 [`02-architecture.md`](02-architecture.md) Sektion 2.1 / 3.1).
-**Service-Konto** ist das seit 2026-05-18 beantragte zweite IBKR-Konto,
-das ausschließlich broker-gateway-Live hält — gleicher Permission-
-Bundle wie heute (Aktien + Cash/FX), keine Operator-Browser-Sessions.
-Ziel: Entkopplung der Live-Service-Verfügbarkeit von der Operator-
-Aktivität. Der Singular-Halter (3.1) bleibt unverändert; nur die
-Identität hinter ihm wechselt.
+**Service-Konto** ist das dedizierte zweite IBKR-Konto, das
+ausschließlich broker-gateway-Live hält — gleicher Permission-Bundle
+(Aktien + Cash/FX), keine Operator-Browser-Sessions; Account-ID und
+Credentials nur in Pi-`.env` + Passwort-Manager, nicht im Repo.
+Ergebnis: die Live-Service-Verfügbarkeit ist von der Operator-
+Aktivität entkoppelt. Der Singular-Halter (3.1) bleibt unverändert;
+nur die Identität hinter ihm hat gewechselt.
 *Quelle:* [`docs/02-architecture.md`](02-architecture.md) Sektion 3.1 + 11.2,
 [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md),
 [`docs/04-security.md`](04-security.md) Sektion 12.2.

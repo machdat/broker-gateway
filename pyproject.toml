@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "broker-gateway"
-version = "2.5.0"
+version = "2.5.1"
 description = "Versionierte HTTP-API zwischen Consumern und broker-vermittelten Diensten (IBKR Client Portal Gateway)."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -52,7 +52,7 @@ addopts = "-q -m 'not live and not stresstest and not paper_readonly and not pap
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
-    "live: laeuft gegen das Live-CP-Gateway / U25235077",
+    "live: laeuft gegen das Live-CP-Gateway / aktives Live-Konto",
     "stresstest: Stresstest mit hoher Last (manueller Run)",
     "integration: Integrationstest, nicht Standard-Suite",
     "paper_readonly: tests_paper L1 - Read-only gegen Paper-Stack",

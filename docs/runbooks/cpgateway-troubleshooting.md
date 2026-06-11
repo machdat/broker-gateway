@@ -124,7 +124,9 @@ neuere kickt die aeltere oder umgekehrt.
 4. `competing: false` im Status-Check verifizieren.
 
 Falls `competing: true` dauerhaft bleibt: bei IBKR-Support melden,
-dass eine "stuck session" auf U25235077 forciert beendet werden soll.
+dass eine "stuck session" auf dem aktiven Live-Konto forciert beendet
+werden soll (bis zum Cutover am 2026-06-08 war das `U25235077` —
+siehe [`account-cutover.md`](account-cutover.md)).
 
 ---
 

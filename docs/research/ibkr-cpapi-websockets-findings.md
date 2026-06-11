@@ -6,7 +6,8 @@ Skript ``scripts/ws_spike.py``). Begleitdoku zur Doku-Snapshot
 
 Mitschnitt: ``tests/fixtures/recorded/ws/spike-2026-04-29.jsonl``
 (75 s gegen lokales CP-Gateway via SSH-Tunnel zu cma-pi-1, Konto
-U25235077, Build 10.45.1a vom 2026-04-22).
+U25235077 — damals aktiver Live-Account, bis Cutover 2026-06-08 —
+Build 10.45.1a vom 2026-04-22).
 
 ## Setup-Realitaet
 
@@ -190,7 +191,8 @@ realistische Pausen zwischen Frames einplanen, ohne 75 s zu blockieren.
 ## Topic-Exploration (K4, 2026-04-30)
 
 Live-Mitschnitte mit ``scripts/ws_topic_explorer.py`` gegen die
-U25235077-Session. Output unter
+U25235077-Session (damals aktiver Live-Account, bis Cutover
+2026-06-08). Output unter
 ``tests/fixtures/recorded/ws/topic-explorer-2026-04-30/``. Sechs
 Szenarien (a-f), alle gegen das interne ``ws://cpgateway:5000/v1/api/ws``
 aus dem ``broker-gateway_default``-Compose-Netzwerk. Datenbasis:

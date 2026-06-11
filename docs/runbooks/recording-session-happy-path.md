@@ -4,6 +4,14 @@ Live-Aufzeichnung aller v1-Happy-Path-Endpunkte des CP-Gateways gegen
 das Konto **U25235077** (Non-Pro AT). Erzeugt JSON-Fixtures unter
 ``tests/fixtures/recorded/live/`` und ein begleitendes Manifest.
 
+> **Konto-Hinweis:** Die bestehenden Recordings wurden gegen
+> `U25235077` aufgenommen — damals aktiver Live-Account, seit dem
+> Cutover am 2026-06-08 Operator-Privatkonto (siehe
+> [`account-cutover.md`](account-cutover.md)). Die ``--account-id``-
+> Beispiele unten geben diese historischen Laeufe wieder; kuenftige
+> Neuaufnahmen laufen gegen das aktive Live-Konto (dediziertes
+> Service-Konto, ID in Pi-`.env`).
+
 ## Voraussetzungen
 
 1. **CP-Gateway-Container** laeuft auf cma-pi-1 und ist gesund:

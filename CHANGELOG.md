@@ -4,6 +4,43 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.5.1] — 2026-06-11 (Karte `07b244b1`: U25235077-Bereinigung in Doku + Memory, Phase 3)
+
+Doku-only-Patch: alle Stellen, die U25235077 noch als "heute aktives
+Live-Konto" kontextualisierten, sind auf die finale Form nach dem
+Cutover (2026-06-08) umgestellt. Historisch relevante Erwaehnungen
+(Recordings, Verifikations-Notizen, datierte Berichte) sind als
+"historischer Live-Account, bis Cutover 2026-06-08" markiert.
+
+- **Doku:** `docs/02-architecture.md` (Sektion 3.1 final, 11.1-Verweis
+  als abgeschlossener Migrationspfad, 11.2 "Account-Identitaet-Wechsel"
+  geklaert), `docs/04-security.md` (6.4, 10.3 final; 12.2
+  "Konto-Trennung" geklaert), `docs/06-glossary.md`
+  (`allowedAssetTypes` + "Service-Konto vs. Privat-Konto" final),
+  `docs/03-deployment.md` (Stack-Tabelle), `docs/cp-recordings.md`,
+  `docs/research/ibkr-cpapi-websockets-findings.md` (Mitschnitt-
+  Kontextualisierung).
+- **Runbooks:** `account-cutover.md` mit "Verifiziert am 2026-06-08"-
+  Header, Phasen-Tabelle alle drei Phasen abgeschlossen, Rollback als
+  "theoretisch (validiert, nie ausgeloest)"; `cpgateway-login.md`,
+  `cpgateway-session-resume.md`, `cpgateway-troubleshooting.md` auf
+  konto-generische Formulierung mit U25235077-Fussnote;
+  `recording-session-*.md` mit Konto-Hinweis-Box.
+- **CLAUDE.md / README:** Status-Block ohne U25235077-Aktiv-Bezug,
+  Konto-Migrations-Plan alle drei Phasen done, README-Status final.
+- **Neu:** `tests/fixtures/recorded/live/README.md` — Cassettes sind
+  deterministische Mock-Daten des historischen Accounts, werden nicht
+  umgeschrieben (Cassette-Inhalte unveraendert).
+- **Konfig-Kommentare:** `.env.example`, `.env.live.template`,
+  `compose.yaml`, pytest-Marker `live` in `pyproject.toml` —
+  konto-generisch statt U25235077.
+- **Auto-Memory:** Sweep ueber 13 Memory-Dateien (Aktiv-Aussagen
+  umgestellt, historische kontextualisiert, Entscheidungen im
+  Karten-Log); neue Memory `feedback_account_separation`.
+- **Kein Service-Deploy noetig** (Doku-only; Image-Tag zieht beim
+  naechsten regulaeren Deploy mit).
+- **Version-Bump 2.5.0 -> 2.5.1** (Patch — Doku-only).
+
 ## [2.5.0] — 2026-06-08 (Karte `0ef946c8`: Live-Account-Cutover auf dediziertes Service-Konto)
 
 broker-gateway-Live haengt ab diesem Cutover am dedizierten IBKR-

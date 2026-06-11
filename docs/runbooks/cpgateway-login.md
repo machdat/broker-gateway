@@ -7,8 +7,14 @@
 > 2FA-Tortur.
 
 Schritt-fuer-Schritt-Anleitung, wie der IBKR Client Portal Gateway im
-broker-gateway-Compose-Stack initial mit dem Live-Account
-**U25235077** (Non-Pro AT) verbunden wird.
+broker-gateway-Compose-Stack initial mit dem **aktiven Live-Account**
+(dediziertes Service-Konto; Credentials in Pi-`.env` +
+Passwort-Manager) verbunden wird.
+
+> **Konto-Hinweis:** Bis zum Cutover am 2026-06-08 war `U25235077`
+> (Non-Pro AT, Operator-Privatkonto chmangold) der Live-Account —
+> siehe [`account-cutover.md`](account-cutover.md). Aeltere
+> Beispiel-Ausgaben und Recordings tragen daher noch diese ID.
 
 Der CP-Gateway-Container haelt nur eine **eine** Trading-Session pro
 Konto offen (harte IBKR-Regel). Diese Session erfordert beim ersten
@@ -29,7 +35,7 @@ warm.
 - `ops/cpgateway/clientportal.gw.tar.gz` liegt vor und die SHA256
   in `ops/cpgateway/clientportal.gw.tar.gz.sha256` stimmt
   (siehe `ops/cpgateway/README.md`).
-- IBKR-Login-Daten fuer **U25235077** sind griffbereit:
+- IBKR-Login-Daten fuer das **aktive Live-Konto** sind griffbereit:
   Username, Passwort, 2FA-Geraet (IBKR Mobile App / SMS / Soft-Token).
 - SSH-Zugang zum Ziel-Host vom eigenen Laptop aus.
 
@@ -112,7 +118,8 @@ Auf dem Laptop (mit aktivem SSH-Tunnel aus Schritt 2):
 2. Es erscheint die IBKR-Login-Seite (HTML-Form). Keine Zertifikats-
    warnung, weil die CP-Gateway-Konfiguration `listenSsl: false`
    verwendet — der Transport ist durch den SSH-Tunnel abgesichert.
-3. Username `U25235077` und Passwort eingeben.
+3. Username und Passwort des aktiven Live-Kontos eingeben
+   (siehe Konto-Hinweis am Dokumentanfang).
 4. 2FA-Bestaetigung im IBKR-Mobile-App (Push) oder via SMS-/Soft-Token.
 5. Nach erfolgreicher Anmeldung zeigt die Seite "Client login succeeds"
    bzw. "You're now logged in".

@@ -34,6 +34,10 @@ Beispiele werden schrittweise abgeloest.
        --symbols AAPL MSFT SAP
    ```
 
+   (`--account-id U25235077` gibt die historischen Recording-Laeufe
+   wieder — bis zum Cutover 2026-06-08 der aktive Live-Account. Bei
+   Neuaufnahmen die ID des aktiven Live-Kontos einsetzen.)
+
    Das Skript prueft zuerst `/iserver/auth/status`, dann ruft es alle
    v1-Endpunkte sequenziell ab. Order-Schritt ist standardmaessig die
    Preview-Variante (`/orders/whatif`); mit `--with-place-cancel` zusaetzlich

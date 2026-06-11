@@ -4,6 +4,11 @@ Provoziert gezielt CP-Gateway-Fehlerantworten und legt sie als
 Fixtures unter `tests/fixtures/recorded/live/errors/` ab. Erweitert
 das Recording-Schema um die Realitaet der IBKR-Fehlerklassen.
 
+> **Konto-Hinweis:** Die bestehenden Error-Recordings wurden gegen
+> `U25235077` aufgenommen (historischer Live-Account, bis Cutover
+> 2026-06-08 — siehe [`account-cutover.md`](account-cutover.md)).
+> Die ``--account-id``-Beispiele unten geben diese Laeufe wieder.
+
 ## Voraussetzungen
 
 Identisch zum [Happy-Path-Runbook](recording-session-happy-path.md):
