@@ -100,7 +100,9 @@ abgelaufen. Folge ab hier dem Standard-Login-Pfad in
 [`cpgateway-login.md`](cpgateway-login.md):
 
 1. SSH-Tunnel auf 5000 aufbauen.
-2. Browser-Login mit U25235077 + Passwort + 2FA.
+2. Browser-Login mit Username + Passwort + 2FA des aktiven
+   Live-Kontos (bis zum Cutover am 2026-06-08 war das `U25235077` —
+   siehe [`account-cutover.md`](account-cutover.md)).
 3. Health-Check via `/v1/internal/health`.
 
 ## 7. Wann der Reauth-Pfad **nicht** ausreicht

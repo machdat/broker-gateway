@@ -1,17 +1,19 @@
 # Runbook: broker-gateway-Live-Account-Cutover
 
+**Verifiziert am 2026-06-08** (Cutover vollzogen, v2.5.0, Karte
+`0ef946c8`; Bereinigung Phase 3 mit v2.5.1, Karte `07b244b1`).
+
 High-level Operator-Pfad fuer den **einmaligen** Wechsel der Live-Account-
-Identitaet von U25235077 (Operator-Privatkonto chmangold) auf das seit
-2026-05-18 beantragte dediziertes Service-Konto. Der Singular-Halter
+Identitaet von U25235077 (Operator-Privatkonto chmangold) auf das
+dedizierte Service-Konto. Der Singular-Halter
 ([`02-architecture.md`](../02-architecture.md) Sektion 3.1) bleibt; nur
 die Identitaet hinter ihm wechselt.
 
-> **Dieser Runbook ist absichtlich high-level.** Die konkreten Schritte
-> (genaue `jts.ini`-/`config.ini`-Aenderungen, `ops/tws/`-Template-
-> Variablen, exakte Compose-Override-Befehle) werden in der Phase-2-
-> Cutover-Karte geschrieben, sobald die Account-ID und die Credentials
-> vorliegen. Bis dahin ist dieser Runbook eine Pruef-Checkliste, kein
-> Schritt-fuer-Schritt-Skript.
+> **Dieser Runbook ist absichtlich high-level** und wurde vor dem
+> Cutover als Pruef-Checkliste geschrieben. Der tatsaechliche Ablauf
+> und drei Korrekturen gegenueber dem angenommenen Pfad stehen in
+> Sektion 0; die Abschnitte 2-5 bleiben als Referenz fuer einen
+> etwaigen kuenftigen Konto-Wechsel erhalten.
 
 ## 0. Durchgefuehrt am 2026-06-08 (v2.5.0, Karte `0ef946c8`)
 
@@ -54,9 +56,9 @@ Phase-Plan in drei Karten:
 
 | Phase | KanPrompt-Karte | Scope |
 |-------|-----------------|-------|
-| 1 (heute) | `cdb262f7` (Doku-Vorbereitung) | Architektur-/Security-/Glossar-/CLAUDE.md-Edits + dieser Runbook |
+| 1 (abgeschlossen, v2.2.2) | `cdb262f7` (Doku-Vorbereitung) | Architektur-/Security-/Glossar-/CLAUDE.md-Edits + dieser Runbook |
 | 2 (vollzogen 2026-06-08, v2.5.0) | `0ef946c8` (Konto-Cutover) | Credentials-Tausch + Compose-Recreate + Smoke + Doku-Aktualisierung |
-| 3 (entblockt, offen) | `07b244b1` (U25235077-Bereinigung) | "heute aktiv"-Phrasen entfernen, Memory-Sweep, Cassette-Kontextualisierung |
+| 3 (abgeschlossen, v2.5.1) | `07b244b1` (U25235077-Bereinigung) | "heute aktiv"-Phrasen entfernen, Memory-Sweep, Cassette-Kontextualisierung |
 
 ## 2. Voraussetzungen (vor Phase 2)
 
@@ -120,6 +122,9 @@ Liefert ein Smoke einen unerwarteten Fehler, gilt Schritt 5 (Rollback).
 
 ## 5. Rollback
 
+**Status: theoretisch** — beim Cutover am 2026-06-08 validiert
+(Backup-Pfad `.env.bak` geprueft), aber nie ausgeloest.
+
 Wenn ein Smoke scheitert, der 2FA-Push abgelehnt wird, oder der Service
 nach 30 Minuten nicht stabil bleibt:
 
@@ -164,5 +169,5 @@ nach 30 Minuten nicht stabil bleibt:
 - IBKR-Login-Pattern und 2FA-Push-Empirie: Auto-Memory
   `project_live_2fa_gnzsnz_pattern`, `project_ibkr_session_resume`,
   `feedback_ibkr_lockout_threshold`.
-- Phase-2-Karte: `0ef946c8` (blocked bis Account-Daten vorliegen).
-- Phase-3-Karte: `07b244b1` (blocked durch Phase 2).
+- Phase-2-Karte: `0ef946c8` (vollzogen 2026-06-08, v2.5.0).
+- Phase-3-Karte: `07b244b1` (abgeschlossen, v2.5.1).

@@ -164,14 +164,15 @@ IBKR (siehe 2.1). Skalierung passiert auf Consumer-Seite, nicht hier.
 Die **Konto-Identität hinter dem Singular-Halter ist austauschbar**:
 das Prinzip "eine Instanz pro Konto" bleibt unverändert, wenn die
 broker-gateway-Live-Instanz von Konto A auf Konto B umgezogen wird.
-Heute ist die Live-Instanz an U25235077 (Privatkonto des Operators)
-gebunden; ein Cutover auf ein dediziertes Service-Konto ist seit
-2026-05-18 in Vorbereitung — Operator-Pfad in
-[`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md),
-Status in Sektion 11.2 ("Account-Identitaet-Wechsel"). Motivation:
-jeder Operator-Login auf U25235077 im Browser oder in der IBKR-App
-kollidiert mit der broker-gateway-Live-Session (Single-Session-
-Constraint 2.1); das Service-Konto entkoppelt das.
+Das wurde am 2026-06-08 praktisch vollzogen: die Live-Instanz läuft
+seit dem Cutover am dedizierten IBKR-Service-Konto (Account-ID und
+Credentials nur in Pi-`.env` + Passwort-Manager, bewusst nicht im
+Repo). Das frühere Live-Konto U25235077 (Privatkonto des Operators)
+ist entkoppelt — Operator-Logins im Browser oder in der IBKR-App
+kollidieren nicht mehr mit der broker-gateway-Live-Session
+(Single-Session-Constraint 2.1). Der abgeschlossene Migrationspfad
+ist in [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)
+dokumentiert, Status in Sektion 11.2 ("Account-Identitaet-Wechsel").
 
 ### 3.2 Stateless-Außen, Stateful-Innen
 
@@ -625,7 +626,7 @@ Phase 1 von AP-04 hat den IBKR-CP-Gateway-WebSocket
 Findings sind in `docs/research/ibkr-cpapi-websockets-findings.md`
 mit Topic-Reife-Ranking konsolidiert:
 
-| Topic | Reife (K4 Live-Test U25235077, heute aktiver Live-Account — Cutover auf dediziertes Service-Konto geplant, siehe Sektion 11.2) | Bemerkung |
+| Topic | Reife (K4 Live-Test gegen U25235077 — damals aktiver Live-Account, bis Cutover 2026-06-08, siehe Sektion 11.2) | Bemerkung |
 |---|---|---|
 | `smd` (Marktdaten) | grün | Subscribe-Format `smd+<conid>+{...}`, Felder als Deltas, mixed-type values |
 | `sor` (Order-Updates) | grün | volle Order-Lifecycle-Frames, kompakter als REST-Polling |
@@ -801,8 +802,8 @@ der Live-HTTP-Verkehr als deterministische JSON-Fixtures unter
   Platzhalter ersetzt (`cp/normalize.py`).
 
 Konzept und Diff-Bewertung in `docs/cp-recordings.md`. Live-Recordings
-gegen U25235077 (heute aktiver Live-Account; Cutover auf dediziertes
-Service-Konto geplant — siehe Sektion 11.2 und
+gegen U25235077 (historischer Live-Account, bis Cutover 2026-06-08 —
+siehe Sektion 11.2 und
 [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md))
 leben unter `tests/fixtures/recorded/live/`, WebSocket-Mitschnitte
 (AP-04 K2/K4) unter `tests/fixtures/recorded/ws/`. Cassettes bleiben
@@ -876,6 +877,7 @@ gleichzeitig eine wachsende Cassette-Schicht in
 - Doc-Drift: [`docs/runbooks/doc-drift-check.md`](runbooks/doc-drift-check.md)
 - Mock-Drift: [`docs/runbooks/mock-drift-check.md`](runbooks/mock-drift-check.md)
 - Account-Cutover: [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)
+  — abgeschlossener Migrationspfad (Cutover vollzogen 2026-06-08, v2.5.0)
 - Bootstrap-Historie: [`docs/01-context-from-bootstrap-session.md`](01-context-from-bootstrap-session.md)
 
 ### 11.2 Offene Architektur-Fragen
@@ -912,24 +914,24 @@ eigenmächtig entschieden:
   ersetzt den `cpgateway`-Compose-Service durch einen `tws`-Service
   mit Healthcheck. Bis dahin sind die Order/Portfolio/Quotes-Pfade
   unter `BG_BACKEND=tws` nicht funktional.
-- **Account-Identitaet-Wechsel — Status: Phase 2 (Cutover) vollzogen
-  am 2026-06-08 (v2.5.0).** broker-gateway-Live haengt seit dem Cutover
-  am dedizierten IBKR-Service-Konto. Die konkrete Account-ID und die
-  Credentials liegen ausschliesslich in der Pi-`.env` und im
-  Passwort-Manager — bewusst **nicht** im oeffentlichen Repo (Karte
-  `0ef946c8` Constraint 1). Das Privatkonto U25235077 ist entkoppelt
-  und bleibt frei fuer Operator-Browser-Logins ohne Single-Session-
-  Hijack der Service-Instanz (3.1 / 2.1). Verifikation beim Cutover:
-  `tws-health` `connected=true` / `paper=false`, Portfolio-Summary des
+- **Account-Identitaet-Wechsel: geklaert** (alle drei Phasen
+  abgeschlossen — Phase 1 Doku-Vorbereitung v2.2.2, Phase 2 Cutover
+  vollzogen am 2026-06-08 v2.5.0 Karte `0ef946c8`, Phase 3
+  U25235077-Bereinigung in Doku + Memory v2.5.1 Karte `07b244b1`).
+  broker-gateway-Live haengt seit dem Cutover am dedizierten
+  IBKR-Service-Konto. Die konkrete Account-ID und die Credentials
+  liegen ausschliesslich in der Pi-`.env` und im Passwort-Manager —
+  bewusst **nicht** im oeffentlichen Repo (Karte `0ef946c8`
+  Constraint 1). Das Privatkonto U25235077 ist entkoppelt und bleibt
+  frei fuer Operator-Browser-Logins ohne Single-Session-Hijack der
+  Service-Instanz (3.1 / 2.1). Verifikation beim Cutover: `tws-health`
+  `connected=true` / `paper=false`, Portfolio-Summary des
   Service-Kontos HTTP 200 mit echten Daten, Gegencheck U25235077
-  liefert nur `null`-Werte. Pfad in drei Karten: Phase 1
-  (Doku-Vorbereitung, v2.2.2) + Phase 2 (Cutover, v2.5.0, Karte
-  `0ef946c8`) + Phase 3 (U25235077-Bereinigung in Doku + Memory, jetzt
-  entblockt, Karte `07b244b1`). U25235077 bleibt bis zur Phase 3 in den
-  uebrigen Doku-Texten als historischer Verweis sichtbar; Cassettes
-  unter `tests/fixtures/recorded/live/` werden **nicht** umgeschrieben.
-  Runbook-Korrekturen aus dem realen Cutover: Live-Creds in `.env`
-  statt `/etc/default/broker-gateway`, `tws-health` ohne
+  liefert nur `null`-Werte. Cassettes unter
+  `tests/fixtures/recorded/live/` bleiben bewusst unveraendert
+  (deterministische Mock-Daten, kein Hinweis auf das aktive
+  Live-Konto). Runbook-Korrekturen aus dem realen Cutover: Live-Creds
+  in `.env` statt `/etc/default/broker-gateway`, `tws-health` ohne
   `account_id`-Feld, Summary-Pfad `GET /v1/portfolio/{id}` (siehe
   [`docs/runbooks/account-cutover.md`](runbooks/account-cutover.md)).
 

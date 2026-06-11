@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.5.0
+    image: broker-gateway:2.5.1
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den
@@ -96,10 +96,11 @@ services:
       # Highlight im 2FA-Dropdown automatisch und klickt OK; IBKR sendet
       # daraufhin den Push aufs Handy. Operator muss nur am Handy
       # bestaetigen, kein VNC-Klick mehr noetig. Verifiziert 2026-05-09
-      # mit chmangold/U25235077 - die einzigen Werte im Dropdown sind
+      # mit chmangold/U25235077 (damals aktiver Live-Account, bis
+      # Cutover 2026-06-08) - die einzigen Werte im Dropdown sind
       # "IB Key" und "Mobile Authenticator app".
-      # Live-Account chmangold/U25235077 nutzt diesen Pfad. Paper
-      # (cborlm399) hat kein 2FA, ENV bleibt unbenutzt.
+      # Das aktive Live-Konto (dediziertes Service-Konto) nutzt diesen
+      # Pfad. Paper (cborlm399) hat kein 2FA, ENV bleibt unbenutzt.
       - TWOFA_DEVICE=${BG_TWS_2FA_DEVICE:-IB Key}
       # Schaltet "Allow connections from localhost only" off, damit der
       # gateway-Container ueber das Compose-Bridge-Netz reinkommt.

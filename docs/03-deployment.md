@@ -39,7 +39,7 @@ in `compose.yaml` direkt sichtbar.
 
 | Stack | Host | Compose-Project-Name | Status |
 |---|---|---|---|
-| **Live (U25235077)** | `cma-pi-1` | `broker-gateway` (Default) | **deployed v2.0.0**, TWS-Backend, in Betrieb |
+| **Live (dediziertes Service-Konto, seit Cutover 2026-06-08; davor U25235077)** | `cma-pi-1` | `broker-gateway` (Default) | **deployed v2.0.0**, TWS-Backend, in Betrieb |
 | **Paper (DUP799747)** | `cma-pi-1` | `broker-gateway-paper` | **deployed v2.0.0**, TWS-Backend, in Betrieb |
 
 Live-Stack ist Single-Owner der IBKR-Trading-Session — siehe
