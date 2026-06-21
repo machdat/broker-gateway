@@ -4,6 +4,32 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.5.2] — 2026-06-21 (Karte `234923e9`: IBC ExistingSessionDetectedAction setzen)
+
+Bugfix: Bei einer konkurrierenden Anmeldung am selben IBKR-Konto (z.B.
+Operator oeffnet das Paper-Konto DUP799747 parallel) zeigte IB Gateway
+den Dialog "Existing session detected". IBC konnte ihn nicht
+beantworten, weil `ExistingSessionDetectedAction` in der config.ini leer
+war (IBC-Default "manual") — der Login blieb haengen, tws-health meldete
+dauerhaft `connected=false`, alle `/v1`-Daten-Endpoints lieferten `503
+auth_lost`. Aufloesbar war das bisher nur durch manuellen Container-
+Restart nach Beenden der Fremd-Session.
+
+- **compose.yaml:** Neue ENV `EXISTING_SESSION_DETECTED_ACTION` am
+  `tws`-Service, Default `primary` (diese Service-Session behaelt die
+  Session-Hoheit und reconnectet nach manueller Verdraengung
+  automatisch). gnzsnz rendert den Wert per envsubst in die IBC-
+  config.ini (Zeile 329), gleiches Muster wie `TWOFA_DEVICE`.
+- **Konfigurierbar:** Override je Stack per
+  `BG_TWS_EXISTING_SESSION_ACTION` (`secondary` | `manual` |
+  `primaryoverride`) — nicht hart kodiert. Doku in
+  `.env.paper.template`.
+- **Doku:** `docs/03-deployment.md` Sektion 6.2 (neu) beschreibt das
+  Verhalten bei konkurrierender Anmeldung.
+- **Deploy:** Wirkt erst nach `tws`-Container-Recreate (ENV greift beim
+  IBC-config.ini-Rendering). Zuerst auf Paper verifiziert, dann Live.
+- **Version-Bump 2.5.1 -> 2.5.2** (Patch — Bugfix + additive ENV-Option).
+
 ## [2.5.1] — 2026-06-11 (Karte `07b244b1`: U25235077-Bereinigung in Doku + Memory, Phase 3)
 
 Doku-only-Patch: alle Stellen, die U25235077 noch als "heute aktives

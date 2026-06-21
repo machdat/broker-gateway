@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.5.1
+    image: broker-gateway:2.5.2
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den
@@ -102,6 +102,20 @@ services:
       # Das aktive Live-Konto (dediziertes Service-Konto) nutzt diesen
       # Pfad. Paper (cborlm399) hat kein 2FA, ENV bleibt unbenutzt.
       - TWOFA_DEVICE=${BG_TWS_2FA_DEVICE:-IB Key}
+      # Mappt auf ExistingSessionDetectedAction in der IBC-config.ini
+      # (gnzsnz envsubst-Mechanik, gleiches Muster wie TWOFA_DEVICE).
+      # Default "primary": diese Service-Session behaelt die Session-
+      # Hoheit. Loggt sich jemand parallel am selben Konto an (z.B. der
+      # Operator manuell am Paper-Konto), beantwortet IBC den "Existing
+      # session detected"-Dialog automatisch und haelt die laufende
+      # Session, statt unbegrenzt auf eine Auswahl zu warten. Ohne den
+      # Wert (Default leer -> IBC behandelt es als "manual") blieb der
+      # Login haengen und tws-health meldete dauerhaft connected=false
+      # (Karte 234923e9). Eine "primary"-Session wird zudem nach
+      # manueller Verdraengung automatisch wieder reconnectet. Override
+      # je Stack per BG_TWS_EXISTING_SESSION_ACTION (secondary | manual |
+      # primaryoverride).
+      - EXISTING_SESSION_DETECTED_ACTION=${BG_TWS_EXISTING_SESSION_ACTION:-primary}
       # Schaltet "Allow connections from localhost only" off, damit der
       # gateway-Container ueber das Compose-Bridge-Netz reinkommt.
       - TWS_ACCEPT_INCOMING=accept
