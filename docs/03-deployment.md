@@ -288,6 +288,49 @@ skriptbar durch (Memory `project_paper_login_no_2fa`). Bekanntes
 nach dem Force-Recreate kein Java-API-Port 4002 erscheint (Memory
 `project_paper_tws_listener_drift`). Live-Stack ist davon unberührt.
 
+### 6.2 Session-Konflikt bei konkurrierender Anmeldung
+
+Symptom: `tws-health` meldet `connected=false`, der `tws`-Container ist
+aber `healthy` und der IBC-Log zeigt einen offenen Dialog **"Existing
+session detected"**, der nicht weiterläuft. Auslöser ist eine **zweite
+Anmeldung am selben IBKR-Konto** — typischerweise der Operator, der das
+Paper-Konto (DUP799747) parallel im Browser oder in der IBKR-App öffnet.
+IBKR erlaubt pro Konto nur eine Trading-Session; bei Konkurrenz zeigt IB
+Gateway beiden Seiten einen Auswahldialog.
+
+Seit v2.5.2 (Karte `234923e9`) beantwortet IBC diesen Dialog
+**automatisch**, gesteuert über die IBC-Option `ExistingSessionDetectedAction`.
+Sie wird per ENV gesetzt:
+
+```
+EXISTING_SESSION_DETECTED_ACTION=${BG_TWS_EXISTING_SESSION_ACTION:-primary}
+```
+
+Der Wert wird vom gnzsnz-Image per envsubst in die IBC-`config.ini`
+(Zeile 329) gerendert — gleiche Mechanik wie `TWOFA_DEVICE`. **Default
+`primary`** gilt für **beide Stacks** (Live und Paper); Override je Stack
+über `BG_TWS_EXISTING_SESSION_ACTION` in der jeweiligen `.env`.
+
+| Wert | Verhalten der broker-gateway-Session |
+|---|---|
+| `primary` (Default) | Behält die Hoheit: kann von keiner neuen Session verdrängt werden; wird sie manuell beendet, **reconnectet sie automatisch**. Empfohlen für den Service. |
+| `secondary` | Weicht jeder anderen Session und terminiert selbst. |
+| `manual` | IBC nimmt keine Aktion — der alte Hang-Zustand (Login bleibt stehen). |
+| `primaryoverride` | Wie `primary`, kann aber von einer neuen `primary`-Session verdrängt werden. |
+
+**Wirksam wird die Änderung erst nach einem `tws`-Container-Recreate**
+(die ENV greift beim IBC-`config.ini`-Rendering), nicht durch einen
+reinen `gateway`-Restart. Vor v2.5.2 war bei einem Session-Konflikt ein
+manueller Container-Restart nach Beenden der Fremd-Session nötig.
+
+Verifikation, dass der Wert in der laufenden config.ini steht:
+
+```bash
+docker exec broker-gateway-paper-tws \
+    grep ExistingSessionDetectedAction /home/ibgateway/ibc/config.ini
+# erwartet: ExistingSessionDetectedAction=primary
+```
+
 ## 7. Tooling-Hinweise
 
 ### 7.1 Bash-Hook blockiert cma-pi-1 direkt
