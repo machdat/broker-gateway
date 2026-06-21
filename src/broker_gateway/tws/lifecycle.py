@@ -40,7 +40,9 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_HEARTBEAT_INTERVAL_S = 60.0
 _DEFAULT_MAX_CONNECT_FAILURES = 3
+_DEFAULT_RECOVERY_INTERVAL_S = 10.0
 _HEARTBEAT_ENV = "BG_TWS_HEARTBEAT_SEC"
+_RECOVERY_ENV = "BG_TWS_RECOVERY_SEC"
 
 
 def _interval_from_env(name: str, default: float) -> float:
@@ -100,6 +102,7 @@ class TWSLifecycle:
         client: TWSClient,
         *,
         heartbeat_interval_s: float | None = None,
+        recovery_interval_s: float | None = None,
         max_connect_failures: int = _DEFAULT_MAX_CONNECT_FAILURES,
     ) -> None:
         self._client = client
@@ -107,6 +110,16 @@ class TWSLifecycle:
             heartbeat_interval_s
             if heartbeat_interval_s is not None
             else _interval_from_env(_HEARTBEAT_ENV, _DEFAULT_HEARTBEAT_INTERVAL_S)
+        )
+        # Im non-OK-Zustand (disconnected / session_lost / tws_down) pollt
+        # der Loop schneller, damit ein autonomer Reconnect nach einem
+        # harten TWS-Neustart zuegig (< 60s) greift, statt bis zum
+        # naechsten Heartbeat zu warten (Karte 6dbf3026). Im OK-Zustand
+        # bleibt es beim ruhigen heartbeat_interval_s.
+        self.recovery_interval_s = (
+            recovery_interval_s
+            if recovery_interval_s is not None
+            else _interval_from_env(_RECOVERY_ENV, _DEFAULT_RECOVERY_INTERVAL_S)
         )
         if max_connect_failures < 1:
             raise ValueError(
@@ -191,6 +204,18 @@ class TWSLifecycle:
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         await self.stop()
 
+    def _next_interval(self) -> float:
+        """Wartezeit bis zum naechsten Heartbeat.
+
+        OK-Zustand: ruhiges ``heartbeat_interval_s``. Andernfalls das
+        kuerzere ``recovery_interval_s`` (nie laenger als der Heartbeat),
+        damit ein Reconnect nach TWS-Socket-Abriss schnell nachzieht
+        (Karte 6dbf3026).
+        """
+        if self._status is AuthStatus.OK:
+            return self.heartbeat_interval_s
+        return min(self.recovery_interval_s, self.heartbeat_interval_s)
+
     async def _run(self) -> None:
         assert self._stop_event is not None
         try:
@@ -198,7 +223,7 @@ class TWSLifecycle:
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(),
-                        timeout=self.heartbeat_interval_s,
+                        timeout=self._next_interval(),
                     )
                 except asyncio.TimeoutError:
                     pass

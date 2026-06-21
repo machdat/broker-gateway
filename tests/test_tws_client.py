@@ -220,7 +220,42 @@ class TestLifecycle:
         client = TWSClient(ib=mock_ib, client_id_pool=pool)
         await client.connect()
         await client.connect()
+        # Idempotenz gilt nur, solange der Socket steht (isConnected True).
         assert mock_ib.connectAsync.await_count == 1
+
+    async def test_connect_reconnects_after_socket_drop(
+        self, mock_ib: MagicMock, pool: ClientIdPool
+    ) -> None:
+        """Karte 6dbf3026: nach hartem TWS-Socket-Abriss (isConnected
+        liefert False, _client_id ist aber noch gesetzt, weil kein
+        disconnect() lief) baut connect() die Verbindung autonom neu auf,
+        statt wegen des _client_id-Checks als No-op zurueckzukehren."""
+        client = TWSClient(ib=mock_ib, client_id_pool=pool)
+        await client.connect()
+        assert mock_ib.connectAsync.await_count == 1
+        assert client.client_id is not None
+        # TWS-Prozess-Neustart: Socket weg, _client_id bleibt gesetzt.
+        mock_ib.isConnected.return_value = False
+        await client.connect()
+        # Echter Reconnect statt No-op: connectAsync wird erneut gerufen,
+        # der Zombie-State wird vorher sauber aufgeraeumt (disconnect).
+        assert mock_ib.connectAsync.await_count == 2
+        mock_ib.disconnect.assert_called()
+        assert client.client_id is not None
+
+    async def test_connect_releases_stale_id_on_reconnect(
+        self, mock_ib: MagicMock
+    ) -> None:
+        """Beim Reconnect nach Socket-Abriss wird die alte clientId in den
+        Pool zurueckgegeben (kein ID-Leak ueber wiederholte Reconnects)."""
+        pool = ClientIdPool((100, 101))
+        client = TWSClient(ib=mock_ib, client_id_pool=pool)
+        await client.connect()
+        assert pool.available() == 1  # eine ID gezogen
+        mock_ib.isConnected.return_value = False
+        await client.connect()
+        # Genau eine ID belegt - die alte ist zurueck, eine neue gezogen.
+        assert pool.available() == 1
 
     async def test_disconnect_releases_id(
         self, mock_ib: MagicMock, pool: ClientIdPool

@@ -214,6 +214,33 @@ class TestTickOnce:
         await lifecycle.tick_once()  # OK
         assert lifecycle.status is AuthStatus.OK
 
+    async def test_reconnects_after_socket_drop_following_ok(self) -> None:
+        """Karte 6dbf3026: nach einem OK-Zustand reisst der TWS-Socket ab
+        (is_connected springt auf False, z.B. TWS-Prozess-Neustart). Der
+        naechste Heartbeat ruft connect() und kehrt nach erfolgreichem
+        Reconnect autonom zu OK zurueck - ohne externen API-Restart."""
+        states = {"connected": True}
+        client = MagicMock()
+        client.is_connected = MagicMock(side_effect=lambda: states["connected"])
+
+        async def _connect() -> None:
+            states["connected"] = True
+
+        client.connect = AsyncMock(side_effect=_connect)
+        client.disconnect = AsyncMock(return_value=None)
+        client.client_id = 100
+        client._ib = SimpleNamespace(
+            client=SimpleNamespace(isReady=lambda: True)
+        )
+        lifecycle = TWSLifecycle(client)
+        await lifecycle.tick_once()  # OK
+        assert lifecycle.status is AuthStatus.OK
+        # Harter Socket-Abriss: is_connected False, ohne dass disconnect lief.
+        states["connected"] = False
+        await lifecycle.tick_once()  # erkennt Abriss -> connect() -> OK
+        assert lifecycle.status is AuthStatus.OK
+        client.connect.assert_awaited()
+
 
 # --------------------------------------------------------------------------
 # is_ready Defensive
@@ -357,6 +384,65 @@ class TestConfig:
         client = _make_client()
         lifecycle = TWSLifecycle(client)
         assert lifecycle.client is client
+
+
+# --------------------------------------------------------------------------
+# Recovery-Intervall (Karte 6dbf3026)
+# --------------------------------------------------------------------------
+
+
+class TestRecoveryInterval:
+    def test_default_recovery_interval(self) -> None:
+        client = _make_client()
+        lifecycle = TWSLifecycle(client)
+        assert lifecycle.recovery_interval_s == 10.0
+
+    def test_recovery_interval_override(self) -> None:
+        client = _make_client()
+        lifecycle = TWSLifecycle(client, recovery_interval_s=3.0)
+        assert lifecycle.recovery_interval_s == 3.0
+
+    def test_recovery_interval_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BG_TWS_RECOVERY_SEC", "7.5")
+        client = _make_client()
+        lifecycle = TWSLifecycle(client)
+        assert lifecycle.recovery_interval_s == 7.5
+
+    def test_explicit_recovery_interval_wins_over_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BG_TWS_RECOVERY_SEC", "7.5")
+        client = _make_client()
+        lifecycle = TWSLifecycle(client, recovery_interval_s=2.0)
+        assert lifecycle.recovery_interval_s == 2.0
+
+    def test_next_interval_ok_uses_heartbeat(self) -> None:
+        client = _make_client()
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=60.0, recovery_interval_s=10.0
+        )
+        lifecycle._status = AuthStatus.OK
+        assert lifecycle._next_interval() == 60.0
+
+    def test_next_interval_not_ok_uses_recovery(self) -> None:
+        client = _make_client()
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=60.0, recovery_interval_s=10.0
+        )
+        for status in (AuthStatus.SESSION_LOST, AuthStatus.TWS_DOWN):
+            lifecycle._status = status
+            assert lifecycle._next_interval() == 10.0
+
+    def test_next_interval_recovery_capped_at_heartbeat(self) -> None:
+        # recovery > heartbeat: nie laenger warten als der Heartbeat.
+        client = _make_client()
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=5.0, recovery_interval_s=30.0
+        )
+        lifecycle._status = AuthStatus.TWS_DOWN
+        assert lifecycle._next_interval() == 5.0
 
 
 # --------------------------------------------------------------------------

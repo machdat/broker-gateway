@@ -268,8 +268,13 @@ docker compose up -d --force-recreate --no-deps tws
 # in compose.yaml fest eingestellt, IBC klickt OK selbst — Operator
 # nur noch am Handy bestätigen.
 
-# Nach erfolgreicher 2FA: gateway-Service neu starten, damit der
-# heartbeat-Loop einen frischen ib_async-Connect macht.
+# Seit v2.5.3 (Karte 6dbf3026) reconnectet die API nach einem TWS-
+# Socket-Abriss autonom: der Heartbeat-Loop erkennt den toten Socket
+# und baut den ib_async-Client im Recovery-Intervall (Default 10 s, ENV
+# BG_TWS_RECOVERY_SEC) selbst neu auf - tws-health wird ohne Eingriff
+# wieder connected=true (< 60 s nach IBC-Login). Der folgende gateway-
+# Restart ist daher nur noch OPTIONAL, um den Reconnect sofort statt
+# nach max. einem Recovery-Intervall auszuloesen:
 docker compose restart gateway
 
 # Verifikation:

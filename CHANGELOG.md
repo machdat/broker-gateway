@@ -4,6 +4,36 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.5.3] — 2026-06-21 (Karte `6dbf3026`: API reconnectet ib_async-Socket autonom nach TWS-Neustart)
+
+Bugfix: Nach einem harten TWS-Prozess-Neustart (Container-Recreate,
+Socket-Abriss) baute die API ihre ib_async-Verbindung nicht autonom neu
+auf - tws-health blieb auf connected=false haengen, bis der API-Container
+manuell neugestartet wurde. Ursache: TWSClient.connect() brach bei
+gesetztem _client_id frueh ab, ohne isConnected() zu pruefen; nach einem
+Socket-Abriss (isConnected=False, _client_id aber noch gesetzt) war der
+Aufruf ein No-op, sodass der Heartbeat-Loop nie reconnectete. Beim
+taeglichen IBKR-Server-Reset (Socket bleibt bestehen) trat das nicht auf.
+
+- **tws/client.py:** connect() prueft jetzt zusaetzlich isConnected().
+  Bei erkanntem Zombie-State (client_id gesetzt, Socket weg) wird
+  disconnect() gerufen (ib_async-Cleanup + clientId-Release) und sauber
+  neu verbunden - kein ID-Leak ueber wiederholte Reconnects.
+- **tws/lifecycle.py:** Neues recovery_interval_s (Default 10s, ENV
+  BG_TWS_RECOVERY_SEC). Im non-OK-Zustand pollt der Heartbeat-Loop im
+  kuerzeren Recovery-Intervall (nie laenger als der Heartbeat), sodass
+  der Reconnect nach TWS-Verfuegbarkeit < 60s greift; im OK-Zustand
+  unveraendert beim heartbeat_interval_s.
+- **Tests:** test_tws_client.py (Reconnect nach Socket-Abriss, kein
+  clientId-Leak), test_tws_lifecycle.py (autonomer Reconnect aus OK
+  heraus, Recovery-Intervall-Auswahl).
+- **Doku:** docs/03-deployment.md Sektion 6.1 (manueller gateway-Restart
+  nach TWS-Recreate nur noch optional/beschleunigend),
+  .env.paper.template (BG_TWS_RECOVERY_SEC).
+- **Deploy:** reine gateway-Code-Aenderung -> gateway-only-Rebuild, kein
+  tws-Recreate und kein 2FA noetig. Zuerst auf Paper verifiziert.
+- **Version-Bump 2.5.2 -> 2.5.3** (Patch — Bugfix + additive Config-Option).
+
 ## [2.5.2] — 2026-06-21 (Karte `234923e9`: IBC ExistingSessionDetectedAction setzen)
 
 Bugfix: Bei einer konkurrierenden Anmeldung am selben IBKR-Konto (z.B.
