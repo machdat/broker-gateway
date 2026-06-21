@@ -172,8 +172,21 @@ class TWSClient:
     # ---- Lifecycle ----
 
     async def connect(self) -> None:
-        if self._client_id is not None:
+        # Echte Idempotenz: nur ueberspringen, wenn der Socket auch
+        # wirklich noch steht. Nach einem harten TWS-Prozess-Neustart
+        # (Container-Recreate, Socket-Abriss) liefert isConnected() False,
+        # waehrend _client_id gesetzt bleibt, weil kein disconnect() lief.
+        # Ein blosser _client_id-Check liesse connect() dann als No-op
+        # zurueckkehren und der Heartbeat-Loop wuerde nie reconnecten -
+        # die Session bliebe zombie (Karte 6dbf3026).
+        if self._client_id is not None and self._ib.isConnected():
             return
+        # Zombie-State aufraeumen: Socket weg, aber clientId noch
+        # reserviert. disconnect() raeumt den ib_async-State auf und gibt
+        # die clientId in den Pool zurueck, bevor neu verbunden wird
+        # (kein ID-Leak ueber wiederholte Reconnects).
+        if self._client_id is not None:
+            await self.disconnect()
         client_id = await self._pool.acquire()
         try:
             await self._ib.connectAsync(
