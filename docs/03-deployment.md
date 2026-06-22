@@ -272,9 +272,15 @@ docker compose up -d --force-recreate --no-deps tws
 # Socket-Abriss autonom: der Heartbeat-Loop erkennt den toten Socket
 # und baut den ib_async-Client im Recovery-Intervall (Default 10 s, ENV
 # BG_TWS_RECOVERY_SEC) selbst neu auf - tws-health wird ohne Eingriff
-# wieder connected=true (< 60 s nach IBC-Login). Der folgende gateway-
-# Restart ist daher nur noch OPTIONAL, um den Reconnect sofort statt
-# nach max. einem Recovery-Intervall auszuloesen:
+# wieder connected=true. Seit v2.5.4 (Karte 568adcf0) wird der Abriss
+# auch im ruhigen OK-Zustand schon innerhalb eines Recovery-Intervalls
+# erkannt (statt erst beim naechsten regulaeren Heartbeat nach bis zu
+# 60 s): der OK-Wait pollt is_connected() in Schritten von
+# BG_TWS_RECOVERY_SEC und bricht bei totem Socket sofort ab. Messung
+# Paper: connected=true rund 10-15 s nach TWS-Port-offen (vorher rund
+# 44 s). Der folgende gateway-Restart ist daher nur noch OPTIONAL, um
+# den Reconnect sofort statt nach max. einem Recovery-Intervall
+# auszuloesen:
 docker compose restart gateway
 
 # Verifikation:

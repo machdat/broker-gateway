@@ -205,7 +205,7 @@ class TWSLifecycle:
         await self.stop()
 
     def _next_interval(self) -> float:
-        """Wartezeit bis zum naechsten Heartbeat.
+        """Gesamtfrist bis zum naechsten faelligen Heartbeat-Tick.
 
         OK-Zustand: ruhiges ``heartbeat_interval_s``. Andernfalls das
         kuerzere ``recovery_interval_s`` (nie laenger als der Heartbeat),
@@ -216,17 +216,55 @@ class TWSLifecycle:
             return self.heartbeat_interval_s
         return min(self.recovery_interval_s, self.heartbeat_interval_s)
 
+    def _poll_step(self) -> float:
+        """Schrittweite, in der der OK-Wait das volle Intervall abwartet.
+
+        Der ruhige OK-Wait (``heartbeat_interval_s``, Default 60s) wird in
+        Schritten von ``min(recovery_interval_s, heartbeat_interval_s)``
+        abgewartet, sodass ein Socket-Abriss innerhalb von
+        ``recovery_interval_s`` erkannt wird, statt erst beim naechsten
+        regulaeren Heartbeat (Karte 568adcf0). ``is_connected()`` ist ein
+        billiger lokaler Check ohne Netzwerk-/IBKR-Traffic, daher ist das
+        haeufigere Pruefen unkritisch.
+        """
+        return min(self.recovery_interval_s, self.heartbeat_interval_s)
+
+    async def _wait_until_due(self) -> bool:
+        """Wartet bis zum naechsten faelligen Tick, in ``_poll_step``-Schritten.
+
+        Liefert ``True``, wenn der Loop beendet werden soll (stop_event
+        gesetzt), sonst ``False``. Bricht im OK-Zustand frueh ab, sobald
+        ``self._client.is_connected()`` ``False`` liefert (harter
+        Socket-Abriss): dann zieht in :meth:`_run` sofort ein Tick nach,
+        statt das volle ``heartbeat_interval_s`` auszusitzen. Das stop_event
+        wird nach jedem Schritt geprueft, damit ``stop()``/Cancel auch
+        mitten in einem Mehr-Schritt-Wait prompt greift.
+        """
+        assert self._stop_event is not None
+        remaining = self._next_interval()
+        step = self._poll_step()
+        while remaining > 0.0:
+            wait = min(step, remaining) if step > 0.0 else remaining
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=wait)
+            except asyncio.TimeoutError:
+                pass
+            if self._stop_event.is_set():
+                return True
+            remaining -= wait
+            # Frueher Abbruch nur im stationaeren OK-Betrieb: ein harter
+            # Socket-Abriss macht is_connected() sofort False - dann nicht
+            # den ruhigen Rest-Heartbeat aussitzen, sondern gleich ticken.
+            if self._status is AuthStatus.OK and not self._client.is_connected():
+                return False
+        return False
+
     async def _run(self) -> None:
         assert self._stop_event is not None
         try:
             while not self._stop_event.is_set():
-                try:
-                    await asyncio.wait_for(
-                        self._stop_event.wait(),
-                        timeout=self._next_interval(),
-                    )
-                except asyncio.TimeoutError:
-                    pass
+                if await self._wait_until_due():
+                    break
                 if self._stop_event.is_set():
                     break
                 await self.tick_once()
