@@ -446,6 +446,157 @@ class TestRecoveryInterval:
 
 
 # --------------------------------------------------------------------------
+# OK-Wait Schrittweite + frueher Socket-Abriss-Abbruch (Karte 568adcf0)
+# --------------------------------------------------------------------------
+
+
+class TestOkWaitSocketDrop:
+    def test_poll_step_is_min_recovery_heartbeat(self) -> None:
+        client = _make_client()
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=60.0, recovery_interval_s=10.0
+        )
+        assert lifecycle._poll_step() == 10.0
+
+    def test_poll_step_capped_at_heartbeat(self) -> None:
+        # recovery > heartbeat: Schrittweite nie groesser als der Heartbeat.
+        client = _make_client()
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=5.0, recovery_interval_s=30.0
+        )
+        assert lifecycle._poll_step() == 5.0
+
+    async def test_ok_wait_aborts_early_on_socket_drop(self) -> None:
+        """Im OK-Zustand muss _wait_until_due bei is_connected()=False weit
+        vor heartbeat_interval_s zurueckkehren (innerhalb _poll_step), damit
+        in _run sofort ein Tick nachzieht statt 60s zu warten."""
+        client = _make_client(connected=True, ready=True)
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=10.0, recovery_interval_s=0.05
+        )
+        lifecycle._stop_event = asyncio.Event()
+        lifecycle._status = AuthStatus.OK
+        # Harter Socket-Abriss
+        client.is_connected.return_value = False
+        # Sicherheitsnetz 2.0s << heartbeat 10s: ohne frueher Abbruch wuerde
+        # der Wait erst nach 10s aufloesen und der wait_for-Timeout greifen.
+        should_stop = await asyncio.wait_for(
+            lifecycle._wait_until_due(), timeout=2.0
+        )
+        assert should_stop is False
+
+    async def test_ok_wait_does_not_abort_while_connected(self) -> None:
+        """Solange der Socket steht, darf der OK-Wait NICHT frueh abbrechen -
+        er wartet die volle _next_interval()-Frist ab (hier kurz gehalten)."""
+        client = _make_client(connected=True, ready=True)
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=0.4, recovery_interval_s=0.1
+        )
+        lifecycle._stop_event = asyncio.Event()
+        lifecycle._status = AuthStatus.OK
+        start = asyncio.get_event_loop().time()
+        should_stop = await asyncio.wait_for(
+            lifecycle._wait_until_due(), timeout=2.0
+        )
+        elapsed = asyncio.get_event_loop().time() - start
+        assert should_stop is False
+        # Es wurde tatsaechlich rund das volle Intervall (0.4s) gewartet,
+        # nicht nur ein einzelner _poll_step (0.1s) - klare Marge gegen
+        # Timer-Jitter auf CI-Runnern.
+        assert elapsed >= 0.2
+
+    async def test_wait_until_due_non_ok_does_not_early_abort(self) -> None:
+        """Non-OK-Zustand: der is_connected()-Frueh-Abbruch darf NICHT feuern.
+        _next_interval() == _poll_step() == recovery_interval_s, also genau ein
+        Schritt - identisch zum Verhalten vor Karte 568adcf0. Der Wait kehrt
+        prompt (ein recovery-Schritt) zurueck, nicht erst nach heartbeat."""
+        client = _make_client(connected=False, ready=False)
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=10.0, recovery_interval_s=0.05
+        )
+        lifecycle._stop_event = asyncio.Event()
+        lifecycle._status = AuthStatus.SESSION_LOST
+        # is_connected()=False, aber non-OK -> kein Frueh-Abbruch; der Wait
+        # laeuft den einen recovery-Schritt voll durch und kehrt regulaer
+        # zurueck (kein Infinite-Loop, kein 10s-heartbeat-Aussitzen).
+        should_stop = await asyncio.wait_for(
+            lifecycle._wait_until_due(), timeout=1.0
+        )
+        assert should_stop is False
+
+    async def test_wait_until_due_returns_on_stop_event_mid_wait(self) -> None:
+        """stop_event mitten im Mehr-Schritt-OK-Wait gesetzt: der Wait muss
+        innerhalb eines _poll_step (0.05s) mit True zurueckkehren, lange vor
+        heartbeat_interval_s (10s) - sauberer Pfad ohne Cancel."""
+        client = _make_client(connected=True, ready=True)
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=10.0, recovery_interval_s=0.05
+        )
+        lifecycle._stop_event = asyncio.Event()
+        lifecycle._status = AuthStatus.OK
+
+        async def _set_soon() -> None:
+            await asyncio.sleep(0.1)
+            assert lifecycle._stop_event is not None
+            lifecycle._stop_event.set()
+
+        setter = asyncio.create_task(_set_soon())
+        should_stop = await asyncio.wait_for(
+            lifecycle._wait_until_due(), timeout=2.0
+        )
+        await setter
+        assert should_stop is True
+
+    async def test_ok_wait_reconnects_promptly_via_loop(self) -> None:
+        """E2E ueber den echten Loop: nach einem OK-Zustand reisst der Socket
+        ab. Trotz heartbeat_interval_s=10s muss der Loop innerhalb von
+        ~recovery_interval_s reconnecten und zu OK zurueckkehren - ohne die
+        vollen 10s auszusitzen (Karte 568adcf0)."""
+        states = {"connected": True}
+        client = MagicMock()
+        client.is_connected = MagicMock(side_effect=lambda: states["connected"])
+
+        async def _connect() -> None:
+            states["connected"] = True
+
+        client.connect = AsyncMock(side_effect=_connect)
+        client.disconnect = AsyncMock(return_value=None)
+        client.client_id = 100
+        client._ib = SimpleNamespace(client=SimpleNamespace(isReady=lambda: True))
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=10.0, recovery_interval_s=0.05
+        )
+        await lifecycle.start()  # initialer Tick -> OK
+        try:
+            assert lifecycle.status is AuthStatus.OK
+            client.connect.assert_not_awaited()
+            # Harter Socket-Abriss waehrend des OK-Waits
+            states["connected"] = False
+            # 0.3s liegt weit unter heartbeat (10s), aber deutlich ueber
+            # recovery (0.05s) -> der frueh-abbrechende Wait muss bereits
+            # reconnectet haben.
+            await asyncio.sleep(0.3)
+            assert lifecycle.status is AuthStatus.OK
+            client.connect.assert_awaited()
+        finally:
+            await lifecycle.stop()
+
+    async def test_stop_interrupts_ok_wait_promptly_via_loop(self) -> None:
+        """stop() beendet den Loop prompt, auch wenn er mitten im langen
+        OK-Wait (heartbeat 10s) haengt - der Socket bleibt verbunden, der
+        Abbruch kommt allein von stop()/Cancel."""
+        client = _make_client(connected=True, ready=True)
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=10.0, recovery_interval_s=0.05
+        )
+        await lifecycle.start()
+        assert lifecycle.status is AuthStatus.OK
+        await asyncio.wait_for(lifecycle.stop(), timeout=2.0)
+        assert lifecycle._task is None
+        client.disconnect.assert_awaited()
+
+
+# --------------------------------------------------------------------------
 # CP-Adapter
 # --------------------------------------------------------------------------
 
