@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.5.4
+    image: broker-gateway:2.5.5
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den
@@ -131,22 +131,40 @@ services:
     # docker compose -f compose.yaml -f compose.tws-vnc-debug.yaml ...
     # Der temp-Override setzt VNC_SERVER_PASSWORD und mappt 5906->5900.
     healthcheck:
-      # gnzsnz forwardet die TWS-Socket-API per socat von 4001/4002 auf
-      # 4003/4004. Healthcheck testet den socat-Forward (4004 paper,
-      # 4003 live). bash -c "exec 3<>/dev/tcp/..." testet das ohne
-      # nc/python im Image.
+      # Prueft den TATSAECHLICHEN IB-Gateway-API-Listener, nicht nur den
+      # socat-Forward (4003 live / 4004 paper). socat akzeptiert die TCP-
+      # Verbindung auf dem Forward-Port auch dann, wenn das Backend (IB-
+      # Gateway-API 4001 live / 4002 paper) tot ist und der Forward beim
+      # Durchreichen `Connection refused` bekommt - dadurch meldete der
+      # alte /dev/tcp-Check auf den Forward-Port faelschlich `healthy`
+      # trotz toter API-Session (Karte c7daadee: Live-Ausfall ~9 h
+      # unbemerkt, weil `healthy` kein Beleg fuer eine lebende Session war).
+      #
+      # Java/IB Gateway bindet den API-Port auf IPv6; ein LISTEN-Socket
+      # steht in /proc/net/tcp6 mit Status 0A. Der API-Port leitet sich
+      # aus TRADING_MODE ab (live -> 4001 = hex 0FA1, paper -> 4002 = hex
+      # 0FA2) - das ist die Container-eigene ENV, unabhaengig vom gateway-
+      # seitigen BG_TWS_PORT-Forward. Der grep matcht eine LISTEN-Zeile
+      # (remote all-zero:0000, Status 0A) auf dem API-Port; bash + grep
+      # reichen, kein nc/python noetig. `$$` = Container-Shell-Variable
+      # (nicht von docker compose interpoliert).
       test:
-        - "CMD"
-        - "bash"
-        - "-c"
-        - "exec 3<>/dev/tcp/127.0.0.1/${BG_TWS_PORT:-4004}"
+        - "CMD-SHELL"
+        - 'if [ "$$TRADING_MODE" = live ]; then p=0FA1; else p=0FA2; fi; grep -qi ":$$p 00000000000000000000000000000000:0000 0A " /proc/net/tcp6'
       interval: 30s
       timeout: 5s
-      retries: 3
-      # IB Gateway + IBC brauchen ~2 min bis Socket steht (Splash, Xvfb,
-      # Login, Configure-Click). start_period unterdrueckt unhealthy-
-      # Markierung waehrend dieser Phase. Bei Live-2FA dauert es
-      # potenziell laenger - User-Interaktion am Handy noetig.
+      # retries x interval = 5 x 30 s = 150 s Toleranz federt das taegliche
+      # IBC-Auto-Restart-Fenster (App-Neustart, API-Listener kurz weg) ab,
+      # ohne einen echten Ausfall lange als `healthy` zu verschleiern.
+      retries: 5
+      # IB Gateway + IBC brauchen ~2 min bis der API-Listener steht (Splash,
+      # Xvfb, Login, Configure-Click), bei Live-2FA laenger. start_period
+      # zaehlt Fehlschlaege in dieser Phase NICHT als unhealthy; ein
+      # erfolgreicher Check schaltet trotzdem sofort auf `healthy`. 300 s
+      # deckt den Kaltstart inklusive typischem 2FA-Wartefenster ab. (Vorher
+      # fehlte start_period ganz - mit dem Listener-Check zwingend noetig,
+      # sonst false-unhealthy waehrend des Startups.)
+      start_period: 300s
     # Kein Default-Volume auf /home/ibgateway/Jts: gnzsnz erwartet ein
     # vom Image vorinitialisiertes Verzeichnis (mit jts.ini.tmpl). Ein
     # leerer Bind-Mount ueberschreibt das und der Container restarted

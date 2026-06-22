@@ -222,6 +222,44 @@ Bei `auth_lost` antwortet jeder Business-Endpunkt mit `503` +
 `Retry-After: 30`. Recovery-Job versucht bis zu 3× `reauthenticate`,
 sonst muss manuell der Login-Runbook durchgespielt werden.
 
+### 5.1 tws-Healthcheck spiegelt den API-Listener (seit v2.5.5)
+
+`docker compose ps tws` → `healthy` belegt seit v2.5.5 (Karte
+`c7daadee`), dass der **tatsächliche IB-Gateway-API-Listener** lebt —
+nicht mehr nur der socat-Forward-Port.
+
+Hintergrund: gnzsnz forwardet die TWS-Socket-API per socat von intern
+`4001`/`4002` auf `4003`/`4004`. Der frühere Healthcheck testete nur
+den Forward-Port (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/${BG_TWS_PORT}'`).
+socat akzeptiert die TCP-Verbindung dort aber **auch dann**, wenn das
+Backend (IB-Gateway-API) tot ist und der Forward beim Durchreichen
+`Connection refused` bekommt. Folge: `healthy` trotz toter API-Session.
+Am 2026-06-21 blieb so ein Live-Ausfall rund **9 Stunden unbemerkt**
+(im tws-Log lief durchgehend socat-`Connection refused`-Spam, der
+Container meldete trotzdem `healthy`).
+
+Der neue Healthcheck prüft per `grep` in `/proc/net/tcp6` einen
+LISTEN-Socket (Status `0A`) auf dem internen API-Port. Der Port leitet
+sich aus der Container-ENV `TRADING_MODE` ab:
+
+| `TRADING_MODE` | API-Port | Hex in `/proc/net/tcp6` |
+|---|---|---|
+| `live` | 4001 | `0FA1` |
+| `paper` | 4002 | `0FA2` |
+
+Damit deckt sich `docker inspect --format '{{.State.Health.Status}}'`
+des tws-Containers jetzt mit dem `connected`-Feld aus
+`GET /v1/internal/tws-health`: ist der API-Listener tot, meldet der
+Healthcheck `unhealthy` statt fälschlich `healthy`. Der socat-Forward
+selbst bleibt unverändert (der `/v1`-Vertrag ist unberührt).
+
+Toleranz-Parameter: `interval 30s`, `retries 5` (= 150 s Puffer, federt
+das tägliche IBC-Auto-Restart-Fenster ab), `start_period 300s` (deckt
+den ~2-min-Kaltstart von IB Gateway/IBC inkl. Live-2FA-Wartefenster;
+vorher fehlte `start_period` ganz). Eine Änderung am Healthcheck wird
+erst nach einem `tws`-Container-Recreate wirksam (Config-Hash) — auf
+Live also gekoppelt an das nächste 2FA-Fenster.
+
 ## 6. Restart-Disziplin
 
 | Anlass | `gateway`-Restart? | `cpgateway`-Restart? | Login? |
@@ -301,9 +339,12 @@ nach dem Force-Recreate kein Java-API-Port 4002 erscheint (Memory
 
 ### 6.2 Session-Konflikt bei konkurrierender Anmeldung
 
-Symptom: `tws-health` meldet `connected=false`, der `tws`-Container ist
-aber `healthy` und der IBC-Log zeigt einen offenen Dialog **"Existing
-session detected"**, der nicht weiterläuft. Auslöser ist eine **zweite
+Symptom: `tws-health` meldet `connected=false` und der IBC-Log zeigt
+einen offenen Dialog **"Existing session detected"**, der nicht
+weiterläuft. (Bis v2.5.4 blieb der `tws`-Container in diesem Zustand
+`healthy`, weil der socat-Forward-Port lebte; seit v2.5.5 — Sektion 5.1
+— spiegelt der Healthcheck den API-Listener, sodass ein durch den Dialog
+blockierter, nie geöffneter API-Port als `unhealthy` erscheint.) Auslöser ist eine **zweite
 Anmeldung am selben IBKR-Konto** — typischerweise der Operator, der das
 Paper-Konto (DUP799747) parallel im Browser oder in der IBKR-App öffnet.
 IBKR erlaubt pro Konto nur eine Trading-Session; bei Konkurrenz zeigt IB
