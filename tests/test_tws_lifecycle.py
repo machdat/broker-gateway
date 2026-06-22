@@ -490,7 +490,7 @@ class TestOkWaitSocketDrop:
         er wartet die volle _next_interval()-Frist ab (hier kurz gehalten)."""
         client = _make_client(connected=True, ready=True)
         lifecycle = TWSLifecycle(
-            client, heartbeat_interval_s=0.2, recovery_interval_s=0.05
+            client, heartbeat_interval_s=0.4, recovery_interval_s=0.1
         )
         lifecycle._stop_event = asyncio.Event()
         lifecycle._status = AuthStatus.OK
@@ -500,9 +500,29 @@ class TestOkWaitSocketDrop:
         )
         elapsed = asyncio.get_event_loop().time() - start
         assert should_stop is False
-        # Es wurde tatsaechlich rund das volle Intervall (0.2s) gewartet,
-        # nicht nur ein einzelner _poll_step (0.05s).
-        assert elapsed >= 0.15
+        # Es wurde tatsaechlich rund das volle Intervall (0.4s) gewartet,
+        # nicht nur ein einzelner _poll_step (0.1s) - klare Marge gegen
+        # Timer-Jitter auf CI-Runnern.
+        assert elapsed >= 0.2
+
+    async def test_wait_until_due_non_ok_does_not_early_abort(self) -> None:
+        """Non-OK-Zustand: der is_connected()-Frueh-Abbruch darf NICHT feuern.
+        _next_interval() == _poll_step() == recovery_interval_s, also genau ein
+        Schritt - identisch zum Verhalten vor Karte 568adcf0. Der Wait kehrt
+        prompt (ein recovery-Schritt) zurueck, nicht erst nach heartbeat."""
+        client = _make_client(connected=False, ready=False)
+        lifecycle = TWSLifecycle(
+            client, heartbeat_interval_s=10.0, recovery_interval_s=0.05
+        )
+        lifecycle._stop_event = asyncio.Event()
+        lifecycle._status = AuthStatus.SESSION_LOST
+        # is_connected()=False, aber non-OK -> kein Frueh-Abbruch; der Wait
+        # laeuft den einen recovery-Schritt voll durch und kehrt regulaer
+        # zurueck (kein Infinite-Loop, kein 10s-heartbeat-Aussitzen).
+        should_stop = await asyncio.wait_for(
+            lifecycle._wait_until_due(), timeout=1.0
+        )
+        assert should_stop is False
 
     async def test_wait_until_due_returns_on_stop_event_mid_wait(self) -> None:
         """stop_event mitten im Mehr-Schritt-OK-Wait gesetzt: der Wait muss
