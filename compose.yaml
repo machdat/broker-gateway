@@ -140,17 +140,22 @@ services:
       # trotz toter API-Session (Karte c7daadee: Live-Ausfall ~9 h
       # unbemerkt, weil `healthy` kein Beleg fuer eine lebende Session war).
       #
-      # Java/IB Gateway bindet den API-Port auf IPv6; ein LISTEN-Socket
-      # steht in /proc/net/tcp6 mit Status 0A. Der API-Port leitet sich
-      # aus TRADING_MODE ab (live -> 4001 = hex 0FA1, paper -> 4002 = hex
-      # 0FA2) - das ist die Container-eigene ENV, unabhaengig vom gateway-
-      # seitigen BG_TWS_PORT-Forward. Der grep matcht eine LISTEN-Zeile
-      # (remote all-zero:0000, Status 0A) auf dem API-Port; bash + grep
-      # reichen, kein nc/python noetig. `$$` = Container-Shell-Variable
-      # (nicht von docker compose interpoliert).
+      # Der API-Port leitet sich aus TRADING_MODE ab (live -> 4001 = hex
+      # 0FA1, paper -> 4002 = hex 0FA2) - das ist die Container-eigene ENV,
+      # unabhaengig vom gateway-seitigen BG_TWS_PORT-Forward. Der grep
+      # matcht eine LISTEN-Zeile (Status 0A, remote all-zero:0000) auf dem
+      # API-Port. Geprueft werden BEIDE Tabellen /proc/net/tcp (IPv4) UND
+      # /proc/net/tcp6 (IPv6): je nach JVM-Stack bindet IB Gateway den Port
+      # auf den IPv6-Wildcard (-> tcp6) oder auf IPv4-127.0.0.1 (-> tcp,
+      # 8-stellige local-Adresse) - gnzsnz-socat forwardet zum IPv4-
+      # Loopback, daher ist IPv4-Bind moeglich. Die remote-Adresse ist bei
+      # LISTEN je Tabelle 8 (v4) bzw. 32 (v6) Hex-Stellen all-zero; die
+      # Alternation deckt beide ab. bash + grep reichen, kein nc/python.
+      # `$$` = Container-Shell-Variable (nicht von docker compose
+      # interpoliert).
       test:
         - "CMD-SHELL"
-        - 'if [ "$$TRADING_MODE" = live ]; then p=0FA1; else p=0FA2; fi; grep -qi ":$$p 00000000000000000000000000000000:0000 0A " /proc/net/tcp6'
+        - 'if [ "$$TRADING_MODE" = live ]; then p=0FA1; else p=0FA2; fi; grep -Eqi ":$$p (00000000|00000000000000000000000000000000):0000 0A " /proc/net/tcp /proc/net/tcp6'
       interval: 30s
       timeout: 5s
       # retries x interval = 5 x 30 s = 150 s Toleranz federt das taegliche

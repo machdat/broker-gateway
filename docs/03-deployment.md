@@ -238,9 +238,14 @@ Am 2026-06-21 blieb so ein Live-Ausfall rund **9 Stunden unbemerkt**
 (im tws-Log lief durchgehend socat-`Connection refused`-Spam, der
 Container meldete trotzdem `healthy`).
 
-Der neue Healthcheck prüft per `grep` in `/proc/net/tcp6` einen
-LISTEN-Socket (Status `0A`) auf dem internen API-Port. Der Port leitet
-sich aus der Container-ENV `TRADING_MODE` ab:
+Der neue Healthcheck prüft per `grep` einen LISTEN-Socket (Status `0A`)
+auf dem internen API-Port — und zwar in **beiden** Kernel-Tabellen
+`/proc/net/tcp` (IPv4) und `/proc/net/tcp6` (IPv6). Je nach JVM-Stack
+bindet IB Gateway den Port auf den IPv6-Wildcard oder auf IPv4-`127.0.0.1`
+(der gnzsnz-socat-Forward reicht zum IPv4-Loopback durch, ein IPv4-Bind
+ist also möglich); die Prüfung beider Tabellen ist robust gegen beide
+Fälle und verhindert einen false-`unhealthy`-Deadlock beim Start. Der
+Port leitet sich aus der Container-ENV `TRADING_MODE` ab:
 
 | `TRADING_MODE` | API-Port | Hex in `/proc/net/tcp6` |
 |---|---|---|
