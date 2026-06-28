@@ -14,14 +14,23 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
-
 ENV_NAME="${1:-}"
 
 if [[ "$ENV_NAME" != "paper" ]]; then
     echo "recreate-tws.sh: nur 'paper' unterstuetzt (Live braucht 2FA -> manueller Recovery, siehe docs/runbooks/tws-recovery.md)." >&2
     exit 2
 fi
+
+# Der Paper-Stack wird aus seinem EIGENEN Repo-Clone verwaltet (eigene
+# .env.paper + var/-Volumes + COMPOSE_PROJECT_NAME). Der Watchdog laeuft
+# aus dem Live-Repo (/mnt/ssd/broker-gateway), daher MUSS hier explizit
+# ins Paper-Repo gewechselt werden - NICHT ins Skript-eigene Verzeichnis,
+# dort fehlt .env.paper.
+PAPER_REPO_DIR="${BG_PAPER_REPO_DIR:-/mnt/ssd/broker-gateway-paper}"
+cd "$PAPER_REPO_DIR" 2>/dev/null || {
+    echo "recreate-tws.sh: Paper-Repo '$PAPER_REPO_DIR' nicht gefunden (BG_PAPER_REPO_DIR setzen?)." >&2
+    exit 2
+}
 
 export COMPOSE_PROJECT_NAME="broker-gateway-paper"
 export BG_ENV_FILE=".env.paper"

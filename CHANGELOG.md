@@ -4,6 +4,23 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.9.1] — 2026-06-28 (Karte `53c10ff4`: recreate-tws.sh-Pfad-Fix)
+
+Bugfix zum v2.9.0-Watchdog, im **End-to-End-Test** (Paper-tws gestoppt)
+aufgedeckt: `ops/recreate-tws.sh` wechselte mit `cd $(dirname $0)/..` ins
+**Live**-Repo (`/mnt/ssd/broker-gateway`), wo keine `.env.paper` liegt — der
+Paper-Auto-Recreate scheiterte mit „env-Datei '.env.paper' nicht gefunden".
+Der Paper-Stack wird aus einem **separaten** Repo-Clone verwaltet.
+
+- **ops/recreate-tws.sh:** wechselt jetzt nach `BG_PAPER_REPO_DIR` (Default
+  `/mnt/ssd/broker-gateway-paper`) statt ins Skript-Verzeichnis; fehlendes
+  Paper-Repo → Exit 2.
+- **Tests:** zwei Guard-Smokes (Live-Ablehnung, fehlendes Paper-Repo).
+- **docs/runbooks/tws-recovery.md:** Aufruf klargestellt.
+- Die ntfy-Alarm-Kette war vom Bug NICHT betroffen (im E2E verifiziert:
+  Down erkannt + Push kam an); nur der Paper-Auto-Recreate war blockiert.
+- **Version-Bump 2.9.0 → 2.9.1** (Patch; compose-Image bleibt 2.8.3).
+
 ## [2.9.0] — 2026-06-28 (Karte `53c10ff4`: tws-Watchdog — ntfy-Alarm + Paper-Auto-Recovery)
 
 Neues Ops-Tooling gegen den 6-Tage-Blindflug vom 22.–28.06.2026 (Live-tws

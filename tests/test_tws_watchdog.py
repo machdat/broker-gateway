@@ -401,3 +401,43 @@ class TestMain:
     ) -> None:
         monkeypatch.delenv("BG_WATCHDOG_NTFY_URL", raising=False)
         assert wd.main(["--ntfy-url", ""]) == wd.EXIT_CONFIG
+
+
+# ---- ops/recreate-tws.sh (Guards) ---------------------------------------
+
+
+class TestRecreateScript:
+    """Smoke gegen die Guard-Pfade von recreate-tws.sh (vor dem
+    docker-compose-Aufruf): Live-Ablehnung + fehlendes Paper-Repo."""
+
+    _SCRIPT = str(_REPO_ROOT / "ops" / "recreate-tws.sh")
+
+    def _bash_or_skip(self) -> str:
+        import shutil
+
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash nicht verfuegbar")
+        return bash
+
+    def test_live_is_rejected(self) -> None:
+        import subprocess
+
+        bash = self._bash_or_skip()
+        r = subprocess.run(
+            [bash, self._SCRIPT, "live"], capture_output=True, text=True
+        )
+        assert r.returncode == 2
+        assert "nur 'paper'" in r.stderr
+
+    def test_missing_paper_repo_rejected(self, tmp_path: Path) -> None:
+        import os
+        import subprocess
+
+        bash = self._bash_or_skip()
+        env = {**os.environ, "BG_PAPER_REPO_DIR": str(tmp_path / "nope")}
+        r = subprocess.run(
+            [bash, self._SCRIPT, "paper"], capture_output=True, text=True, env=env
+        )
+        assert r.returncode == 2
+        assert "nicht gefunden" in r.stderr
