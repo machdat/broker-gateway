@@ -275,8 +275,11 @@ async def cancel_all_open_orders(
     Liste der gecancelten ``order_id``-Werte.
     """
     assert_paper_account(account_id)
+    # Query-Param heisst account_id (GET /v1/orders, Karte def3e8f5) - nicht
+    # 'account'; sonst bleibt der Filter wirkungslos und es wuerden Orders
+    # ALLER Konten der Session storniert.
     response = await client.get(
-        "/v1/orders", params={"account": account_id}
+        "/v1/orders", params={"account_id": account_id}
     )
     if response.status_code != 200:
         return []

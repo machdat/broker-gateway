@@ -16,7 +16,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from broker_gateway.money import Money
 
@@ -134,15 +134,18 @@ class OrderModifyRequest(BaseModel):
 
     @field_validator("stop_price", "limit_price", "quantity")
     @classmethod
-    def _positive_decimal_if_set(cls, v: str | None) -> str | None:
+    def _positive_decimal_if_set(
+        cls, v: str | None, info: ValidationInfo
+    ) -> str | None:
         if v is None:
             return None
+        field = info.field_name
         try:
             value = Decimal(v)
         except Exception as exc:
-            raise ValueError(f"Wert ist kein Decimal: {v!r}") from exc
+            raise ValueError(f"{field} ist kein Decimal: {v!r}") from exc
         if value <= 0:
-            raise ValueError("Wert muss > 0 sein")
+            raise ValueError(f"{field} muss > 0 sein")
         return str(value)
 
     @model_validator(mode="after")

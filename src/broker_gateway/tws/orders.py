@@ -239,6 +239,22 @@ class TWSOrdersService:
             )
 
         ib = self._client._ib  # noqa: SLF001
+        # Positiver Konto-Check wie place_order: ohne ihn haengt die
+        # Account-Bindung allein an _find_trade, dessen Filter bei (noch)
+        # leerem order.account uebersprungen wird - ein nicht-gemanagtes
+        # account_id soll klar 400 (invalid_account) liefern, nicht 404.
+        managed = list(ib.managedAccounts() or [])
+        if managed and account_id not in managed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "invalid_account",
+                    "message": (
+                        f"account_id={account_id} ist nicht in den "
+                        f"verfuegbaren Accounts ({', '.join(managed)})"
+                    ),
+                },
+            )
         trade = _find_trade(ib, order_id, account_id=account_id)
         if trade is None:
             raise HTTPException(

@@ -376,6 +376,25 @@ class TestModifyOrder:
             await service.modify_order("U25235077", "999", _modify())
         assert exc_info.value.status_code == 404
 
+    async def test_400_when_account_not_managed(self) -> None:
+        # Konsistent mit place_order: nicht-gemanagtes account_id -> 400,
+        # nicht 404 (positiver Konto-Check vor _find_trade).
+        client = _make_client(managed_accounts=["DUP799747"])
+        service = TWSOrdersService(client, read_only=False)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.modify_order("U25235077", "999", _modify())
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail["code"] == "invalid_account"
+
+    def test_request_rejects_empty(self) -> None:
+        with pytest.raises(ValueError):
+            OrderModifyRequest(account_id="U25235077")
+
+    def test_request_rejects_negative_stop_with_field_name(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            OrderModifyRequest(account_id="U25235077", stop_price="-5")
+        assert "stop_price" in str(exc_info.value)
+
     async def test_applies_stop_price_and_replaces_via_placeorder(self) -> None:
         # GTC-STP-Order, Stop von 180 auf 195.50 nach oben modifizieren.
         trade = _make_trade(perm_id=999, order_id=10, account="U25235077")

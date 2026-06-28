@@ -222,7 +222,12 @@ async def modify_order(
     # Header - konsistent mit POST (place_order). Stop-/Limit-Level oder
     # Menge werden auf die bestehende Order angewandt (IBKR cancel/replace).
     key = _require_idempotency_key(idempotency_key)
-    cached = store.get(_scoped_key("PATCH", key))
+    # Der Idempotency-Scope enthaelt die order_id: ein versehentlich auf
+    # einer ANDEREN Order wiederverwendeter Key darf NICHT die gecachte
+    # Fremd-Antwort liefern und den Modify stillschweigend ueberspringen -
+    # eine nicht-verschobene Stop-Order waere ein gefaehrlicher False-OK.
+    scope = f"PATCH:{order_id}"
+    cached = store.get(_scoped_key(scope, key))
     if cached is not None:
         cached_status, cached_payload = cached
         response.status_code = status.HTTP_200_OK
@@ -230,7 +235,7 @@ async def modify_order(
 
     order = await service.modify_order(request.account_id, order_id, request)
     payload = jsonable_encoder(order)
-    store.put(_scoped_key("PATCH", key), status.HTTP_200_OK, payload)
+    store.put(_scoped_key(scope, key), status.HTTP_200_OK, payload)
 
     if portfolio is not None:
         portfolio.invalidate(request.account_id)
