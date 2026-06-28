@@ -9,7 +9,7 @@ Cache-Reset-Aufrufe.
 ```bash
 BG_PAPER_BASE_URL=http://cma-pi-1:4001 \
 BG_PAPER_BOOTSTRAP_TOKEN=<admin-token> \
-BG_PAPER_ACCOUNT_ID=DUP799747 \
+BG_PAPER_ACCOUNT_ID=<paper-du-konto> \
 pytest -m paper_safe_write tests_paper/L2_safe_write/
 ```
 

@@ -40,7 +40,7 @@ in `compose.yaml` direkt sichtbar.
 | Stack | Host | Compose-Project-Name | Status |
 |---|---|---|---|
 | **Live (dediziertes Service-Konto, seit Cutover 2026-06-08; davor U25235077)** | `cma-pi-1` | `broker-gateway` (Default) | **deployed v2.0.0**, TWS-Backend, in Betrieb |
-| **Paper (DUP799747)** | `cma-pi-1` | `broker-gateway-paper` | **deployed v2.0.0**, TWS-Backend, in Betrieb |
+| **Paper (dediziertes IBKR-Paper-Konto)** | `cma-pi-1` | `broker-gateway-paper` | TWS-Backend, in Betrieb |
 
 Live-Stack ist Single-Owner der IBKR-Trading-Session — siehe
 Architektur-Dok Sektion 3.1. Es gibt **eine** Live-Instanz pro Konto.
@@ -351,7 +351,7 @@ weiterläuft. (Bis v2.5.4 blieb der `tws`-Container in diesem Zustand
 — spiegelt der Healthcheck den API-Listener, sodass ein durch den Dialog
 blockierter, nie geöffneter API-Port als `unhealthy` erscheint.) Auslöser ist eine **zweite
 Anmeldung am selben IBKR-Konto** — typischerweise der Operator, der das
-Paper-Konto (DUP799747) parallel im Browser oder in der IBKR-App öffnet.
+Paper-Konto parallel im Browser oder in der IBKR-App öffnet.
 IBKR erlaubt pro Konto nur eine Trading-Session; bei Konkurrenz zeigt IB
 Gateway beiden Seiten einen Auswahldialog.
 
