@@ -247,9 +247,9 @@ class TWSInstrumentsService:
             # additiv durchreichen. tradingHours=ETH, liquidHours=RTH,
             # timeZoneId macht beide zeitzonen-behaftet interpretierbar.
             # ib_async liefert "" als Default - zu None normalisieren.
-            trading_hours=_clean_str(getattr(first, "tradingHours", None)),
-            liquid_hours=_clean_str(getattr(first, "liquidHours", None)),
-            time_zone_id=_clean_str(getattr(first, "timeZoneId", None)),
+            trading_hours=_str_or_none(getattr(first, "tradingHours", None)),
+            liquid_hours=_str_or_none(getattr(first, "liquidHours", None)),
+            time_zone_id=_str_or_none(getattr(first, "timeZoneId", None)),
         )
         self._info_cache.set(conid, result)
         return result
@@ -288,18 +288,19 @@ class TWSInstrumentsService:
         return Contract
 
 
-def _clean_str(value: Any) -> str | None:
-    """Normalisiert ``""``/Whitespace-only auf ``None``.
+def _str_or_none(value: Any) -> str | None:
+    """``None`` oder leerer String -> ``None``, sonst der String.
 
-    ib_async setzt ``ContractDetails.tradingHours``/``liquidHours``/
-    ``timeZoneId`` per Default auf einen leeren String. Im v1-Contract
-    soll ``None`` "nicht geliefert" bedeuten - ein leerer String waere
-    irrefuehrend.
+    Gleiches Muster wie ``_str_or_none`` in ``tws/orders.py`` und
+    ``tws/trades.py``. ib_async setzt ``ContractDetails.tradingHours``/
+    ``liquidHours``/``timeZoneId`` per Default auf einen leeren String;
+    im v1-Contract soll ``None`` "nicht geliefert" bedeuten - ein leerer
+    String waere irrefuehrend.
     """
     if value is None:
         return None
-    text = str(value).strip()
-    return text or None
+    text = str(value)
+    return text if text else None
 
 
 def _detail_exchange_code(detail: Any) -> str | None:

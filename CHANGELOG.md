@@ -18,7 +18,8 @@ kalender-gestuetzte Handelszeiten).
   `None`.
 - **tws/instruments.py:** `info()` befuellt die Felder aus
   `ContractDetails.tradingHours`/`liquidHours`/`timeZoneId`; leere
-  ib_async-Default-Strings werden zu `None` normalisiert (`_clean_str`).
+  ib_async-Default-Strings werden zu `None` normalisiert (`_str_or_none`,
+  gleiches Muster wie tws/orders.py + tws/trades.py).
   Design: verlustfreie Roh-Durchreichung statt serverseitigem Parsing —
   RTH/ETH/Feiertage/Halbtage sind aus den Strings plus `time_zone_id`
   zeitzonen-behaftet ableitbar; die strukturierte Session-Sicht liefert
