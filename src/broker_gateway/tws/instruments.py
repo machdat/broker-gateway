@@ -243,6 +243,13 @@ class TWSInstrumentsService:
             exchange=exchange,
             exchange_id=exchange_id,
             calendar_url=calendar_url,
+            # Contract-Trading-Hours (Karte f1a01d97): rohe IBKR-Strings
+            # additiv durchreichen. tradingHours=ETH, liquidHours=RTH,
+            # timeZoneId macht beide zeitzonen-behaftet interpretierbar.
+            # ib_async liefert "" als Default - zu None normalisieren.
+            trading_hours=_clean_str(getattr(first, "tradingHours", None)),
+            liquid_hours=_clean_str(getattr(first, "liquidHours", None)),
+            time_zone_id=_clean_str(getattr(first, "timeZoneId", None)),
         )
         self._info_cache.set(conid, result)
         return result
@@ -279,6 +286,20 @@ class TWSInstrumentsService:
                 detail="ib_async ist nicht installiert",
             )
         return Contract
+
+
+def _clean_str(value: Any) -> str | None:
+    """Normalisiert ``""``/Whitespace-only auf ``None``.
+
+    ib_async setzt ``ContractDetails.tradingHours``/``liquidHours``/
+    ``timeZoneId`` per Default auf einen leeren String. Im v1-Contract
+    soll ``None`` "nicht geliefert" bedeuten - ein leerer String waere
+    irrefuehrend.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _detail_exchange_code(detail: Any) -> str | None:

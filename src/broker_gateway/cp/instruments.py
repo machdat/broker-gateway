@@ -60,6 +60,32 @@ class InstrumentDetail(Instrument):
             "leer, wenn keine listingExchange ableitbar ist."
         ),
     )
+    trading_hours: str | None = Field(
+        default=None,
+        description=(
+            "Rohe IBKR-tradingHours (ETH: alle Handelszeiten inkl. Pre-/"
+            "Post-Market). Format YYYYMMDD:HHMM-YYYYMMDD:HHMM, Tage durch ';' "
+            "getrennt, geschlossene Tage (Feiertage/Wochenende) als "
+            "YYYYMMDD:CLOSED. Zeiten in der Zone time_zone_id. None, wenn das "
+            "Backend keine Hours liefert (z.B. cp-Pfad)."
+        ),
+    )
+    liquid_hours: str | None = Field(
+        default=None,
+        description=(
+            "Rohe IBKR-liquidHours (RTH: regulaere Kernhandelszeit). Gleiches "
+            "Format wie trading_hours. Halbtage erscheinen als verkuerzte "
+            "Schlusszeit, Feiertage als CLOSED. None, wenn nicht geliefert."
+        ),
+    )
+    time_zone_id: str | None = Field(
+        default=None,
+        description=(
+            "IBKR-Zeitzone der trading_hours/liquid_hours-Strings (z.B. "
+            "'US/Eastern'). Macht die Hours zeitzonen-behaftet interpretierbar. "
+            "None, wenn nicht geliefert."
+        ),
+    )
 
 
 def _map_search_entry(entry: dict[str, Any], *, isin: str | None = None) -> Instrument:

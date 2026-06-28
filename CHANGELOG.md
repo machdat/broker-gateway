@@ -4,6 +4,35 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.6.0] — 2026-06-28 (Karte `f1a01d97` / AP-14: Contract-Trading-Hours im v1-Contract durchreichen)
+
+Feature: `GET /v1/instruments/{conid}` reicht jetzt die IBKR-Contract-
+Trading-Hours additiv durch. Cross-Repo-Vorbedingung fuer den
+trading_robot-Paper-Durchstich KW29 (Karte 345fe163, ADR-0018:
+kalender-gestuetzte Handelszeiten).
+
+- **cp/instruments.py:** `InstrumentDetail` um drei additive Felder
+  erweitert — `trading_hours` (rohe IBKR-tradingHours, ETH inkl. Pre-/
+  Post-Market), `liquid_hours` (rohe liquidHours, RTH-Kernzeit),
+  `time_zone_id` (IBKR-Zone der Strings). Rueckwaertskompatibel, Default
+  `None`.
+- **tws/instruments.py:** `info()` befuellt die Felder aus
+  `ContractDetails.tradingHours`/`liquidHours`/`timeZoneId`; leere
+  ib_async-Default-Strings werden zu `None` normalisiert (`_clean_str`).
+  Design: verlustfreie Roh-Durchreichung statt serverseitigem Parsing —
+  RTH/ETH/Feiertage/Halbtage sind aus den Strings plus `time_zone_id`
+  zeitzonen-behaftet ableitbar; die strukturierte Session-Sicht liefert
+  weiterhin `/v1/exchanges/{id}/calendar` (via `calendar_url`).
+- **cp-Pfad** unveraendert (Legacy/Roll-back): Felder bleiben `None`.
+- **Tests:** test_tws/test_instruments.py (Durchreichen konkreter Hours,
+  `""`→`None`-Normalisierung).
+- **Doku:** docs/api/v1.md Section 4.2 (Beispiel-Body, Feld-Tabelle,
+  Format-/Semantik-Abschnitt mit RTH/ETH/Feiertag/Halbtag-Mapping und
+  Konsumenten-Vertrag trading_robot). API-Contract v1.36.0 -> v1.37.0.
+- **Deploy:** reine gateway-Code-Aenderung -> gateway-only-Rebuild, kein
+  tws-Recreate und kein 2FA noetig. Zuerst auf Paper verifiziert.
+- **Version-Bump 2.5.5 -> 2.6.0** (Minor — additives v1-Feld).
+
 ## [2.5.3] — 2026-06-21 (Karte `6dbf3026`: API reconnectet ib_async-Socket autonom nach TWS-Neustart)
 
 Bugfix: Nach einem harten TWS-Prozess-Neustart (Container-Recreate,
