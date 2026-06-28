@@ -4,6 +4,31 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.7.0] — 2026-06-28 (Karte `def3e8f5` / AP-14: Listen-Endpunkt fuer offene Orders)
+
+Feature: Neuer `GET /v1/orders` listet die offenen/aktiven Orders der
+Session (inkl. GTC-STP und OCA-Gruppen) als broker-seitige Wahrheitsquelle.
+Cross-Repo-Vorbedingung fuer den trading_robot-Stop-Coverage-Inspector
+und die Stop-Reconciliation (Karte fe3362d9), KW29-Paper-Durchstich.
+
+- **api/v1/orders.py:** neue GET-Route `""` -> `service.list_open()`,
+  optionaler `account_id`-Query-Filter. Scope `orders:read` (oder
+  `orders:write`), kein Idempotency-Key (reiner Lesepfad). `Query` ergaenzt.
+- **order_models.py:** `Order` um additives `oca_group` (IBKR `ocaGroup`)
+  erweitert; `stop_price`-Beschreibung als Stop-Trigger praezisiert.
+- **tws/orders.py:** `_trade_to_order` mappt `ocaGroup` -> `oca_group`
+  (leerer ib_async-Default -> `None`). `list_open()` existierte bereits.
+- **cp/orders.py:** `list_open()` ergaenzt, liefert bewusst
+  `503 list_open_not_supported_on_cp` (Roll-back-only; konsistent mit
+  `whatif_order`).
+- **Tests:** test_tws/test_orders.py (OCA-Mapping), test_orders.py
+  (GET-Endpunkt: 200 + OCA/Stop-Level, account-Filter, Scopes, cp-503).
+- **Doku:** docs/api/v1.md Section 7.7 (neuer Endpunkt) + 7.2 (`oca_group`).
+  API-Contract v1.37.0 -> v1.38.0.
+- **Deploy:** reine gateway-Code-Aenderung -> gateway-only-Rebuild, kein
+  tws-Recreate / kein 2FA. Zuerst auf Paper verifiziert.
+- **Version-Bump 2.6.0 -> 2.7.0** (Minor — additiver v1-Endpunkt + Feld).
+
 ## [2.6.0] — 2026-06-28 (Karte `f1a01d97` / AP-14: Contract-Trading-Hours im v1-Contract durchreichen)
 
 Feature: `GET /v1/instruments/{conid}` reicht jetzt die IBKR-Contract-

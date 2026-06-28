@@ -571,6 +571,11 @@ def _trade_to_order(trade: Any, *, request: OrderRequest | None = None) -> Order
     if stop_price is None and request is not None:
         stop_price = request.stop_price
 
+    # OCA-Gruppe (Karte def3e8f5): ib_async setzt ocaGroup per Default auf
+    # den leeren String - zu None normalisieren, damit "keine OCA-Gruppe"
+    # eindeutig ist.
+    oca_group = _str_or_none(getattr(order, "ocaGroup", None))
+
     return Order(
         order_id=order_id_str,
         account_id=str(account_id),
@@ -582,6 +587,7 @@ def _trade_to_order(trade: Any, *, request: OrderRequest | None = None) -> Order
         status=cp_status,
         limit_price=limit_price,
         stop_price=stop_price,
+        oca_group=oca_group,
         avg_fill_price=avg_fill_price,
         commission=commission,
         filled_quantity=filled_str,

@@ -127,7 +127,18 @@ class Order(BaseModel):
     tif: TimeInForce
     status: OrderStatus
     limit_price: str | None = None
-    stop_price: str | None = None
+    stop_price: str | None = Field(
+        default=None,
+        description="Stop-Level (auxPrice) bei STP/STP-LMT — fuer den Konsumenten der Stop-Trigger.",
+    )
+    oca_group: str | None = Field(
+        default=None,
+        description=(
+            "One-Cancels-All-Gruppe (IBKR ocaGroup), falls die Order Teil "
+            "einer OCA-Gruppe ist (z.B. Bracket-/Stop-Take-Profit). None, "
+            "wenn die Order keiner OCA-Gruppe angehoert."
+        ),
+    )
     avg_fill_price: Money | None = None
     commission: Money | None = None
     filled_quantity: str | None = None

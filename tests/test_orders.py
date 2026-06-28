@@ -26,6 +26,7 @@ from broker_gateway.order_models import (
     Order,
     OrderRequest,
     OrderSide,
+    OrderStatus,
     OrderType,
     TimeInForce,
 )
@@ -739,3 +740,133 @@ def test_whatif_endpoint_invalid_payload_returns_422(client: TestClient) -> None
         json=payload,
     )
     assert response.status_code == 422
+
+
+# ---- GET /v1/orders (Listen-Endpunkt offene Orders, Karte def3e8f5) ----
+
+
+class _StubListOrdersService:
+    """Minimaler OrdersService-Ersatz, der nur list_open bedient.
+
+    Der echte Listen-Pfad lebt im TWS-Service (siehe
+    tests/test_tws/test_orders.py::TestListOpen). Hier geht es nur um die
+    Endpunkt-Logik: Scope-Gate, Serialisierung und account-Filter.
+    """
+
+    def __init__(self, orders: list[Order]) -> None:
+        self._orders = orders
+
+    async def list_open(self) -> list[Order]:
+        return list(self._orders)
+
+
+def _open_orders_sample() -> list[Order]:
+    return [
+        Order(
+            order_id="100",
+            account_id=_ACCOUNT_ID,
+            conid=_CONID,
+            side=OrderSide.SELL,
+            quantity="10",
+            order_type=OrderType.STP,
+            tif=TimeInForce.GTC,
+            status=OrderStatus.SUBMITTED,
+            stop_price="190.0",
+            oca_group="bracket-1",
+        ),
+        Order(
+            order_id="200",
+            account_id="OTHERACC",
+            conid=999,
+            side=OrderSide.BUY,
+            quantity="5",
+            order_type=OrderType.LMT,
+            tif=TimeInForce.DAY,
+            status=OrderStatus.SUBMITTED,
+            limit_price="100.0",
+        ),
+    ]
+
+
+@pytest.fixture
+async def list_client(
+    store: InMemoryTokenStore,
+    lifecycle: AuthLifecycle,
+    portfolio: PortfolioService,
+    idempotency: IdempotencyStore,
+    cp_gateway_mock,
+):
+    application = create_app(
+        store=store,
+        lifecycle=lifecycle,
+        orders_service=_StubListOrdersService(_open_orders_sample()),
+        portfolio_service=portfolio,
+        idempotency_store=idempotency,
+    )
+    with TestClient(application) as test_client:
+        yield test_client
+
+
+def test_list_endpoint_without_token_returns_401(list_client: TestClient) -> None:
+    response = list_client.get("/v1/orders")
+    assert response.status_code == 401
+
+
+def test_list_endpoint_returns_open_orders_with_oca(list_client: TestClient) -> None:
+    response = list_client.get(
+        "/v1/orders", headers={"Authorization": f"Bearer {_ADMIN_VALUE}"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert {o["order_id"] for o in body} == {"100", "200"}
+    stp = next(o for o in body if o["order_id"] == "100")
+    assert stp["order_type"] == "STP"
+    assert stp["tif"] == "GTC"
+    assert stp["stop_price"] == "190.0"
+    assert stp["oca_group"] == "bracket-1"
+    lmt = next(o for o in body if o["order_id"] == "200")
+    assert lmt["oca_group"] is None
+
+
+def test_list_endpoint_filters_by_account(list_client: TestClient) -> None:
+    response = list_client.get(
+        "/v1/orders",
+        params={"account_id": _ACCOUNT_ID},
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["order_id"] == "100"
+
+
+def test_list_endpoint_read_scope_suffices(
+    list_client: TestClient, store: InMemoryTokenStore
+) -> None:
+    ro = generate_token_value()
+    store.put(Token(value=ro, caller_id="robot", scopes=[SCOPE_ORDERS_READ]))
+    response = list_client.get(
+        "/v1/orders", headers={"Authorization": f"Bearer {ro}"}
+    )
+    assert response.status_code == 200
+
+
+def test_list_endpoint_wrong_scope_returns_403(
+    list_client: TestClient, store: InMemoryTokenStore
+) -> None:
+    bad = generate_token_value()
+    store.put(Token(value=bad, caller_id="psm", scopes=[SCOPE_QUOTES_READ]))
+    response = list_client.get(
+        "/v1/orders", headers={"Authorization": f"Bearer {bad}"}
+    )
+    assert response.status_code == 403
+
+
+def test_list_endpoint_cp_backend_returns_503(client: TestClient) -> None:
+    # Der cp OrdersService liefert fuer list_open bewusst 503 (Roll-back-only).
+    response = client.get(
+        "/v1/orders", headers={"Authorization": f"Bearer {_ADMIN_VALUE}"}
+    )
+    assert response.status_code == 503
+    # Der App-Exception-Handler verpackt HTTPException.detail unter "error".
+    assert response.json()["error"]["code"] == "list_open_not_supported_on_cp"
