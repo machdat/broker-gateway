@@ -208,6 +208,19 @@ class TestSnapshotWithPrime:
         result = await service.snapshot_with_prime([99], ["31"])
         assert result == []
 
+    async def test_snapshot_empty_ticker_list_skips_quote(self) -> None:
+        # reqTickersAsync kann eine leere Liste liefern (z.B. Disconnect
+        # waehrend des Snapshot-Waits). Der conid wird dann uebersprungen,
+        # nicht gecrasht (tickers[0] auf leerer Liste).
+        contract = _make_contract(conid=265598)
+        client = _make_client(
+            qualify_returns=[[contract]],
+            snapshot_returns=[[]],  # leere Ticker-Liste
+        )
+        service = TWSQuotesService(client)
+        result = await service.snapshot_with_prime([265598], ["31"])
+        assert result == []
+
     async def test_snapshot_market_data_type_realtime(self) -> None:
         contract = _make_contract(conid=265598)
         ticker = _make_ticker(conid=265598, last=180.0)
