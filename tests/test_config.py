@@ -207,18 +207,58 @@ def test_tws_read_only_yes_true(monkeypatch: pytest.MonkeyPatch) -> None:
     assert tws_read_only() is True
 
 
-@pytest.mark.parametrize("raw", ["no", "NO", "false", "0", "off", "  no  "])
-def test_tws_read_only_falsy_values(
+@pytest.mark.parametrize("raw", ["no", "NO", "No", "  no  "])
+def test_tws_read_only_only_no_enables_write(
     monkeypatch: pytest.MonkeyPatch, raw: str
 ) -> None:
     monkeypatch.setenv("BG_TWS_READ_ONLY", raw)
     assert tws_read_only() is False
 
 
-@pytest.mark.parametrize("raw", ["yes", "true", "1", "", "garbage"])
-def test_tws_read_only_non_falsy_stays_true(
+@pytest.mark.parametrize(
+    "raw", ["yes", "true", "1", "0", "false", "off", "", "garbage"]
+)
+def test_tws_read_only_everything_else_stays_true(
     monkeypatch: pytest.MonkeyPatch, raw: str
 ) -> None:
-    # Alles ausser den expliziten Falsy-Werten bleibt read-only (sicher).
+    # Nur exakt "no" aktiviert write - alles andere (auch false/0/off, die
+    # IBC nicht versteht) bleibt read-only: sicher + konsistent mit dem
+    # tws-Container.
     monkeypatch.setenv("BG_TWS_READ_ONLY", raw)
     assert tws_read_only() is True
+
+
+def test_validate_runtime_config_live_write_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Hard-Guard 5: Live darf nie write sein.
+    monkeypatch.setenv("BG_STACK_KIND", "live")
+    monkeypatch.setenv("BG_TWS_READ_ONLY", "no")
+    monkeypatch.delenv("BG_PAPER_AUTO_LOGIN", raising=False)
+    monkeypatch.delenv("BG_PAPER_USERNAME", raising=False)
+    monkeypatch.delenv("BG_PAPER_PASSWORD", raising=False)
+    with pytest.raises(ConfigError, match="BG_TWS_READ_ONLY"):
+        validate_runtime_config()
+
+
+def test_validate_runtime_config_live_read_only_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BG_STACK_KIND", "live")
+    monkeypatch.delenv("BG_TWS_READ_ONLY", raising=False)
+    monkeypatch.delenv("BG_PAPER_AUTO_LOGIN", raising=False)
+    monkeypatch.delenv("BG_PAPER_USERNAME", raising=False)
+    monkeypatch.delenv("BG_PAPER_PASSWORD", raising=False)
+    validate_runtime_config()
+
+
+def test_validate_runtime_config_paper_write_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Paper + write ist erlaubt - der Guard greift nur fuer live.
+    monkeypatch.setenv("BG_STACK_KIND", "paper")
+    monkeypatch.setenv("BG_TWS_READ_ONLY", "no")
+    monkeypatch.delenv("BG_PAPER_AUTO_LOGIN", raising=False)
+    monkeypatch.delenv("BG_PAPER_USERNAME", raising=False)
+    monkeypatch.delenv("BG_PAPER_PASSWORD", raising=False)
+    validate_runtime_config()

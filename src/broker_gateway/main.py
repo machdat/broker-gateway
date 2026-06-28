@@ -379,14 +379,25 @@ def create_app(
                 client = None
                 pool = ClientIdPool()
                 is_paper = stack_kind() == "paper"
+                _tws_ro = tws_read_only()
                 owned_tws_for_health = TWSClient(
                     client_id_pool=pool,
                     paper=is_paper,
                     # Gemeinsamer Schalter mit dem tws-Container
                     # (READ_ONLY_API): ohne ihn blieb der gateway read-only,
                     # auch wenn der tws-Container write-faehig war.
-                    read_only=tws_read_only(),
+                    read_only=_tws_ro,
                 )
+                if not _tws_ro:
+                    # Write-Mode ist eine bewusste, seltene Konfiguration -
+                    # prominent loggen, damit aktives Order-Routing nie
+                    # unbemerkt scharf ist (Hard-Guard 5 blockt zudem Live).
+                    _logger.warning(
+                        "BG_TWS_READ_ONLY=no: gateway ist WRITE-faehig - "
+                        "Order-Routing (place/modify) aktiv (stack=%s, paper=%s)",
+                        stack_kind(),
+                        is_paper,
+                    )
                 tws_runtime_lifecycle = TWSLifecycle(owned_tws_for_health)
                 cp_lifecycle = TWSLifecycleCpAdapter(tws_runtime_lifecycle)
             else:
