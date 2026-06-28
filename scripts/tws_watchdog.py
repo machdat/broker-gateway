@@ -317,9 +317,13 @@ def _should_alert(
         return True
     try:
         last_alert = datetime.fromisoformat(last_alert_raw)
+        if last_alert.tzinfo is None:
+            # Defensiv gegen manuell editierte naive Timestamps - der
+            # Watchdog selbst schreibt immer UTC-aware.
+            last_alert = last_alert.replace(tzinfo=timezone.utc)
+        elapsed_h = (now - last_alert).total_seconds() / 3600.0
     except (TypeError, ValueError):
         return True
-    elapsed_h = (now - last_alert).total_seconds() / 3600.0
     return elapsed_h >= realert_hours
 
 
@@ -340,18 +344,25 @@ def process_stack(
 
     if check.up:
         recovered = st.get("consecutive_down", 0) >= down_threshold
+        reset = True
         if recovered:
-            ntfy_send(
+            sent = ntfy_send(
                 f"broker-gateway {config.name}: tws WIEDER OK",
                 f"Der {config.name}-tws-Stack ist wieder healthy.",
                 "default",
             )
-        st["consecutive_down"] = 0
-        st["last_alert"] = None
-        st["recreated_this_episode"] = False
+            # Push fehlgeschlagen -> State NICHT zuruecksetzen, damit der
+            # naechste Lauf den Recovery-Push erneut versucht (analog zum
+            # Down-Alarm, der last_alert nur bei Erfolg setzt).
+            reset = sent
+        if reset:
+            st["consecutive_down"] = 0
+            st["last_alert"] = None
+            st["recreated_this_episode"] = False
         return StackOutcome(
-            stack=config.name, up=True, consecutive_down=0, recovered=recovered,
-            reason=check.reason,
+            stack=config.name, up=True,
+            consecutive_down=int(st.get("consecutive_down", 0)),
+            recovered=recovered, reason=check.reason,
         )
 
     # --- Stack ist down ---
@@ -375,15 +386,17 @@ def process_stack(
 
     if _should_alert(st, now, realert_hours):
         prio = "urgent" if not config.is_paper else "high"
-        action = (
-            "Paper-tws wurde automatisch force-recreatet."
-            if outcome.recreated
-            else (
-                "Manueller Recovery noetig (2FA am Handy) - siehe Runbook."
-                if not config.is_paper
-                else "Auto-Recreate nicht moeglich/fehlgeschlagen - bitte pruefen."
-            )
-        )
+        if outcome.recreated:
+            action = "Paper-tws wurde automatisch force-recreatet."
+        elif not config.is_paper:
+            action = "Manueller Recovery noetig (2FA am Handy) - siehe Runbook."
+        elif st.get("recreated_this_episode"):
+            # Recreate lief in dieser Episode schon (Latch), half aber nicht
+            # - NICHT als 'fehlgeschlagen' melden, sonst sucht der Operator
+            # am falschen Ort (Ursache liegt tiefer, z.B. haengender Login).
+            action = "Auto-Recreate lief bereits, tws bleibt down - bitte manuell pruefen."
+        else:
+            action = "Auto-Recreate nicht moeglich/fehlgeschlagen - bitte pruefen."
         sent = ntfy_send(
             f"broker-gateway {config.name}: tws DOWN",
             f"{config.name}-tws down seit {consecutive} Laeufen "

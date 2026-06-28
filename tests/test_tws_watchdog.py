@@ -319,6 +319,55 @@ class TestRun:
         assert out[0].recovered is False
         assert ntfy.calls == []
 
+    def test_paper_realert_text_after_recreate_latch(self, tmp_path: Path) -> None:
+        # Paper recreatet (Latch), bleibt aber down -> Re-Alarm >6h spaeter
+        # darf NICHT "fehlgeschlagen" sagen, sondern dass der Recreate lief.
+        state = tmp_path / "s.json"
+        ntfy, recreate = _Ntfy(), _Recreate(ok=True)
+        stacks = _stacks(live=False)
+        inspect_map = {"paper-tws": "unhealthy"}
+        http_map = {"http://paper/v1/health": False}
+        _run(stacks, state_file=state, now=_NOW, inspect_map=inspect_map,
+             http_map=http_map, ntfy=ntfy, recreate=recreate)
+        _run(stacks, state_file=state, now=_NOW, inspect_map=inspect_map,
+             http_map=http_map, ntfy=ntfy, recreate=recreate)
+        _run(stacks, state_file=state, now=_NOW + timedelta(hours=7),
+             inspect_map=inspect_map, http_map=http_map, ntfy=ntfy, recreate=recreate)
+        assert "bereits" in ntfy.calls[-1][1]
+        assert recreate.calls == ["paper"]  # Latch haelt - nur 1 Recreate
+
+    def test_recovery_push_failure_retries(self, tmp_path: Path) -> None:
+        # recovered-Push schlaegt fehl -> State NICHT zuruecksetzen, naechster
+        # up-Lauf versucht den Recovery-Push erneut, danach wieder still.
+        state = tmp_path / "s.json"
+        recreate = _Recreate()
+        stacks = _stacks(paper=False)
+        down_inspect = {"live-tws": "unhealthy"}
+        down_http = {"http://live/v1/health": False}
+        for _ in range(2):
+            _run(stacks, state_file=state, inspect_map=down_inspect, http_map=down_http,
+                 ntfy=_Ntfy(), recreate=recreate)
+        up_inspect = {"live-tws": "healthy"}
+        up_http = {"http://live/v1/health": True}
+        # Recovery-Push scheitert.
+        ntfy_fail = _Ntfy(ok=False)
+        out1 = _run(stacks, state_file=state, inspect_map=up_inspect, http_map=up_http,
+                    ntfy=ntfy_fail, recreate=recreate)
+        assert out1[0].recovered is True
+        assert len(ntfy_fail.calls) == 1
+        # Naechster up-Lauf: Retry (State war nicht zurueckgesetzt).
+        ntfy_ok = _Ntfy(ok=True)
+        out2 = _run(stacks, state_file=state, inspect_map=up_inspect, http_map=up_http,
+                    ntfy=ntfy_ok, recreate=recreate)
+        assert out2[0].recovered is True
+        assert len(ntfy_ok.calls) == 1
+        # Dritter up-Lauf: State jetzt zurueckgesetzt -> still.
+        ntfy_silent = _Ntfy()
+        out3 = _run(stacks, state_file=state, inspect_map=up_inspect, http_map=up_http,
+                    ntfy=ntfy_silent, recreate=recreate)
+        assert out3[0].recovered is False
+        assert ntfy_silent.calls == []
+
 
 # ---- WatchdogState ------------------------------------------------------
 
