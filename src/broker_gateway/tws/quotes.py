@@ -65,6 +65,13 @@ _DEFAULT_MARKET_DATA_TYPE = 3  # delayed-frozen, robust gegen Sub-Konflikte
 _REPLAY_BUFFER_SIZE = 200
 _CONSUMER_QUEUE_MAX = 1024
 
+# ib_async Ticker.volume ist - wie das cp-Field 7762 - das Tagesvolumen
+# als ganzzahlig skalierter Wert (Anzahl Aktien × 10^6). Division +
+# Sanity-Bound identisch zum cp-Pfad (cp.quotes), damit beide Backends
+# dieselbe Aktien-Anzahl liefern (Schema-Identitaet).
+_VOLUME_RAW_SCALE = Decimal(1_000_000)
+_VOLUME_RAW_MAX = Decimal(10) ** 16
+
 
 # Kanonisches Mapping ib_async-Ticker-Attribut -> cp-Field-ID.
 # Die rechte Seite muss exakt mit cp.quotes.FIELD_ALIASES korrespondieren,
@@ -456,23 +463,29 @@ def _str_or_none(value: Any) -> str | None:
 def _volume_from_ticker(value: Any) -> str | None:
     """Liefert Volume als String in Aktien-Anzahl.
 
-    cp-Pfad teilt das rohe IBKR-Field 7762 durch 10^6 und liefert die
-    Aktien-Anzahl als ``str(int)``. Im ib_async-Pfad gibt
-    ``Ticker.volume`` die Aktien-Anzahl direkt (Float). Wir runden auf
-    int und formattieren als String, damit das Schema beider Pfade
-    identisch bleibt.
+    ib_async ``Ticker.volume`` liefert - wie das cp-Field 7762 - das
+    Tagesvolumen als Anzahl Aktien × 10^6. Empirie 2026-06-28 (Paper,
+    market_data_type=3): AAPL=261775813775496, NVDA=179304195184892,
+    MSFT=186201632823536 - alle /1e6 in plausibler Aktien-Groessenordnung.
+    Wir teilen analog zum cp-Pfad durch 10^6 (und verwerfen Werte
+    ausserhalb 0..10^16 als IBKR-Drift), damit beide Backends dieselbe
+    Aktien-Anzahl liefern.
     """
     if value is None:
         return None
     try:
         raw = Decimal(str(value))
     except (InvalidOperation, ValueError):
+        logger.warning("TWS volume value not numeric: %r", value)
         return None
-    if raw != raw:  # NaN
+    if raw != raw:  # NaN ist der ib_async-"kein Wert"-Fall (erwartbar)
         return None
-    if raw < 0:
+    if raw < 0 or raw > _VOLUME_RAW_MAX:
+        # Werte ausserhalb der Bound deuten auf IBKR-Drift / falsche
+        # Skalierungsannahme hin - sichtbar machen statt still verwerfen.
+        logger.warning("TWS volume value out of range: %r", value)
         return None
-    return str(int(raw))
+    return str(int(raw / _VOLUME_RAW_SCALE))
 
 
 def _change_pct_from_ticker(ticker: Any) -> str | None:

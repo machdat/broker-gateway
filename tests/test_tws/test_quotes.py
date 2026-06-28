@@ -155,7 +155,8 @@ class TestSnapshotWithPrime:
     async def test_snapshot_returns_quotes(self) -> None:
         contract = _make_contract(conid=265598)
         ticker = _make_ticker(
-            conid=265598, last=180.5, bid=180.4, ask=180.6, volume=129000000.0
+            conid=265598, last=180.5, bid=180.4, ask=180.6,
+            volume=129000000000000.0,  # roh (Aktien × 10^6) -> 129000000
         )
         client = _make_client(
             qualify_returns=[[contract]],
@@ -463,7 +464,7 @@ class TestQuoteFromTicker:
             last=180.5,
             bid=180.4,
             ask=180.6,
-            volume=129000000.0,
+            volume=129000000000000.0,  # roh (Aktien × 10^6) -> 129000000
             high=185.0,
             low=178.0,
             close=179.0,
@@ -540,6 +541,15 @@ class TestPureHelpers:
 
     def test_volume_none(self) -> None:
         assert _volume_from_ticker(None) is None
+
+    def test_volume_scaled_by_million(self) -> None:
+        # ib_async Ticker.volume ist Aktien × 10^6 (wie cp-Field 7762).
+        # Empirie-Wert AAPL 2026-06-28: 261775813775496 -> 261775813.
+        assert _volume_from_ticker(261775813775496) == "261775813"
+
+    def test_volume_out_of_range_returns_none(self) -> None:
+        # Werte > 10^16 deuten auf IBKR-Drift -> None (Sanity-Bound).
+        assert _volume_from_ticker(10**17) is None
 
     def test_change_pct_invalid_returns_none(self) -> None:
         ticker = SimpleNamespace(last="abc", close=1.0)
