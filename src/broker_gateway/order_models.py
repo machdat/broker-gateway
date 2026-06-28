@@ -110,6 +110,50 @@ class OrderRequest(BaseModel):
         return self
 
 
+class OrderModifyRequest(BaseModel):
+    """Eingehende Order-Modifikation (`PATCH /v1/orders/{order_id}`).
+
+    Nur die mitgegebenen Preis-/Mengen-Felder werden auf die bestehende
+    Order angewandt; unveraenderliche Eigenschaften (conid, side,
+    order_type) bleiben. IBKR setzt die Aenderung als cancel/replace um
+    (gleiche orderId). `account_id` ist Pflicht, weil die TWS-Session
+    mehrere Konten halten kann. Mindestens eines der optionalen Felder
+    muss gesetzt sein - ein leerer Modify ist sinnlos und wird abgelehnt.
+    """
+
+    account_id: str = Field(min_length=1)
+    stop_price: str | None = Field(
+        default=None, description="Neuer Stop-Trigger (auxPrice), Decimal-String > 0"
+    )
+    limit_price: str | None = Field(
+        default=None, description="Neuer Limit-Preis (lmtPrice), Decimal-String > 0"
+    )
+    quantity: str | None = Field(
+        default=None, description="Neue Menge, Decimal-String > 0"
+    )
+
+    @field_validator("stop_price", "limit_price", "quantity")
+    @classmethod
+    def _positive_decimal_if_set(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        try:
+            value = Decimal(v)
+        except Exception as exc:
+            raise ValueError(f"Wert ist kein Decimal: {v!r}") from exc
+        if value <= 0:
+            raise ValueError("Wert muss > 0 sein")
+        return str(value)
+
+    @model_validator(mode="after")
+    def _at_least_one_field(self) -> "OrderModifyRequest":
+        if self.stop_price is None and self.limit_price is None and self.quantity is None:
+            raise ValueError(
+                "mindestens eines von stop_price/limit_price/quantity muss gesetzt sein"
+            )
+        return self
+
+
 class Order(BaseModel):
     """Ausgehende Order-Repraesentation.
 
@@ -205,6 +249,7 @@ __all__ = [
     "TimeInForce",
     "OrderStatus",
     "OrderRequest",
+    "OrderModifyRequest",
     "Order",
     "OrderCancellation",
     "WhatIfWarning",

@@ -21,6 +21,7 @@ from fastapi import HTTPException
 
 from broker_gateway.cp.topics.sor import SorFrame
 from broker_gateway.order_models import (
+    OrderModifyRequest,
     OrderRequest,
     OrderSide,
     OrderStatus,
@@ -338,6 +339,99 @@ class TestCancelOrder:
         with pytest.raises(HTTPException) as exc_info:
             await service.cancel_order("U25235077", "not-an-int")
         assert exc_info.value.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# modify_order (Karte 35ac9a17)
+# --------------------------------------------------------------------------
+
+
+def _modify(**overrides: Any) -> OrderModifyRequest:
+    payload: dict[str, Any] = {"account_id": "U25235077", "stop_price": "195.50"}
+    payload.update(overrides)
+    return OrderModifyRequest(**payload)
+
+
+class TestModifyOrder:
+    async def test_503_in_read_only(self) -> None:
+        client = _make_client()
+        service = TWSOrdersService(client, read_only=True)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.modify_order("U25235077", "999", _modify())
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["code"] == "read_only_api"
+
+    async def test_404_when_unknown(self) -> None:
+        client = _make_client(trades=[])
+        service = TWSOrdersService(client, read_only=False)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.modify_order("U25235077", "999", _modify())
+        assert exc_info.value.status_code == 404
+
+    async def test_404_when_account_mismatch(self) -> None:
+        trade = _make_trade(perm_id=999, account="DUP799747")
+        client = _make_client(trades=[trade])
+        service = TWSOrdersService(client, read_only=False)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.modify_order("U25235077", "999", _modify())
+        assert exc_info.value.status_code == 404
+
+    async def test_applies_stop_price_and_replaces_via_placeorder(self) -> None:
+        # GTC-STP-Order, Stop von 180 auf 195.50 nach oben modifizieren.
+        trade = _make_trade(perm_id=999, order_id=10, account="U25235077")
+        trade.order.orderType = "STP"
+        trade.order.tif = "GTC"
+        trade.order.auxPrice = 180.0
+        client = _make_client(open_trades=[trade], trades=[trade])
+        client._ib.placeOrder.return_value = trade
+        service = TWSOrdersService(client, read_only=False)
+        result = await service.modify_order("U25235077", "999", _modify(stop_price="195.50"))
+        # Das bestehende Order-Objekt wurde modifiziert (cancel/replace via
+        # gleiche orderId) und placeOrder erneut gerufen.
+        assert trade.order.auxPrice == 195.5
+        client._ib.placeOrder.assert_called_once()
+        assert result.order_id == "999"
+
+    async def test_applies_limit_and_quantity(self) -> None:
+        trade = _make_trade(perm_id=5, order_id=7, account="U25235077")
+        trade.order.orderType = "STP LMT"
+        client = _make_client(trades=[trade])
+        client._ib.placeOrder.return_value = trade
+        service = TWSOrdersService(client, read_only=False)
+        await service.modify_order(
+            "U25235077", "5", _modify(stop_price="100", limit_price="99.5", quantity="3")
+        )
+        assert trade.order.auxPrice == 100.0
+        assert trade.order.lmtPrice == 99.5
+        assert trade.order.totalQuantity == 3.0
+
+    async def test_propagates_modify_error_as_502(self) -> None:
+        trade = _make_trade(perm_id=999, account="U25235077")
+        client = _make_client(trades=[trade], place_side_effect=RuntimeError("boom"))
+        service = TWSOrdersService(client, read_only=False)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.modify_order("U25235077", "999", _modify())
+        assert exc_info.value.status_code == 502
+        assert exc_info.value.detail["code"] == "tws_modify_failed"
+
+    async def test_502_when_trade_has_no_contract(self) -> None:
+        # _find_trade matcht ueber order.permId/orderId; ein order=None-Trade
+        # wuerde uebersprungen (-> 404). Fuer den 502-Pfad brauchen wir ein
+        # matchbares Order-Objekt, dessen contract fehlt.
+        order_obj = _make_order_obj(perm_id=999, account="U25235077")
+        partial = SimpleNamespace(
+            order=order_obj,
+            orderStatus=_make_order_status(),
+            contract=None,
+            fills=[],
+            log=[],
+        )
+        client = _make_client(trades=[partial])
+        service = TWSOrdersService(client, read_only=False)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.modify_order("U25235077", "999", _modify())
+        assert exc_info.value.status_code == 502
+        assert exc_info.value.detail["code"] == "tws_modify_no_order"
 
 
 # --------------------------------------------------------------------------
