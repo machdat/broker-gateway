@@ -45,6 +45,7 @@ from broker_gateway.config import (
     paper_auto_login_enabled,
     quotes_source as _read_quotes_source,
     stack_kind,
+    tws_read_only,
     validate_runtime_config,
 )
 from broker_gateway.cp.calendar import CalendarService
@@ -379,7 +380,12 @@ def create_app(
                 pool = ClientIdPool()
                 is_paper = stack_kind() == "paper"
                 owned_tws_for_health = TWSClient(
-                    client_id_pool=pool, paper=is_paper
+                    client_id_pool=pool,
+                    paper=is_paper,
+                    # Gemeinsamer Schalter mit dem tws-Container
+                    # (READ_ONLY_API): ohne ihn blieb der gateway read-only,
+                    # auch wenn der tws-Container write-faehig war.
+                    read_only=tws_read_only(),
                 )
                 tws_runtime_lifecycle = TWSLifecycle(owned_tws_for_health)
                 cp_lifecycle = TWSLifecycleCpAdapter(tws_runtime_lifecycle)
@@ -520,9 +526,10 @@ def create_app(
             )
         # AP `2a203c58-...` Phase 4: TWS-Backend bekommt
         # TWSOrdersService + TWSTradesService. read_only zieht der
-        # OrdersService aus dem TWSClient, damit READ_ONLY_API=yes auf
-        # der ib_async-Verbindung 1:1 in den 503-Pfad fliesst. cp-Pfad
-        # bleibt fuer Profile cp-legacy aktiv.
+        # OrdersService aus dem TWSClient; dessen Wert kommt jetzt aus
+        # BG_TWS_READ_ONLY (tws_read_only(), oben am TWSClient gesetzt) und
+        # haelt damit gateway und tws-Container-READ_ONLY_API konsistent.
+        # cp-Pfad bleibt fuer Profile cp-legacy aktiv.
         if orders_service is not None:
             ord_service = orders_service
         elif owned_tws_for_health is not None:

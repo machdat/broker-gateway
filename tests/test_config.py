@@ -16,6 +16,7 @@ from broker_gateway.config import (
     paper_credentials,
     quotes_source,
     stack_kind,
+    tws_read_only,
     validate_runtime_config,
 )
 
@@ -191,3 +192,33 @@ def test_stack_kind_type_literal() -> None:
 def test_quotes_source_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BG_QUOTES_SOURCE", raising=False)
     assert quotes_source() == "polling"
+
+
+# ---- BG_TWS_READ_ONLY (gateway <-> tws-Container Schalter) ----
+
+
+def test_tws_read_only_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BG_TWS_READ_ONLY", raising=False)
+    assert tws_read_only() is True
+
+
+def test_tws_read_only_yes_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BG_TWS_READ_ONLY", "yes")
+    assert tws_read_only() is True
+
+
+@pytest.mark.parametrize("raw", ["no", "NO", "false", "0", "off", "  no  "])
+def test_tws_read_only_falsy_values(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    monkeypatch.setenv("BG_TWS_READ_ONLY", raw)
+    assert tws_read_only() is False
+
+
+@pytest.mark.parametrize("raw", ["yes", "true", "1", "", "garbage"])
+def test_tws_read_only_non_falsy_stays_true(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    # Alles ausser den expliziten Falsy-Werten bleibt read-only (sicher).
+    monkeypatch.setenv("BG_TWS_READ_ONLY", raw)
+    assert tws_read_only() is True

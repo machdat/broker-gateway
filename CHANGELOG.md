@@ -4,6 +4,27 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.8.1] — 2026-06-28 (Karte `35ac9a17` / AP-14: gateway-read-only via BG_TWS_READ_ONLY)
+
+Bugfix/Ergaenzung zu 2.8.0: Der gateway-seitige read-only-Status liess sich
+nicht steuern. Der tws-Container las ``READ_ONLY_API=${BG_TWS_READ_ONLY:-yes}``,
+aber der gateway-``TWSClient`` wurde ohne ``read_only``-Parameter erzeugt und
+defaultete hart auf ``True`` — selbst bei ``READ_ONLY_API=no`` blieb der
+gateway read-only und lehnte JEDE Order mit ``503 read_only_api`` ab (stille
+Diskrepanz). Damit war die GTC-STP-Submission/Modify-Verifikation (Karte K3)
+blockiert.
+
+- **config.py:** neue ``tws_read_only()`` liest ``BG_TWS_READ_ONLY`` (Default
+  ``yes`` -> True; falsy: ``no``/``false``/``0``/``off``).
+- **main.py:** ``TWSClient(..., read_only=tws_read_only())`` — gateway und
+  tws-Container teilen jetzt denselben Schalter ``BG_TWS_READ_ONLY``.
+- **compose.yaml:** ``BG_TWS_READ_ONLY`` zusaetzlich an den gateway-Container
+  durchgereicht (vorher nur am tws-Service).
+- **Tests:** test_config.py (Default-True, falsy-Werte, non-falsy bleibt True).
+- **Deploy:** ``BG_TWS_READ_ONLY=no`` macht BEIDE Container write-faehig;
+  Default bleibt read-only (sicheres Opt-in). Live unveraendert read_only.
+- **Version-Bump 2.8.0 -> 2.8.1** (Patch — Bugfix + additive Config-Option).
+
 ## [2.8.0] — 2026-06-28 (Karte `35ac9a17` / AP-14: GTC-STP anlegen + modify auf Paper)
 
 Feature: Order-Modify (cancel/replace) ueber `PATCH /v1/orders/{order_id}`,

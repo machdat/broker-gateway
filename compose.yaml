@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: broker-gateway:2.8.0
+    image: broker-gateway:2.8.1
     container_name: ${COMPOSE_PROJECT_NAME:-broker-gateway}
     restart: unless-stopped
     # Extern 4000 (Live laut API-Draft 1.1) bzw. 4001 fuer den
@@ -47,6 +47,12 @@ services:
       - BG_TWS_HOST=${BG_TWS_HOST:-tws}
       - BG_TWS_PORT=${BG_TWS_PORT:-4004}
       - BG_TWS_HEARTBEAT_SEC=${BG_TWS_HEARTBEAT_SEC:-60}
+      # Gemeinsamer read-only-Schalter mit dem tws-Container (READ_ONLY_API
+      # unten). Default yes: der gateway-TWSClient verbindet read-only und
+      # der OrdersService lehnt place/modify mit 503 ab. BG_TWS_READ_ONLY=no
+      # macht BEIDE write-faehig - sonst meldet der tws no, der gateway
+      # bliebe aber read-only (stille Diskrepanz).
+      - BG_TWS_READ_ONLY=${BG_TWS_READ_ONLY:-yes}
       - BG_TOKEN_FILE=${BG_TOKEN_FILE:-/var/lib/broker-gateway/tokens.json}
     env_file:
       - path: ${BG_ENV_FILE:-.env}

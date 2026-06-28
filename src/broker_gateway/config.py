@@ -158,6 +158,34 @@ def paper_credentials() -> tuple[str, str] | None:
     return user, pwd
 
 
+# ---- TWS read-only (gemeinsamer Schalter gateway <-> tws-Container) ----
+
+_TWS_READ_ONLY_ENV: Final[str] = "BG_TWS_READ_ONLY"
+_FALSY: Final[frozenset[str]] = frozenset({"no", "false", "0", "off"})
+
+
+def tws_read_only() -> bool:
+    """``BG_TWS_READ_ONLY`` als bool, Default True (sicher).
+
+    Steuert, ob der gateway-seitige ``TWSClient`` die ib_async-Verbindung
+    read-only aufbaut (``readonly=True``) und der ``TWSOrdersService``
+    Schreib-Operationen (place/modify/cancel-replace) mit ``503
+    read_only_api`` ablehnt.
+
+    Dieselbe ENV setzt im tws-Container ``READ_ONLY_API`` (compose.yaml
+    ``${BG_TWS_READ_ONLY:-yes}``). Ein gemeinsamer Schalter haelt gateway
+    und IB-Gateway konsistent: ohne ihn meldete der tws-Container zwar
+    ``READ_ONLY_API=no``, der gateway blieb aber read-only (Default) und
+    blockierte jede Order — eine stille Diskrepanz.
+
+    Default ``yes`` -> True: Order-Routing ist eine bewusste Opt-in-
+    Entscheidung. Falsy (write-faehig): ``no``/``false``/``0``/``off``
+    (case-insensitive); alles andere (inkl. unset) bleibt True.
+    """
+    raw = os.environ.get(_TWS_READ_ONLY_ENV, "yes").strip().lower()
+    return raw not in _FALSY
+
+
 def validate_runtime_config() -> None:
     """Hard-Guard-Pruefung beim Startup.
 
@@ -209,5 +237,6 @@ __all__ = [
     "paper_credentials",
     "quotes_source",
     "stack_kind",
+    "tws_read_only",
     "validate_runtime_config",
 ]
