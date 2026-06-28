@@ -291,6 +291,14 @@ Authentifizierungssession sonntags früh) oder wenn der `tws`-Container
 seine TCP-Verbindung zum Broker verliert, ohne dass der Heartbeat das
 sauber detektiert hat. Memory `project_live_recovery_workflow`.
 
+> **Seit Karte `53c10ff4`:** Ein systemd-Watchdog (`tws-watchdog.timer`,
+> alle 15 min) alarmiert bei dauerhaftem `tws_down` per **ntfy-Push** aufs
+> Handy und **heilt den Paper-Stack automatisch** (`ops/recreate-tws.sh
+> paper`, kein 2FA). Der Live-Stack wird nur alarmiert (Mobile-2FA →
+> manueller Recovery, siehe unten). Vollständige Diagnose, beide
+> Recovery-Pfade und die Watchdog-Installation:
+> **[`runbooks/tws-recovery.md`](runbooks/tws-recovery.md)**.
+
 **Nicht** `docker compose restart tws` benutzen — IBC startet zwar IB
 Gateway neu, behält aber die abgelaufenen Lockfiles und Login-Caches,
 und der erste Login schlägt mit `Already logged in elsewhere` oder

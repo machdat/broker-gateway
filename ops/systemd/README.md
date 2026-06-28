@@ -1,17 +1,22 @@
-# systemd-Units fuer broker-gateway (AP-03)
+# systemd-Units fuer broker-gateway
 
-Diese Verzeichnis enthaelt systemd-Templates fuer den taeglichen Doku-
-Drift-Check. Sie werden bewusst **nicht** automatisch deployed - die
-Installation auf cma-pi-1 ist eine bewusste Aktion mit echtem
-KANPROMPT_API_KEY, die im Repo nicht erscheint.
+Dieses Verzeichnis enthaelt systemd-Templates fuer periodische Ops-Jobs.
+Sie werden bewusst **nicht** automatisch deployed - die Installation auf
+cma-pi-1 ist eine bewusste Aktion mit echten Secrets (KANPROMPT_API_KEY
+bzw. ntfy-Topic), die im Repo nicht erscheinen.
 
 ## Dateien
 
 | Datei | Zweck |
 |-------|-------|
-| `doc-drift.service` | systemd-Unit: laeuft `scripts/check_doc_drift.py --auto-card` |
-| `doc-drift.timer` | systemd-Timer: triggert die Service-Unit taeglich um 06:00 Berlin |
+| `doc-drift.service` / `.timer` | taeglicher IBKR-OpenAPI-Doku-Drift-Check (AP-03), `scripts/check_doc_drift.py --auto-card` |
 | `doc-drift.env.example` | Vorlage fuer `/etc/default/doc-drift` (Schluessel + Konfig) |
+| `tws-watchdog.service` / `.timer` | tws-Stack-Watchdog alle 15 min (Karte `53c10ff4`), `scripts/tws_watchdog.py`: ntfy-Push-Alarm bei dauerhaftem `tws_down` + Paper-Auto-Recovery. Installation + Details: [`docs/runbooks/tws-recovery.md`](../../docs/runbooks/tws-recovery.md) |
+| `tws-watchdog.env.example` | Vorlage fuer `/etc/default/broker-gateway-watchdog` (ntfy-Topic) |
+
+> Die Installations-Schritte unten beziehen sich auf **doc-drift**. Der
+> tws-Watchdog hat einen eigenen Installations-Abschnitt im Runbook
+> [`docs/runbooks/tws-recovery.md`](../../docs/runbooks/tws-recovery.md).
 
 ## Installation auf cma-pi-1
 

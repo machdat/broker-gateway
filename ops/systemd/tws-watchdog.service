@@ -1,0 +1,22 @@
+[Unit]
+Description=broker-gateway: tws-Watchdog (ntfy-Alarm + Paper-Auto-Recovery, Karte 53c10ff4)
+Documentation=file:///mnt/ssd/broker-gateway/docs/runbooks/tws-recovery.md
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/ssd/broker-gateway
+# Pflicht-Var BG_WATCHDOG_NTFY_URL + optionale Tuning-Vars liegen in
+# /etc/default/broker-gateway-watchdog (siehe tws-watchdog.env.example).
+EnvironmentFile=-/etc/default/broker-gateway-watchdog
+StandardOutput=append:/var/log/tws-watchdog.log
+StandardError=append:/var/log/tws-watchdog.log
+# python3 aus dem schlanken Repo-venv (nur httpx noetig, wie doc-drift).
+ExecStart=/mnt/ssd/broker-gateway/.venv/bin/python scripts/tws_watchdog.py
+# Exit 1 = mindestens ein Stack dauerhaft down (Alarm raus) -> systemd
+# 'failed' macht den Zustand zusaetzlich in `systemctl list-units` sichtbar.
+SuccessExitStatus=0
+
+[Install]
+WantedBy=multi-user.target

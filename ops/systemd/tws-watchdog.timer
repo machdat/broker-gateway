@@ -1,0 +1,16 @@
+[Unit]
+Description=broker-gateway: tws-Watchdog alle 15 min (Karte 53c10ff4)
+Documentation=file:///mnt/ssd/broker-gateway/docs/runbooks/tws-recovery.md
+
+[Timer]
+# Alle 15 Minuten. Mit BG_WATCHDOG_DOWN_THRESHOLD=2 schlaegt der Alarm nach
+# ~30 min Dauer-Down an - schnell genug gegen einen mehrtaegigen Blindflug,
+# aber schonend fuer den Pi. Einzelne Healthcheck-Blips (z.B. tws startet
+# gerade hoch) loesen wegen der Schwelle keinen Fehlalarm aus.
+OnCalendar=*:0/15
+# Falls der Pi zur Schaltzeit aus war: Lauf nachholen, sobald online.
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
