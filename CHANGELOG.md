@@ -4,6 +4,26 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.8.3] — 2026-06-28 (Karte `2ac8c839`: Volume-Skalierung im TWS-Snapshot)
+
+Folge-Fix zu 2.8.2: Nach der Reparatur des Snapshot-Pfads (200 statt 500)
+wurde sichtbar, dass das ``volume`` im TWS-Backend um Faktor 10^6 zu gross
+war (AAPL roh ``261775813775496``). ib_async ``Ticker.volume`` liefert — wie
+das cp-Field 7762 — das Tagesvolumen als Anzahl Aktien × 10^6; der bisherige
+Code nahm den Wert faelschlich als fertige Aktien-Anzahl (nie verifiziert,
+weil der Snapshot zuvor immer crashte).
+
+- **tws/quotes.py:** ``_volume_from_ticker`` teilt nun analog zu
+  ``cp.quotes._volume_from_field`` durch 10^6 und verwirft Werte ausserhalb
+  ``0..10^16`` (Sanity-Bound) — beide Backends liefern damit dieselbe
+  Aktien-Anzahl (Schema-Identitaet). Mit 3 conids gegen Paper bestaetigt
+  (AAPL/NVDA/MSFT, alle /1e6 plausibel).
+- **bid/ask=-1** ist davon unberuehrt: das IBKR-Wochenend-Sentinel zeigen
+  beide Backends gleich (kein tws-Bug, kein Schema-Drift).
+- **Tests:** Mock-Volume-Werte auf den rohen ×10^6-Wert umgestellt, plus
+  expliziter Skalierungs- und Sanity-Bound-Test.
+- **Version-Bump 2.8.2 -> 2.8.3** (Patch — Folge-Bugfix).
+
 ## [2.8.2] — 2026-06-28 (Karte `2ac8c839`: quotes/snapshot im TWS-Backend repariert)
 
 Bugfix: `GET /v1/quotes/snapshot` lieferte im TWS-Backend durchgaengig
