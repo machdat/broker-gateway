@@ -26,6 +26,7 @@ from broker_gateway.idempotency import IdempotencyStore
 from broker_gateway.order_models import (
     Order,
     OrderCancellation,
+    OrderModifyRequest,
     OrderRequest,
     WhatIfPreview,
 )
@@ -195,6 +196,49 @@ async def cancel_order(
 
     if portfolio is not None:
         portfolio.invalidate(account)
+
+    return payload
+
+
+@router.patch(
+    "/{order_id}",
+    response_model=Order,
+    summary="Order modifizieren (cancel/replace, idempotent ueber Idempotency-Key)",
+)
+async def modify_order(
+    request: OrderModifyRequest,
+    response: Response,
+    order_id: Annotated[str, Path(min_length=1)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    _scope: Annotated[Token, Depends(require_scope(SCOPE_ORDERS_WRITE))] = ...,
+    _session: Annotated[AuthLifecycle, Depends(require_session_ok)] = ...,
+    service: Annotated[OrdersService, Depends(get_orders_service)] = ...,
+    store: Annotated[IdempotencyStore, Depends(get_idempotency_store)] = ...,
+    portfolio: Annotated[
+        PortfolioService | None, Depends(get_orders_portfolio_invalidator)
+    ] = None,
+) -> Any:
+    # account_id kommt aus dem Body (OrderModifyRequest), nicht aus einem
+    # Header - konsistent mit POST (place_order). Stop-/Limit-Level oder
+    # Menge werden auf die bestehende Order angewandt (IBKR cancel/replace).
+    key = _require_idempotency_key(idempotency_key)
+    # Der Idempotency-Scope enthaelt die order_id: ein versehentlich auf
+    # einer ANDEREN Order wiederverwendeter Key darf NICHT die gecachte
+    # Fremd-Antwort liefern und den Modify stillschweigend ueberspringen -
+    # eine nicht-verschobene Stop-Order waere ein gefaehrlicher False-OK.
+    scope = f"PATCH:{order_id}"
+    cached = store.get(_scoped_key(scope, key))
+    if cached is not None:
+        cached_status, cached_payload = cached
+        response.status_code = status.HTTP_200_OK
+        return cached_payload
+
+    order = await service.modify_order(request.account_id, order_id, request)
+    payload = jsonable_encoder(order)
+    store.put(_scoped_key(scope, key), status.HTTP_200_OK, payload)
+
+    if portfolio is not None:
+        portfolio.invalidate(request.account_id)
 
     return payload
 

@@ -131,6 +131,121 @@ async def place_limit_far_from_market(
     return None
 
 
+async def place_stop_far_from_market(
+    client: httpx.AsyncClient,
+    account_id: str,
+    conid: int,
+    side: str,
+    *,
+    distance_pct: Decimal | float = _DEFAULT_DISTANCE_PCT,
+    qty: Decimal | int = 1,
+    tif: str = "GTC",
+    idempotency_key: str | None = None,
+) -> int | None:
+    """Platziert eine STP-Order (Default GTC) weit weg vom Markt.
+
+    SELL-STP (Stop-Loss) liegt ``distance_pct`` unter dem letzten Quote,
+    BUY-STP (Stop-Buy) entsprechend darueber - so weit, dass der Stop
+    nicht ausloest (kein versehentlicher Fill). Liefert die ``order_id``
+    aus dem Order-Body. Nutzt denselben Notional-Guard wie die Limit-
+    Variante (Stop-Level als Preis-Naeherung).
+    """
+    if kill_switch_active():
+        raise PaperSafetyError(
+            "BG_PAPER_TESTS_DISABLED gesetzt - place_stop_far_from_market "
+            "wird abgelehnt."
+        )
+    side_norm = side.strip().upper()
+    if side_norm not in {"BUY", "SELL"}:
+        raise PaperSafetyError(f"side {side!r} muss BUY oder SELL sein")
+    distance = Decimal(str(distance_pct))
+    if distance < _MIN_DISTANCE_PCT:
+        raise PaperSafetyError(
+            f"distance_pct {distance} unter Minimum {_MIN_DISTANCE_PCT}% - "
+            "verhindert versehentlichen Stop-Trigger."
+        )
+    assert_paper_account(account_id)
+
+    snapshot = await client.get(
+        "/v1/quotes/snapshot", params={"conids": str(conid), "fields": "last"}
+    )
+    snapshot.raise_for_status()
+    snapshot_body = snapshot.json()
+    if isinstance(snapshot_body, list) and snapshot_body:
+        last_raw = snapshot_body[0].get("last")
+    elif isinstance(snapshot_body, dict):
+        last_raw = snapshot_body.get("last")
+    else:
+        last_raw = None
+    if not last_raw:
+        raise PaperSafetyError(
+            f"snapshot fuer conid={conid} liefert kein 'last' - "
+            "Stop-Far-Order nicht ableitbar."
+        )
+    last = Decimal(str(last_raw))
+    if side_norm == "SELL":
+        stop_price = (last * (Decimal("100") - distance) / Decimal("100")).quantize(
+            Decimal("0.01")
+        )
+    else:
+        stop_price = (last * (Decimal("100") + distance) / Decimal("100")).quantize(
+            Decimal("0.01")
+        )
+
+    qty_d = Decimal(str(qty))
+    max_notional_per_order(stop_price, qty_d)
+
+    body: dict[str, Any] = {
+        "account_id": account_id,
+        "conid": conid,
+        "side": side_norm,
+        "quantity": str(qty_d),
+        "order_type": "STP",
+        "stop_price": str(stop_price),
+        "tif": tif.upper(),
+    }
+    headers = (
+        {"Idempotency-Key": idempotency_key} if idempotency_key else None
+    )
+    response = await client.post("/v1/orders", json=body, headers=headers)
+    response.raise_for_status()
+    payload = response.json()
+    if isinstance(payload, dict):
+        return payload.get("order_id") or payload.get("id")
+    return None
+
+
+async def modify_order(
+    client: httpx.AsyncClient,
+    account_id: str,
+    order_id: int | str,
+    *,
+    stop_price: Decimal | float | str | None = None,
+    limit_price: Decimal | float | str | None = None,
+    quantity: Decimal | int | str | None = None,
+    idempotency_key: str | None = None,
+) -> httpx.Response:
+    """``PATCH /v1/orders/{order_id}`` - Stop-/Limit-Level oder Menge aendern."""
+    if kill_switch_active():
+        raise PaperSafetyError(
+            "BG_PAPER_TESTS_DISABLED gesetzt - modify_order abgelehnt."
+        )
+    assert_paper_account(account_id)
+    body: dict[str, Any] = {"account_id": account_id}
+    if stop_price is not None:
+        body["stop_price"] = str(stop_price)
+    if limit_price is not None:
+        body["limit_price"] = str(limit_price)
+    if quantity is not None:
+        body["quantity"] = str(quantity)
+    headers: dict[str, str] = {}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    return await client.patch(
+        f"/v1/orders/{order_id}", json=body, headers=headers or None
+    )
+
+
 async def cancel_order(
     client: httpx.AsyncClient,
     account_id: str,
@@ -160,8 +275,11 @@ async def cancel_all_open_orders(
     Liste der gecancelten ``order_id``-Werte.
     """
     assert_paper_account(account_id)
+    # Query-Param heisst account_id (GET /v1/orders, Karte def3e8f5) - nicht
+    # 'account'; sonst bleibt der Filter wirkungslos und es wuerden Orders
+    # ALLER Konten der Session storniert.
     response = await client.get(
-        "/v1/orders", params={"account": account_id}
+        "/v1/orders", params={"account_id": account_id}
     )
     if response.status_code != 200:
         return []
@@ -403,7 +521,9 @@ __all__ = [
     "cancel_all_open_orders",
     "cancel_order",
     "flatten_positions",
+    "modify_order",
     "place_limit_far_from_market",
+    "place_stop_far_from_market",
     "subscribe_quote_stream",
     "wait_for_order_status",
 ]

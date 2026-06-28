@@ -45,6 +45,7 @@ from broker_gateway.order_models import (
     MarginImpact,
     Order,
     OrderCancellation,
+    OrderModifyRequest,
     OrderRequest,
     OrderSide,
     OrderStatus,
@@ -214,6 +215,84 @@ class TWSOrdersService:
             order_id=str(order_id),
             cancelled_at=datetime.now(timezone.utc),
         )
+
+    async def modify_order(
+        self, account_id: str, order_id: str, request: OrderModifyRequest
+    ) -> Order:
+        """Modifiziert eine bestehende Order (cancel/replace via IBKR).
+
+        Setzt die mitgegebenen Felder (stop_price->auxPrice,
+        limit_price->lmtPrice, quantity->totalQuantity) auf das bestehende
+        ib_async-Order-Objekt und ruft ``placeOrder`` mit derselben
+        ``orderId`` erneut - IBKR behandelt das als Modify (cancel/replace,
+        siehe ``IB.placeOrder``-Doc: "Place a new order or modify an
+        existing order"). Erfordert wie ``place_order`` eine nicht-read-only
+        Session.
+        """
+        if self._read_only:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "read_only_api",
+                    "message": "Order-Modify ist im read-only Modus deaktiviert",
+                },
+            )
+
+        ib = self._client._ib  # noqa: SLF001
+        # Positiver Konto-Check wie place_order: ohne ihn haengt die
+        # Account-Bindung allein an _find_trade, dessen Filter bei (noch)
+        # leerem order.account uebersprungen wird - ein nicht-gemanagtes
+        # account_id soll klar 400 (invalid_account) liefern, nicht 404.
+        managed = list(ib.managedAccounts() or [])
+        if managed and account_id not in managed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "invalid_account",
+                    "message": (
+                        f"account_id={account_id} ist nicht in den "
+                        f"verfuegbaren Accounts ({', '.join(managed)})"
+                    ),
+                },
+            )
+        trade = _find_trade(ib, order_id, account_id=account_id)
+        if trade is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="order_id unbekannt",
+            )
+        order = getattr(trade, "order", None)
+        contract = getattr(trade, "contract", None)
+        if order is None or contract is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "tws_modify_no_order",
+                    "message": "Trade ohne order/contract - Modify nicht moeglich",
+                },
+            )
+
+        # Nur gesetzte Felder anwenden; orderId/permId/account/side/conid
+        # bleiben am bestehenden Order-Objekt erhalten -> echtes Modify.
+        if request.stop_price is not None:
+            order.auxPrice = float(Decimal(request.stop_price))
+        if request.limit_price is not None:
+            order.lmtPrice = float(Decimal(request.limit_price))
+        if request.quantity is not None:
+            order.totalQuantity = float(Decimal(request.quantity))
+
+        try:
+            new_trade = ib.placeOrder(contract, order)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("placeOrder (modify) fehlgeschlagen: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "tws_modify_failed",
+                    "message": f"Order-Modify via TWS fehlgeschlagen: {exc}",
+                },
+            ) from exc
+        return _trade_to_order(new_trade)
 
     # ---- Lese-Pfade --------------------------------------------------
 

@@ -4,6 +4,37 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.8.0] — 2026-06-28 (Karte `35ac9a17` / AP-14: GTC-STP anlegen + modify auf Paper)
+
+Feature: Order-Modify (cancel/replace) ueber `PATCH /v1/orders/{order_id}`,
+plus der bewiesene GTC-STP-Schreib-Lifecycle auf IBKR-Paper. Cross-Repo-
+Vorbedingung fuer den StopManage-Durchstich des trading_robot
+(Karte b3d527c6), KW29-Paper-Durchstich.
+
+- **api/v1/orders.py:** neuer `PATCH /{order_id}` -> `service.modify_order`,
+  Idempotency-Key Pflicht (wie POST/DELETE), Scope `orders:write`,
+  account_id aus dem Body.
+- **order_models.py:** `OrderModifyRequest` (optionale stop_price/limit_price/
+  quantity, mind. eines Pflicht; account_id Pflicht).
+- **tws/orders.py:** `modify_order` — bestehende Order via `_find_trade`,
+  geaenderte Felder anwenden, `ib.placeOrder(contract, order)` mit gleicher
+  orderId = IBKR-Modify (cancel/replace). read_only-Gate wie place_order.
+- **cp/orders.py:** `modify_order` -> `503 modify_not_supported_on_cp`
+  (Roll-back-only, konsistent mit list_open/whatif).
+- **GTC-STP:** Submission laeuft ueber bestehendes POST /v1/orders
+  (order_type=STP, tif=GTC, stop_price) — kein neuer Endpunkt noetig.
+- **Tests:** test_tws/test_orders.py (modify: read_only-503, 404, Feld-
+  Anwendung, 502), test_orders.py (PATCH-Endpunkt: 200/Idempotency/Scope/
+  leerer-Body-422/cp-503), tests_paper/L3_pic/test_gtc_stp_modify.py
+  (Place->Modify-nach-oben->Cancel gegen write-Paper) + DSL
+  place_stop_far_from_market/modify_order.
+- **Doku:** docs/api/v1.md Section 7.8 (Modify + GTC-STP + Reject-/Tick-Size-
+  Verhalten). API-Contract v1.38.0 -> v1.39.0.
+- **Deploy:** gateway-Code-Aenderung -> gateway-only-Rebuild. Paper-
+  Verifikation erfordert kurzzeitig READ_ONLY_API=no auf dem Paper-tws
+  (kein 2FA, cborlm399), danach zurueck auf yes. Live bleibt read_only.
+- **Version-Bump 2.7.0 -> 2.8.0** (Minor — additiver v1-Endpunkt).
+
 ## [2.7.0] — 2026-06-28 (Karte `def3e8f5` / AP-14: Listen-Endpunkt fuer offene Orders)
 
 Feature: Neuer `GET /v1/orders` listet die offenen/aktiven Orders der

@@ -870,3 +870,134 @@ def test_list_endpoint_cp_backend_returns_503(client: TestClient) -> None:
     assert response.status_code == 503
     # Der App-Exception-Handler verpackt HTTPException.detail unter "error".
     assert response.json()["error"]["code"] == "list_open_not_supported_on_cp"
+
+
+# ---- PATCH /v1/orders/{order_id} (Modify, Karte 35ac9a17) ----
+
+
+class _StubModifyOrdersService:
+    """OrdersService-Ersatz, der nur modify_order bedient (Endpunkt-Logik)."""
+
+    def __init__(self, result: Order) -> None:
+        self._result = result
+        self.calls: list[tuple[str, str]] = []
+
+    async def modify_order(
+        self, account_id: str, order_id: str, request: object
+    ) -> Order:
+        self.calls.append((account_id, order_id))
+        return self._result
+
+
+def _modified_order_sample() -> Order:
+    return Order(
+        order_id="555",
+        account_id=_ACCOUNT_ID,
+        conid=_CONID,
+        side=OrderSide.SELL,
+        quantity="10",
+        order_type=OrderType.STP,
+        tif=TimeInForce.GTC,
+        status=OrderStatus.SUBMITTED,
+        stop_price="195.50",
+        oca_group=None,
+    )
+
+
+@pytest.fixture
+async def modify_client(
+    store: InMemoryTokenStore,
+    lifecycle: AuthLifecycle,
+    portfolio: PortfolioService,
+    idempotency: IdempotencyStore,
+    cp_gateway_mock,
+):
+    application = create_app(
+        store=store,
+        lifecycle=lifecycle,
+        orders_service=_StubModifyOrdersService(_modified_order_sample()),
+        portfolio_service=portfolio,
+        idempotency_store=idempotency,
+    )
+    with TestClient(application) as test_client:
+        yield test_client
+
+
+def _modify_body() -> dict:
+    return {"account_id": _ACCOUNT_ID, "stop_price": "195.50"}
+
+
+def test_modify_endpoint_without_token_returns_401(modify_client: TestClient) -> None:
+    response = modify_client.patch("/v1/orders/555", json=_modify_body())
+    assert response.status_code == 401
+
+
+def test_modify_endpoint_requires_idempotency_key(modify_client: TestClient) -> None:
+    response = modify_client.patch(
+        "/v1/orders/555",
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+        json=_modify_body(),
+    )
+    assert response.status_code == 400
+
+
+def test_modify_endpoint_returns_200_with_new_stop(modify_client: TestClient) -> None:
+    response = modify_client.patch(
+        "/v1/orders/555",
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}", "Idempotency-Key": "mod-1"},
+        json=_modify_body(),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["order_id"] == "555"
+    assert body["stop_price"] == "195.50"
+    assert body["order_type"] == "STP"
+    assert body["tif"] == "GTC"
+
+
+def test_modify_endpoint_replays_with_same_key(modify_client: TestClient) -> None:
+    headers = {
+        "Authorization": f"Bearer {_ADMIN_VALUE}",
+        "Idempotency-Key": "mod-replay",
+    }
+    first = modify_client.patch("/v1/orders/555", headers=headers, json=_modify_body())
+    assert first.status_code == 200
+    second = modify_client.patch("/v1/orders/555", headers=headers, json=_modify_body())
+    assert second.status_code == 200
+
+
+def test_modify_endpoint_empty_body_returns_422(modify_client: TestClient) -> None:
+    # Kein stop_price/limit_price/quantity -> OrderModifyRequest-Validator wirft.
+    response = modify_client.patch(
+        "/v1/orders/555",
+        headers={
+            "Authorization": f"Bearer {_ADMIN_VALUE}",
+            "Idempotency-Key": "mod-empty",
+        },
+        json={"account_id": _ACCOUNT_ID},
+    )
+    assert response.status_code == 422
+
+
+def test_modify_endpoint_read_scope_insufficient_returns_403(
+    modify_client: TestClient, store: InMemoryTokenStore
+) -> None:
+    # Modify ist eine Schreib-Operation -> orders:read genuegt NICHT.
+    ro = generate_token_value()
+    store.put(Token(value=ro, caller_id="robot", scopes=[SCOPE_ORDERS_READ]))
+    response = modify_client.patch(
+        "/v1/orders/555",
+        headers={"Authorization": f"Bearer {ro}", "Idempotency-Key": "mod-scope"},
+        json=_modify_body(),
+    )
+    assert response.status_code == 403
+
+
+def test_modify_endpoint_cp_backend_returns_503(client: TestClient) -> None:
+    response = client.patch(
+        "/v1/orders/555",
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}", "Idempotency-Key": "mod-cp"},
+        json=_modify_body(),
+    )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "modify_not_supported_on_cp"

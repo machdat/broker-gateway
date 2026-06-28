@@ -30,6 +30,7 @@ from broker_gateway.money import normalize_money
 from broker_gateway.order_models import (
     Order,
     OrderCancellation,
+    OrderModifyRequest,
     OrderRequest,
     OrderSide,
     OrderStatus,
@@ -169,6 +170,28 @@ class OrdersService:
         return OrderCancellation(
             order_id=order_id,
             cancelled_at=datetime.now(timezone.utc),
+        )
+
+    async def modify_order(
+        self, account_id: str, order_id: str, request: OrderModifyRequest
+    ) -> Order:
+        """Order-Modify ist im cp-Pfad nicht verfuegbar.
+
+        Wie list_open/whatif_order: der cp-Pfad ist seit v2.0.0 nur noch
+        Roll-Back-Profil (cp-legacy). Der aktive TWS-Pfad
+        (TWSOrdersService.modify_order) traegt die Funktionalitaet. Klarer
+        503 statt eines spekulativen cancel/replace gegen das strukturell
+        broken cpgateway.
+        """
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "modify_not_supported_on_cp",
+                "message": (
+                    "Order-Modify ist nur im TWS-Backend verfuegbar; das "
+                    "cp-legacy-Profil unterstuetzt PATCH /v1/orders/{id} nicht"
+                ),
+            },
         )
 
 
