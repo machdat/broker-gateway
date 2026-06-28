@@ -116,8 +116,8 @@ async def list_orders(
     # und OCA-Gruppen) als Wahrheitsquelle fuer Stop-Coverage/Reconciliation.
     # Scope-Semantik wie GET /{order_id}: orders:read genuegt.
     orders = await service.list_open()
-    if account_id and account_id.strip():
-        wanted = account_id.strip()
+    wanted = account_id.strip() if account_id else ""
+    if wanted:
         orders = [o for o in orders if o.account_id == wanted]
     return orders
 
