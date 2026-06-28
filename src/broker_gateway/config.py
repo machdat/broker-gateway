@@ -158,6 +158,38 @@ def paper_credentials() -> tuple[str, str] | None:
     return user, pwd
 
 
+# ---- TWS read-only (gemeinsamer Schalter gateway <-> tws-Container) ----
+
+_TWS_READ_ONLY_ENV: Final[str] = "BG_TWS_READ_ONLY"
+
+
+def tws_read_only() -> bool:
+    """``BG_TWS_READ_ONLY`` als bool, Default True (sicher).
+
+    Steuert, ob der gateway-seitige ``TWSClient`` die ib_async-Verbindung
+    read-only aufbaut (``readonly=True``) und der ``TWSOrdersService``
+    Schreib-Operationen (place/modify/cancel-replace) mit ``503
+    read_only_api`` ablehnt.
+
+    Dieselbe ENV setzt im tws-Container ``READ_ONLY_API`` (compose.yaml
+    ``${BG_TWS_READ_ONLY:-yes}``). Ein gemeinsamer Schalter haelt gateway
+    und IB-Gateway konsistent: ohne ihn meldete der tws-Container zwar
+    ``READ_ONLY_API=no``, der gateway blieb aber read-only (Default) und
+    blockierte jede Order — eine stille Diskrepanz.
+
+    **Nur exakt ``no`` aktiviert write.** Das ist Absicht: der tws-Container
+    (gnzsnz/IBC ``ReadOnlyApi``) interpretiert ausschliesslich ``yes``/``no``
+    kanonisch — ``off``/``false``/``0`` laesst IBC auf seinem read-only-
+    Default und wuerde gateway (write) und tws (read-only) auseinander
+    laufen lassen. Alles ausser ``no`` (inkl. unset, leer, Tippfehler)
+    bleibt read-only — sicheres Opt-in. **Beide Container muessen denselben
+    Wert tragen und zusammen recreatet werden** (build-gateway.sh ruft
+    ``up -d gateway tws``); ein gateway-only-Recreate liefe sonst auseinander.
+    """
+    raw = os.environ.get(_TWS_READ_ONLY_ENV, "yes").strip().lower()
+    return raw != "no"
+
+
 def validate_runtime_config() -> None:
     """Hard-Guard-Pruefung beim Startup.
 
@@ -173,6 +205,8 @@ def validate_runtime_config() -> None:
        beim naechsten Flag-Flip aktiv wird).
     4. ``BG_PAPER_AUTO_LOGIN=1`` ohne ``BG_PAPER_USERNAME``/``_PASSWORD``
        — der Auto-Login wuerde sofort fehlschlagen.
+    5. ``BG_STACK_KIND=live`` UND ``BG_TWS_READ_ONLY=no`` — Live-Order-
+       Routing ist ausgeschlossen; der Live-Stack bleibt read-only.
     """
     kind = stack_kind()  # wirft selbst, wenn fehlend / ungueltig
     auto_login = paper_auto_login_enabled()
@@ -189,6 +223,15 @@ def validate_runtime_config() -> None:
             "Hard-Guard 1: BG_STACK_KIND=live UND BG_PAPER_USERNAME/"
             "BG_PAPER_PASSWORD gesetzt. Paper-Credentials gehoeren "
             "nicht in den Live-Stack — Compose-Trennung pruefen."
+        )
+    if kind == "live" and not tws_read_only():
+        raise ConfigError(
+            "Hard-Guard 5: BG_STACK_KIND=live UND BG_TWS_READ_ONLY=no ist "
+            "nicht erlaubt. Live-Order-Routing ist in diesem Service-Kontext "
+            "ausgeschlossen (AP-14-Constraint 'nur Paper, kein Live-Order') — "
+            "der Live-Stack bleibt read-only. Write-Verifikation laeuft "
+            "ausschliesslich auf dem Paper-Stack. Bewusstes Live-Order-Routing "
+            "waere eine eigene Karte, die diesen Guard explizit lockert."
         )
     if auto_login and creds is None:
         raise ConfigError(
@@ -209,5 +252,6 @@ __all__ = [
     "paper_credentials",
     "quotes_source",
     "stack_kind",
+    "tws_read_only",
     "validate_runtime_config",
 ]
