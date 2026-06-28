@@ -4,7 +4,7 @@
 
 Versionierte HTTP-API zwischen Consumern (PSM, trading-robot, ad-hoc CLI/Notebooks) und broker-vermittelten Diensten — Aktienhandel und Marktdaten-Streaming. Aktuell adaptiert ausschließlich **Interactive Brokers** über das Client Portal Gateway als interne Sub-Komponente. Das ist Absicht und kein Marketing-Versprechen für später: der Service entkoppelt Consumer von IBKR-Spezifika, damit das Adapter-Backend austauschbar bleibt, ohne dass `/v1` brechen muss.
 
-**Status:** Produktiv auf cma-pi-1 als **TWS-only**-Service — Live (dediziertes IBKR-Service-Konto, `:4000`; Account-ID bewusst nicht im Repo — siehe [`docs/runbooks/account-cutover.md`](docs/runbooks/account-cutover.md)) und Paper (`DUP799747`, `:4001`) sprechen `gnzsnz/ib-gateway:stable` mit IBC + Xvfb über die TWS-Socket-API. Der TWS-Backend-Cutover (`BG_BACKEND=tws` als Default seit v2.0.0, AP `2a203c58`) ist abgeschlossen; alle `/v1`-Daten-Adapter (Portfolio, Instruments, Quotes, Orders + Trades, Calendar, historical/fundamentals) laufen nativ über `ib_async`, der Konsumenten-Vertrag (`/v1`) bleibt unverändert (geteilte Pydantic-Modelle, siehe `tests/test_tws/test_schema_compat.py`). Der cpgateway-Service steht nur noch unter Compose-Profile `cp-legacy` als Notfall-Roll-Back bereit. **Aktuelle Version:** Single Source of Truth ist [`pyproject.toml`](pyproject.toml) bzw. `GET /v1/health`; die Release-Historie steht in [`CHANGELOG.md`](CHANGELOG.md). Architektur-Stand in [`docs/02-architecture.md`](docs/02-architecture.md), Deploy-Workflow in [`docs/03-deployment.md`](docs/03-deployment.md).
+**Status:** Produktiv auf cma-pi-1 als **TWS-only**-Service — Live (dediziertes IBKR-Service-Konto, `:4000`; Account-ID bewusst nicht im Repo — siehe [`docs/runbooks/account-cutover.md`](docs/runbooks/account-cutover.md)) und Paper (`:4001`) sprechen `gnzsnz/ib-gateway:stable` mit IBC + Xvfb über die TWS-Socket-API. Der TWS-Backend-Cutover (`BG_BACKEND=tws` als Default seit v2.0.0, AP `2a203c58`) ist abgeschlossen; alle `/v1`-Daten-Adapter (Portfolio, Instruments, Quotes, Orders + Trades, Calendar, historical/fundamentals) laufen nativ über `ib_async`, der Konsumenten-Vertrag (`/v1`) bleibt unverändert (geteilte Pydantic-Modelle, siehe `tests/test_tws/test_schema_compat.py`). Der cpgateway-Service steht nur noch unter Compose-Profile `cp-legacy` als Notfall-Roll-Back bereit. **Aktuelle Version:** Single Source of Truth ist [`pyproject.toml`](pyproject.toml) bzw. `GET /v1/health`; die Release-Historie steht in [`CHANGELOG.md`](CHANGELOG.md). Architektur-Stand in [`docs/02-architecture.md`](docs/02-architecture.md), Deploy-Workflow in [`docs/03-deployment.md`](docs/03-deployment.md).
 
 ## Architektur und Doku
 
@@ -311,4 +311,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 2.8.3*
+*Version 2.8.4*

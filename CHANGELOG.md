@@ -4,6 +4,25 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.8.4] — 2026-06-28 (Karte `a1af1672`: Doku-Bereinigung Paper-Konto-Wechsel)
+
+Reine Doku-/Memory-Bereinigung (kein Service-Image — `compose.yaml`-Tag
+bleibt v2.8.3). Das Paper-Konto wechselte am 2026-06-28 von DUP799747 auf
+DUQ312230 (IBKR vergab dem Paper-Login `cborlm399` eine neue DU-ID; die
+Pi-`.env.paper` war bereits aktuell, nur Repo-Doku + Auto-Memories drifteten).
+
+- **CLAUDE.md:** Status von v2.5.1 auf v2.8.4 (Repo) / v2.8.3 (Image)
+  nachgezogen — AP-14 (K1-K3) + quotes-Fix + `BG_TWS_READ_ONLY` ergaenzt,
+  v1-Contract v1.35.0 → v1.39.0; Paper-Konto-ID generisch gehalten.
+- **README.md, docs/03-deployment.md, tests_paper/{L2,L3}-READMEs:** harte
+  DUP799747-Verweise auf generische Platzhalter bzw. das dedizierte
+  Paper-Konto umgestellt (Lektion aus dem U25235077-Cutover: Konto-IDs in
+  der public Doku generisch halten).
+- **Faktentreue gewahrt:** datierte historische Belege (Empirie 2026-05-03,
+  Live-Smoke 2026-05-02, Phase-7-Verifikation, v2.3.1-whatif-Befund in
+  `docs/api/v1.md`; CHANGELOG-Historie) bleiben unveraendert.
+- **Version-Bump 2.8.3 → 2.8.4** (Doku-Patch; compose-Image-Tag bleibt 2.8.3).
+
 ## [2.8.3] — 2026-06-28 (Karte `2ac8c839`: Volume-Skalierung im TWS-Snapshot)
 
 Folge-Fix zu 2.8.2: Nach der Reparatur des Snapshot-Pfads (200 statt 500)
