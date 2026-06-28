@@ -41,7 +41,9 @@ noch Alarm gab.
 ### Paper (kein 2FA – skriptbar)
 
 ```bash
-cd /mnt/ssd/broker-gateway && ./ops/recreate-tws.sh paper
+# recreate-tws.sh wechselt selbst ins Paper-Repo (BG_PAPER_REPO_DIR,
+# Default /mnt/ssd/broker-gateway-paper) - von ueberall aufrufbar.
+/mnt/ssd/broker-gateway/ops/recreate-tws.sh paper
 # wartet NICHT auf den Healthcheck-Hochlauf; danach pruefen:
 watch -n5 "docker inspect -f '{{.State.Health.Status}}' broker-gateway-paper-tws"
 ```
