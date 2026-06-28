@@ -476,10 +476,14 @@ def _volume_from_ticker(value: Any) -> str | None:
     try:
         raw = Decimal(str(value))
     except (InvalidOperation, ValueError):
+        logger.warning("TWS volume value not numeric: %r", value)
         return None
-    if raw != raw:  # NaN
+    if raw != raw:  # NaN ist der ib_async-"kein Wert"-Fall (erwartbar)
         return None
     if raw < 0 or raw > _VOLUME_RAW_MAX:
+        # Werte ausserhalb der Bound deuten auf IBKR-Drift / falsche
+        # Skalierungsannahme hin - sichtbar machen statt still verwerfen.
+        logger.warning("TWS volume value out of range: %r", value)
         return None
     return str(int(raw / _VOLUME_RAW_SCALE))
 
