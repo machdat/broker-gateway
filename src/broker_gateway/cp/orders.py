@@ -110,6 +110,28 @@ class OrdersService:
             )
         return _entry_to_order(response.json(), None, [])
 
+    async def list_open(self) -> list[Order]:
+        """Offene Orders auflisten — im cp-Pfad nicht verfuegbar.
+
+        Der cp-Pfad ist seit v2.0.0 nur noch Roll-Back-Profil (cp-legacy).
+        Das CP-Gateway-Listen-Schema (/iserver/account/orders) ist gegen das
+        strukturell broken cpgateway nicht verlaesslich verifizierbar; der
+        aktive TWS-Pfad (TWSOrdersService.list_open) traegt die echte
+        Funktionalitaet. Daher hier ein klarer 503 statt einer spekulativen
+        Liste — konsistent mit whatif_order.
+        """
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "list_open_not_supported_on_cp",
+                "message": (
+                    "Listen-Endpunkt fuer offene Orders ist nur im TWS-Backend "
+                    "verfuegbar; das cp-legacy-Profil unterstuetzt GET "
+                    "/v1/orders nicht"
+                ),
+            },
+        )
+
     async def whatif_order(self, request: OrderRequest) -> Any:
         """What-If-Vorschau ist im cp-Pfad nicht verfuegbar.
 

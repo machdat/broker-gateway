@@ -311,4 +311,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 2.6.0*
+*Version 2.7.0*

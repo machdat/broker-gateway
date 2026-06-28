@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 
 from broker_gateway.auth.middleware import require_any_scope, require_scope
@@ -94,6 +94,32 @@ async def place_order(
         portfolio.invalidate(request.account_id)
 
     return payload
+
+
+@router.get(
+    "",
+    response_model=list[Order],
+    summary="Offene Orders auflisten (GTC-STP inkl. OCA-Gruppen)",
+)
+async def list_orders(
+    _scope: Annotated[
+        Token, Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))
+    ],
+    _session: Annotated[AuthLifecycle, Depends(require_session_ok)],
+    service: Annotated[OrdersService, Depends(get_orders_service)],
+    account_id: Annotated[
+        str | None,
+        Query(description="Optionaler Filter: nur offene Orders dieses Kontos"),
+    ] = None,
+) -> list[Order]:
+    # Liefert die broker-seitige Sicht offener/aktiver Orders (inkl. GTC-STP
+    # und OCA-Gruppen) als Wahrheitsquelle fuer Stop-Coverage/Reconciliation.
+    # Scope-Semantik wie GET /{order_id}: orders:read genuegt.
+    orders = await service.list_open()
+    wanted = account_id.strip() if account_id else ""
+    if wanted:
+        orders = [o for o in orders if o.account_id == wanted]
+    return orders
 
 
 @router.post(

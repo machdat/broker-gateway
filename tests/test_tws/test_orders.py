@@ -68,6 +68,7 @@ def _make_order_obj(
     account: str = "U25235077",
     parent_id: int = 0,
     order_ref: str | None = None,
+    oca_group: str = "",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         permId=perm_id,
@@ -81,6 +82,7 @@ def _make_order_obj(
         account=account,
         parentId=parent_id,
         orderRef=order_ref,
+        ocaGroup=oca_group,
     )
 
 
@@ -642,6 +644,19 @@ class TestTradeToOrder:
         trade.order.orderType = "STP LMT"
         order = _trade_to_order(trade)
         assert order.order_type == OrderType.STP_LMT
+
+    def test_oca_group_mapped(self) -> None:
+        # Karte def3e8f5: OCA-Gruppe wird durchgereicht (Stop-/Bracket-Sicht).
+        trade = _make_trade(perm_id=1)
+        trade.order.ocaGroup = "bracket-7"
+        order = _trade_to_order(trade)
+        assert order.oca_group == "bracket-7"
+
+    def test_empty_oca_group_becomes_none(self) -> None:
+        # ib_async-Default ocaGroup="" -> None (keine OCA-Gruppe).
+        trade = _make_trade(perm_id=1)
+        order = _trade_to_order(trade)
+        assert order.oca_group is None
 
 
 class TestTradeToSorFrame:
