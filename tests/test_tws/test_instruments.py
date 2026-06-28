@@ -59,12 +59,22 @@ def _make_description(
 
 
 def _make_details(
-    *, contract: SimpleNamespace, long_name: str | None = None
+    *,
+    contract: SimpleNamespace,
+    long_name: str | None = None,
+    trading_hours: str = "",
+    liquid_hours: str = "",
+    time_zone_id: str = "",
 ) -> SimpleNamespace:
+    # tradingHours/liquidHours/timeZoneId haengen an ContractDetails, nicht
+    # am Contract. ib_async-Default ist der leere String (nicht None).
     return SimpleNamespace(
         contract=contract,
         longName=long_name,
         marketName=None,
+        tradingHours=trading_hours,
+        liquidHours=liquid_hours,
+        timeZoneId=time_zone_id,
     )
 
 
@@ -429,6 +439,75 @@ class TestInfo:
         with pytest.raises(HTTPException) as exc_info:
             await service.info(1)
         assert exc_info.value.status_code == 502
+
+    async def test_info_passes_through_trading_hours(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Karte f1a01d97: tradingHours/liquidHours/timeZoneId werden
+        additiv und verlustfrei in InstrumentDetail durchgereicht."""
+
+        class _Contract:
+            def __init__(self, **kwargs: Any) -> None:
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        trading = "20260628:CLOSED;20260629:0400-20260629:2000"
+        liquid = "20260628:CLOSED;20260629:0930-20260629:1600"
+        details = [
+            _make_details(
+                contract=_make_contract(
+                    conid=265598, symbol="AAPL", primary_exchange="NASDAQ"
+                ),
+                long_name="Apple Inc.",
+                trading_hours=trading,
+                liquid_hours=liquid,
+                time_zone_id="US/Eastern",
+            )
+        ]
+        client = _make_client(contract_details=details)
+        service = TWSInstrumentsService(client, rate_limit_s=0.0)
+
+        async def _fake_import(_self: Any) -> Any:
+            return _Contract
+
+        monkeypatch.setattr(
+            TWSInstrumentsService, "_import_contract_class", _fake_import
+        )
+        result = await service.info(265598)
+        assert result.trading_hours == trading
+        assert result.liquid_hours == liquid
+        assert result.time_zone_id == "US/Eastern"
+
+    async def test_info_empty_hours_become_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ib_async-Default ist der leere String - der v1-Contract soll
+        stattdessen None liefern (= 'nicht geliefert')."""
+
+        class _Contract:
+            def __init__(self, **kwargs: Any) -> None:
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        # _make_details ohne Hours-Argumente -> Default "" (wie ib_async)
+        details = [
+            _make_details(
+                contract=_make_contract(conid=1, symbol="AAPL")
+            )
+        ]
+        client = _make_client(contract_details=details)
+        service = TWSInstrumentsService(client, rate_limit_s=0.0)
+
+        async def _fake_import(_self: Any) -> Any:
+            return _Contract
+
+        monkeypatch.setattr(
+            TWSInstrumentsService, "_import_contract_class", _fake_import
+        )
+        result = await service.info(1)
+        assert result.trading_hours is None
+        assert result.liquid_hours is None
+        assert result.time_zone_id is None
 
 
 # --------------------------------------------------------------------------

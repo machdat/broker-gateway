@@ -153,6 +153,8 @@ class TestFieldSetSnapshot:
 
     def test_instrument_detail_fields(self) -> None:
         # InstrumentDetail erbt von Instrument, also Vereinigungsmenge.
+        # trading_hours/liquid_hours/time_zone_id ergaenzt in v1.37.0
+        # (Karte f1a01d97 / AP-14, Contract-Trading-Hours).
         assert set(InstrumentDetail.model_fields.keys()) == {
             "conid",
             "symbol",
@@ -163,6 +165,9 @@ class TestFieldSetSnapshot:
             "exchange",
             "exchange_id",
             "calendar_url",
+            "trading_hours",
+            "liquid_hours",
+            "time_zone_id",
         }
 
     def test_quote_fields(self) -> None:
