@@ -4,6 +4,34 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.9.0] — 2026-06-28 (Karte `53c10ff4`: tws-Watchdog — ntfy-Alarm + Paper-Auto-Recovery)
+
+Neues Ops-Tooling gegen den 6-Tage-Blindflug vom 22.–28.06.2026 (Live-tws
+unbemerkt down, weil der IB-Gateway-Listener-Prozess gestorben war und es
+weder Alarm noch Auto-Recovery gab). **Kein Service-Image** (compose-Tag
+bleibt v2.8.3) — der Watchdog laeuft als systemd-Timer NEBEN den Containern.
+
+- **scripts/tws_watchdog.py:** prueft pro Stack (live+paper) zwei
+  Token-freie Signale (Docker-Health des tws-Containers + `GET /v1/health`).
+  Bei dauerhaftem Down (>= N konsekutive Laeufe, Default 2 → ~30 min):
+  **ntfy-Push** aufs Handy (Re-Alarm fruehestens nach 6 h), **Paper**
+  force-recreate (einmal pro Episode, Retry bei Fehlschlag), **Live** nur
+  Alarm (2FA-Constraint). Recovery-Push bei Wiederkehr. State in
+  `/var/lib/broker-gateway/tws-watchdog-state.json`.
+- **ops/recreate-tws.sh:** schlanker Paper-tws-force-recreate (ohne Build),
+  kapselt die Compose-Env-Logik; ein Live-Aufruf wird mit Exit 2 abgelehnt.
+- **ops/systemd/tws-watchdog.{service,timer,env.example}:** systemd-Timer
+  alle 15 min (analog doc-drift).
+- **docs/runbooks/tws-recovery.md:** Diagnose, beide Recovery-Pfade,
+  Watchdog-Installation; verlinkt aus `docs/03-deployment.md` 6.1.
+- **Tests:** `tests/test_tws_watchdog.py` (20 Tests, Logik via injizierbare
+  Hooks ohne Docker/Netz).
+- **Ursachen-Forensik:** Der Prozesstod vom 22.06. liess sich nicht
+  rekonstruieren — der Recovery-force-recreate hatte die Container-Logs
+  verworfen; das Runbook empfiehlt Log-Sicherung VOR kuenftigen Recreates.
+- **Version-Bump 2.8.4 → 2.9.0** (Minor — neues Feature; compose-Image
+  bleibt v2.8.3).
+
 ## [2.8.4] — 2026-06-28 (Karte `a1af1672`: Doku-Bereinigung Paper-Konto-Wechsel)
 
 Reine Doku-/Memory-Bereinigung (kein Service-Image — `compose.yaml`-Tag
