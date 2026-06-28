@@ -14,7 +14,8 @@ sehen.
 
 ib_async-Patterns (siehe Memory ``project_tws_api_pi5_setup``):
 
-- ``IB.reqMktDataAsync(contract, snapshot=True)`` → ``Ticker`` nach 11s.
+- ``IB.reqTickersAsync(*contracts)`` → ``list[Ticker]`` (Snapshot,
+  wartet intern bis die Daten da sind).
 - ``IB.reqMktData(contract, snapshot=False)`` → laufende Subscription;
   ``IB.cancelMktData(contract)`` zum Beenden.
 - ``IB.pendingTickersEvent`` feuert mit ``set[Ticker]`` bei jedem
@@ -82,7 +83,7 @@ class TWSQuotesService:
     """ib_async-basierter Quotes-Service.
 
     Liefert das gleiche Pydantic-Modell und dasselbe Field-ID-Schema
-    wie ``cp.QuotesService``. Snapshot via ``reqMktDataAsync``,
+    wie ``cp.QuotesService``. Snapshot via ``reqTickersAsync``,
     Live-Stream via ``reqMktData`` + ``pendingTickersEvent`` mit
     Refcount + Fan-Out + Ringpuffer-Replay analog
     ``SubscriptionManager``.
@@ -116,11 +117,12 @@ class TWSQuotesService:
     ) -> list[Quote]:
         """One-shot Snapshot fuer bis zu N conids.
 
-        Pro conid wird der Contract qualifiziert und ``reqMktDataAsync``
-        mit ``snapshot=True`` aufgerufen - IBKR cancelt die Subscription
-        nach 11s automatisch. Bei Timeout wird der letzte Ticker-Stand
-        zurueckgegeben (Felder ggf. None), nicht 504 - analog zum
-        cp-Verhalten, das auch leere Felder als gueltige Antwort gibt.
+        Pro conid wird der Contract qualifiziert und per ``reqTickersAsync``
+        gesnapshottet - ib_async wartet intern, bis die Snapshot-Daten da
+        sind, und IBKR cancelt die Subscription danach automatisch. Bei
+        Timeout oder leerer Ticker-Liste wird der conid uebersprungen,
+        nicht 504 - analog zum cp-Verhalten, das auch leere Felder als
+        gueltige Antwort gibt.
 
         ``fields`` (cp-Field-IDs) wird nicht zur Filterung verwendet -
         ib_async liefert immer die voll bestueckten Ticker-Attribute,
@@ -140,8 +142,13 @@ class TWSQuotesService:
             if qualified is None:
                 continue
             try:
-                ticker = await asyncio.wait_for(
-                    ib.reqMktDataAsync(qualified, snapshot=True),
+                # reqTickersAsync ist der async-Snapshot-Weg in ib_async
+                # (das frueher genutzte reqMktDataAsync existiert nicht).
+                # Es liefert eine list[Ticker] und wartet intern, bis die
+                # Snapshot-Daten da sind; IBKR cancelt die Subscription
+                # danach automatisch.
+                tickers = await asyncio.wait_for(
+                    ib.reqTickersAsync(qualified, regulatorySnapshot=False),
                     timeout=self._snapshot_timeout_s,
                 )
             except (TimeoutError, asyncio.TimeoutError):
@@ -149,7 +156,15 @@ class TWSQuotesService:
                     "TWSQuotesService snapshot timeout fuer conid=%s", cid
                 )
                 continue
-            results.append(_quote_from_ticker(int(cid), ticker, self._market_data_type))
+            if not tickers:
+                logger.warning(
+                    "TWSQuotesService snapshot: keine Ticker-Daten fuer conid=%s",
+                    cid,
+                )
+                continue
+            results.append(
+                _quote_from_ticker(int(cid), tickers[0], self._market_data_type)
+            )
         return results
 
     # ---- Stream (SubscriptionManager-kompatibel) ---------------------
