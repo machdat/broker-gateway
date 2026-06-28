@@ -4,7 +4,7 @@ Coverage-Ziel: >=90% fuer src/broker_gateway/tws/quotes.py.
 
 Mock-Strategie: TWSClient.``_ib`` wird durch einen SimpleNamespace
 ersetzt, der die ib_async-Methoden ``reqMarketDataType``,
-``reqMktDataAsync``, ``reqMktData``, ``qualifyContractsAsync`` und
+``reqTickersAsync``, ``reqMktData``, ``qualifyContractsAsync`` und
 ``cancelMktData`` simuliert. ``pendingTickersEvent`` ist ein einfacher
 Listener-Holder mit ``__iadd__``/``__isub__``/``emit``.
 """
@@ -120,9 +120,14 @@ def _make_client(
     if snapshot_side_effect is not None:
         snapshot_mock.side_effect = snapshot_side_effect
     elif snapshot_returns is not None:
-        snapshot_mock.side_effect = list(snapshot_returns)
+        # reqTickersAsync liefert list[Ticker]. Jeden Eintrag in eine
+        # Liste wrappen (sofern nicht schon eine), damit der Mock pro
+        # Snapshot-Call eine Ticker-Liste zurueckgibt.
+        snapshot_mock.side_effect = [
+            r if isinstance(r, list) else [r] for r in snapshot_returns
+        ]
     else:
-        snapshot_mock.return_value = None
+        snapshot_mock.return_value = []
 
     pending_event = _PendingTickersEvent()
     cancel_mock = MagicMock()
@@ -130,7 +135,7 @@ def _make_client(
 
     ib = SimpleNamespace(
         reqMarketDataType=MagicMock(),
-        reqMktDataAsync=snapshot_mock,
+        reqTickersAsync=snapshot_mock,
         reqMktData=req_mkt_data_mock,
         qualifyContractsAsync=qualify_mock,
         cancelMktData=cancel_mock,
@@ -193,7 +198,7 @@ class TestSnapshotWithPrime:
 
         async def _slow(*_args: Any, **_kwargs: Any) -> Any:
             await asyncio.sleep(5.0)
-            return _make_ticker(conid=99)
+            return [_make_ticker(conid=99)]
 
         client = _make_client(
             qualify_returns=[[contract]],
@@ -201,6 +206,19 @@ class TestSnapshotWithPrime:
         )
         service = TWSQuotesService(client, snapshot_timeout_s=0.05)
         result = await service.snapshot_with_prime([99], ["31"])
+        assert result == []
+
+    async def test_snapshot_empty_ticker_list_skips_quote(self) -> None:
+        # reqTickersAsync kann eine leere Liste liefern (z.B. Disconnect
+        # waehrend des Snapshot-Waits). Der conid wird dann uebersprungen,
+        # nicht gecrasht (tickers[0] auf leerer Liste).
+        contract = _make_contract(conid=265598)
+        client = _make_client(
+            qualify_returns=[[contract]],
+            snapshot_returns=[[]],  # leere Ticker-Liste
+        )
+        service = TWSQuotesService(client)
+        result = await service.snapshot_with_prime([265598], ["31"])
         assert result == []
 
     async def test_snapshot_market_data_type_realtime(self) -> None:

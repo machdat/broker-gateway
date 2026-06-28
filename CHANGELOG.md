@@ -4,6 +4,27 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.8.2] — 2026-06-28 (Karte `2ac8c839`: quotes/snapshot im TWS-Backend repariert)
+
+Bugfix: `GET /v1/quotes/snapshot` lieferte im TWS-Backend durchgaengig
+HTTP 500. ``tws/quotes.py`` rief ``ib.reqMktDataAsync(...)`` auf — diese
+Methode existiert in ib_async (2.1.0) nicht (``AttributeError: 'IB' object
+has no attribute 'reqMktDataAsync'``). Der Snapshot-Quote-Pfad war komplett
+kaputt; entdeckt am 28.06. bei der AP-14-K3-Paper-Verifikation.
+
+- **tws/quotes.py:** ``reqMktDataAsync(qualified, snapshot=True)`` ersetzt
+  durch ``reqTickersAsync(qualified, regulatorySnapshot=False)`` — der
+  korrekte async-Snapshot-Weg in ib_async. Er liefert ``list[Ticker]``;
+  der erste Ticker wird gemappt, eine leere Liste wird (wie ein Timeout)
+  uebersprungen. Docstrings nachgezogen.
+- **Stream-Pfad unveraendert:** ``subscribe()`` und ``client.py`` nutzen
+  ``reqMktData`` (existiert) — nicht betroffen.
+- **Tests:** Der Mock-Helper in ``test_tws/test_quotes.py`` simulierte die
+  Phantom-Methode ``reqMktDataAsync`` (AsyncMock stellt jede Methode bereit)
+  — deshalb war der Unit-Test gruen, obwohl der echte Code crashte. Mock auf
+  ``reqTickersAsync`` umgestellt, Helper liefert nun ``list[Ticker]``.
+- **Version-Bump 2.8.1 -> 2.8.2** (Patch — Bugfix).
+
 ## [2.8.1] — 2026-06-28 (Karte `35ac9a17` / AP-14: gateway-read-only via BG_TWS_READ_ONLY)
 
 Bugfix/Ergaenzung zu 2.8.0: Der gateway-seitige read-only-Status liess sich
