@@ -124,7 +124,74 @@ curl -d "tws-watchdog Smoke-Test" "$BG_WATCHDOG_NTFY_URL"
 | `BG_WATCHDOG_DOWN_THRESHOLD` | `2` | konsekutive 15-min-Laeufe vor Alarm |
 | `BG_WATCHDOG_REALERT_HOURS` | `6` | Mindestabstand zwischen Alarmen |
 
-## 4. Ursachen-Forensik (fuer die Zukunft)
+## 4. Praeventiv: AutoRestartTime (taeglicher 2FA-freier Reset)
+
+**Karte:** `387cf5c0` (AP-15) · **Bezug:** v2.10.0 (gemeinsamer Release mit
+dem reaktiven Remote-Restart-Loop, ebenfalls AP-15)
+
+Root Cause des wiederkehrenden naechtlichen Live-Ausfalls (siehe Memory
+`project_live_nightly_reset_2fa`, Vorfaelle 28.06. und 30.06.2026) ist
+NICHT ein Crash, sondern der taegliche IBKR-Pflicht-Logoff (~23:45 CEST),
+der mangels `AutoRestartTime` in der IBC-Config eine volle
+Re-Authentifizierung inklusive 2FA-Push erzwingt. Nachts bestaetigt
+niemand den Push -> Timeout -> Listener bleibt tot.
+
+### Mechanik
+
+Das gnzsnz-Image (`ghcr.io/gnzsnz/ib-gateway:stable`) rendert die
+Umgebungsvariable `AUTO_RESTART_TIME` per envsubst in
+`AutoRestartTime=` in der IBC-`config.ini` (gleiche Mechanik wie
+`TWOFA_DEVICE` -> `SecondFactorDevice`; verifiziert am laufenden
+Live-Container, IB Gateway 10.45, `config.ini.tmpl` Sektion 4). Ist der
+Wert gesetzt, fuehrt IB Gateway zur angegebenen Uhrzeit einen
+Soft-Restart durch und schreibt ein **autorestart-Token**; der
+folgende Re-Login nutzt dieses Token und verlangt **keine volle
+Auth/kein 2FA** (Boot-Log zeigt dann `autorestart file ... found`
+statt bisher `autorestart file not found: full authentication will be
+required`).
+
+`compose.yaml` setzt dafuer:
+
+```yaml
+- AUTO_RESTART_TIME=${BG_TWS_AUTO_RESTART_TIME:-}
+```
+
+Pflichtformat laut IBC-Template: `HH:MM AM/PM` mit genau einem
+Leerzeichen (z. B. `06:00 AM`). Default leer = heutiges Verhalten
+(keine Aenderung). Gesetzt wird der Wert **nur fuer Live** ueber
+`BG_TWS_AUTO_RESTART_TIME` in `/mnt/ssd/broker-gateway/.env` — Paper
+(`.env.paper`) bleibt bewusst unveraendert (Auto-Login ohne 2FA, siehe
+`project_paper_login_no_2fa`), damit die gemeinsame Image-Config den
+Paper-Pfad nicht anfasst. Empfohlene Uhrzeit: eine wache Tageszeit
+(z. B. `06:00 AM` Europe/Vienna), damit ein evtl. doch noetiger
+2FA-Push tagsueber statt nachts kommt.
+
+Der **woechentliche** IBKR-Server-Reset (Sonntag) bleibt bewusst
+2FA-pflichtig — dafuer ist `ColdRestartTime` (`TWS_COLD_RESTART`)
+absichtlich NICHT gesetzt. Dieser verbleibende woechentliche Restart
+wird ueber den reaktiven Remote-Trigger (AP-15, separate Karte)
+bequem vom Handy ausloesbar gemacht.
+
+### Verifikationsstatus
+
+**Empirisch noch offen.** Die Config-Zeile allein ist kein Beleg, dass
+IBCs `AutoRestartTime` den server-erzwungenen IBKR-Logoff zuverlaessig
+vorwegnimmt. Verifikation erfordert einen echten Tageswechsel auf
+Live:
+
+```bash
+# Am naechsten Morgen nach dem konfigurierten AUTO_RESTART_TIME pruefen:
+docker logs broker-gateway-tws --since 24h | grep -iE "autorestart file|full authentication|Login has completed"
+# Erwartet: "autorestart file ... found" (nicht "not found"), KEIN
+# 2FA-Dialog-Log, durchgehend connected=true im gateway-tws-health.
+```
+
+Bis dahin gilt weiterhin Schritt 2 (manueller Recovery) als Fallback,
+falls die Nacht trotzdem in `tws_down` endet. Rollback bei Bedarf:
+`BG_TWS_AUTO_RESTART_TIME` in der Pi-`.env` leeren + `tws
+force-recreate` stellt den alten Zustand wieder her.
+
+## 5. Ursachen-Forensik (fuer die Zukunft)
 
 Der Prozesstod vom 22.06. liess sich **nicht** rekonstruieren: der
 Recovery-force-recreate hat die Container-Logs des toten Containers
