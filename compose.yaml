@@ -122,6 +122,20 @@ services:
       # je Stack per BG_TWS_EXISTING_SESSION_ACTION (secondary | manual |
       # primaryoverride).
       - EXISTING_SESSION_DETECTED_ACTION=${BG_TWS_EXISTING_SESSION_ACTION:-primary}
+      # Mappt auf AutoRestartTime in der IBC-config.ini (gnzsnz envsubst-
+      # Mechanik, gleiches Muster wie TWOFA_DEVICE). Pflichtformat laut
+      # IBC-Template "HH:MM AM/PM" mit genau einem Leerzeichen (z.B.
+      # "06:00 AM") - verifiziert im laufenden Image ghcr.io/gnzsnz/
+      # ib-gateway:stable (IB Gateway 10.45), config.ini.tmpl Sektion 4.
+      # Default leer laesst AutoRestartTime unbelegt (heutiges Verhalten,
+      # Paper bleibt unveraendert). Live setzt einen Tageswert (z.B.
+      # 06:00 lokal) ueber BG_TWS_AUTO_RESTART_TIME in der Pi-.env, damit
+      # der taegliche IBKR-Pflicht-Logoff (~23:45 CEST) ueber IBCs
+      # autorestart-Token OHNE volle Re-Auth/2FA durchlaeuft, statt in den
+      # naechtlichen 2FA-Timeout zu laufen (Karte 387cf5c0). Der
+      # woechentliche IBKR-Server-Reset (Sonntag) bleibt bewusst 2FA-
+      # pflichtig - dafuer ist ColdRestartTime NICHT gesetzt.
+      - AUTO_RESTART_TIME=${BG_TWS_AUTO_RESTART_TIME:-}
       # Schaltet "Allow connections from localhost only" off, damit der
       # gateway-Container ueber das Compose-Bridge-Netz reinkommt.
       - TWS_ACCEPT_INCOMING=accept
