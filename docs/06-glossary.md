@@ -9,7 +9,7 @@ Kurzdefinition und Verweis auf die Quelle, wo die Tatsache lebt.
 > definiert werden. Andere Doks verwenden den Begriff und verweisen
 > bei Bedarf hierher — sie wiederholen die Definition nicht.
 
-**Stand:** v1.11.0, 2026-04-30.
+**Stand:** v1.12.0, 2026-07-04.
 
 ---
 
@@ -233,6 +233,20 @@ spezifische IBKR-Quote-Feld mit der Nummer 6509.
 
 Alphabetisch.
 
+### Bestätigungs-Round-Trip (Nonce)
+
+Absicherung des ferngesteuerten Live-Restarts (AP-15): auf ein `recreate-live`
+im Command-Topic erzeugt der `tws-command-listener` einen server-seitigen
+**One-Time-Nonce** (kurze TTL, Default 120 s) und pusht ihn mit einem
+Bestätigen-Button aufs Status-Topic. Erst ein `confirm <nonce>` mit passendem,
+frischem Nonce löst den force-recreate aus; der Nonce wird dabei sofort
+verbraucht. Bindet die Bestätigung an einen zuvor angeforderten Trigger und
+verhindert versehentliche Doppel-Auslösung - auf dem öffentlichen
+ntfy.sh-Topic aber kein Vollschutz gegen Mitleser (Bedrohungsmodell
+[`04-security.md`](04-security.md) Sektion 7.5).
+*Quelle:* [`scripts/tws_command_listener.py`](../scripts/tws_command_listener.py),
+`docs/runbooks/tws-recovery.md` Abschnitt 4.
+
 ### Cassette
 
 Synonym für eine **Recording**-Datei unter
@@ -240,6 +254,17 @@ Synonym für eine **Recording**-Datei unter
 JSON-File pro CP-Gateway-Roundtrip mit Header (gefiltert) und Body
 (normalisiert), das beim Mock-Replay als Antwort dient.
 *Quelle:* AP-02-Beschreibung („Cassette-Schicht"), [`docs/cp-recordings.md`](cp-recordings.md).
+
+### Command-Topic
+
+Öffentliches ntfy.sh-Topic, auf dem der `tws-command-listener` (AP-15) die
+Steuerbefehle `recreate-live` und `confirm <nonce>` empfängt. Bewusst getrennt
+vom Status-/Alarm-Topic und mit Zufallssuffix (siehe
+[`04-security.md`](04-security.md) Sektion 7.5). Konfiguriert über
+`BG_CMD_COMMAND_TOPIC_URL` (Listener) und `BG_WATCHDOG_COMMAND_TOPIC_URL`
+(Watchdog-Button) - beide müssen identisch sein, damit der Button-Befehl beim
+Listener ankommt.
+*Quelle:* `docs/runbooks/tws-recovery.md` Abschnitt 4.
 
 ### Service-Konto vs. Privat-Konto
 
@@ -332,6 +357,16 @@ Metriken sichtbar:
 `broker_gateway_throttle_extra_wait_seconds`. *Quelle:* `v1.md`
 Section 11, [`src/broker_gateway/throttle/`](../src/broker_gateway/throttle/).
 
+### `recreate-live`
+
+Protokoll-Wort des Remote-Restart-Loops (AP-15): die Nachricht, die im
+Command-Topic einen Live-tws-force-recreate anstößt - per Watchdog-Alarm-Button
+oder manuell gesendet. Löst zunächst den Bestätigungs-Round-Trip aus, nicht
+direkt den Recreate. Das ausführende Skript ist `ops/recreate-tws-live.sh`,
+scharfgeschaltet nur mit dem Opt-in `BG_ALLOW_LIVE_RECREATE=yes`.
+*Quelle:* [`scripts/tws_command_listener.py`](../scripts/tws_command_listener.py),
+[`ops/recreate-tws-live.sh`](../ops/recreate-tws-live.sh).
+
 ### Recording / Replay
 
 **Recording**: live-Aufzeichnung von CP-Gateway-Roundtrips über einen
@@ -386,6 +421,16 @@ klassischer REST-Service (jeder Request self-contained); innen hält
 der Service Auth-Session, Subscription-State, Idempotency-Map,
 Order-Cache, Throttle-Buckets.
 *Quelle:* `02-architecture.md` Sektion 3.2.
+
+### Status-/Alarm-Topic
+
+Das ntfy-Topic, auf dem sowohl der tws-Watchdog seine DOWN-/WIEDER-OK-Alarme
+als auch der `tws-command-listener` seine Rückmeldungen (Nonce-Prompt,
+Fortschritt, Ergebnis) pusht - der Operator ist hier subscribed. Bewusst
+getrennt vom Command-Topic (siehe dort) zu halten, damit der Nonce-Push nicht
+über das breiter geteilte Alarm-Topic mitlesbar wird.
+`BG_WATCHDOG_NTFY_URL` bzw. `BG_CMD_STATUS_TOPIC_URL`.
+*Quelle:* `docs/runbooks/tws-recovery.md` Abschnitte 3-4.
 
 ### Stream-Fan-Out
 
