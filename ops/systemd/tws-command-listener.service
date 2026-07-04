@@ -1,0 +1,23 @@
+[Unit]
+Description=broker-gateway: tws-Command-Listener (ntfy Remote-Restart Live, Karte a529e59a)
+Documentation=file:///mnt/ssd/broker-gateway/docs/runbooks/tws-recovery.md
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/ssd/broker-gateway
+# BG_CMD_* (Command-/Status-Topic + Tuning) liegen gemeinsam mit den
+# BG_WATCHDOG_*-Vars in /etc/default/broker-gateway-watchdog - das
+# Status-Topic ist das bestehende Watchdog-Alarm-Topic. Siehe
+# tws-watchdog.env.example. Fehlt die Datei/Topic-URL, beendet sich der
+# Dienst mit Exit 3 und wird von systemd neu gestartet (sichtbarer Hinweis
+# auf fehlende Konfiguration).
+EnvironmentFile=-/etc/default/broker-gateway-watchdog
+# always-on Subscriber aus dem schlanken Repo-venv (nur httpx noetig).
+ExecStart=/mnt/ssd/broker-gateway/.venv/bin/python scripts/tws_command_listener.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
