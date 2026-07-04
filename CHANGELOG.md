@@ -4,6 +4,49 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.10.0] - 2026-07-04 (AP-15: Remote-Restart Live-tws via ntfy + präventiver AutoRestartTime)
+
+Zwei ineinandergreifende Stränge gegen den nächtlichen Live-tws-2FA-Loop
+(täglicher IBKR-Pflicht-Logoff ~23:45 CEST -> nachts unbestätigter 2FA-Push ->
+Listener bleibt tot). Beide **kein Service-Image** (compose-Tag bleibt v2.8.3)
+- reines Ops-Tooling, das NEBEN den Containern läuft. Die eigentliche 2FA
+bleibt in beiden Strängen der IB-Key-Tap am Handy.
+
+**Präventiv - AutoRestartTime (Karte `387cf5c0`):**
+
+- **compose.yaml + IBC-Config:** `AUTO_RESTART_TIME` (env -> IBCs
+  `AutoRestartTime`) lässt IB Gateway den täglichen Reset per autorestart-Token
+  2FA-frei durchführen; nur der wöchentliche Sonntags-Reset bleibt
+  2FA-pflichtig. Damit sinkt das manuelle 2FA von täglich auf wöchentlich.
+  Empirisch bestätigt am 04.07.2026.
+- **docs/runbooks/tws-recovery.md:** Abschnitt 5 (Mechanik, Verifikation,
+  Rollback).
+
+**Reaktiv - Remote-Restart via ntfy (Karten `c3839836` / `a529e59a` / `bd6ff0d5` / `77f9d2d5`):**
+
+- **ops/recreate-tws-live.sh:** abgesicherter One-Shot Live-tws-force-recreate
+  hinter dem Opt-in `BG_ALLOW_LIVE_RECREATE=yes`, mit Pre-Recreate-Forensik
+  (Container-Logs vor dem Recreate sichern - schließt die Lücke, dass der
+  bisherige Recovery-Recreate die Vorfall-Logs verwarf). Genau EIN Recreate.
+- **scripts/tws_command_listener.py:** neuer always-on systemd-Dienst, der ein
+  ntfy-Command-Topic abonniert. `recreate-live` -> One-Time-Nonce +
+  Bestätigen-Button aufs Status-Topic; `confirm <nonce>` -> genau ein Recreate;
+  danach Health-Poll + Ergebnis-Push. Cooldown gegen konkurrierende
+  2FA-Pushes, Reconnect-Backoff mit endlichem Read-Timeout gegen still tote
+  Streams.
+- **scripts/tws_watchdog.py:** der Live-DOWN-Alarm trägt jetzt einen
+  „Live-tws neu starten"-Action-Button (optional via
+  `BG_WATCHDOG_COMMAND_TOPIC_URL`, ohne die Var abwärtskompatibel wie bisher).
+- **ops/systemd/tws-command-listener.service** + `BG_CMD_*` in
+  `tws-watchdog.env.example`.
+- **Doku:** tws-recovery.md Abschnitt 4 (End-to-End-Ablauf + Installation),
+  04-security.md 7.5 (Bedrohungsmodell öffentliches Command-Topic),
+  06-glossary.md (vier Begriffe), README + ops/systemd/README-Verlinkung.
+- **Tests:** `tests/test_recreate_tws_live.py` (7), `test_tws_command_listener.py`
+  (16), `test_tws_watchdog.py` um 4 Button-Tests erweitert.
+- **Neuer Dienst auf cma-pi-1:** `tws-command-listener.service` ist zu
+  installieren (Runbook Abschnitt 4); compose-Image unverändert.
+
 ## [2.9.1] — 2026-06-28 (Karte `53c10ff4`: recreate-tws.sh-Pfad-Fix)
 
 Bugfix zum v2.9.0-Watchdog, im **End-to-End-Test** (Paper-tws gestoppt)
