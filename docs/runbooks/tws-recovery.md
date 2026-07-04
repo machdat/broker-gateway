@@ -56,7 +56,7 @@ kann. Deshalb gibt es bewusst **keinen** automatischen Live-Recovery.
 
 Seit AP-15 (v2.10.0) ist dieser Recreate im Skript
 `ops/recreate-tws-live.sh` gekapselt - inklusive Pre-Recreate-Forensik
-(Container-Logs vor dem Recreate sichern, siehe Abschnitt 5). Das Skript
+(Container-Logs vor dem Recreate sichern, siehe Abschnitt 6). Das Skript
 wird nur scharf, wenn das Opt-in-Env `BG_ALLOW_LIVE_RECREATE=yes` gesetzt
 ist (der ntfy-Command-Listener setzt es nach dem Bestaetigungs-Round-Trip);
 von der Shell aus:
@@ -140,7 +140,78 @@ curl -d "tws-watchdog Smoke-Test" "$BG_WATCHDOG_NTFY_URL"
 | `BG_WATCHDOG_DOWN_THRESHOLD` | `2` | konsekutive 15-min-Laeufe vor Alarm |
 | `BG_WATCHDOG_REALERT_HOURS` | `6` | Mindestabstand zwischen Alarmen |
 
-## 4. Praeventiv: AutoRestartTime (taeglicher 2FA-freier Reset)
+## 4. Remote-Restart Live (ntfy-Command-Loop)
+
+**Karten:** `c3839836` / `a529e59a` / `bd6ff0d5` (AP-15) · **Bezug:** v2.10.0
+
+Der reaktive Gegenpart zum präventiven AutoRestartTime (Abschnitt 5): kippt
+Live doch in `tws_down`, kann der Operator den force-recreate **vom Handy**
+auslösen, ohne SSH/Terminal. Die Pi ist nicht aus dem Internet erreichbar,
+lauscht aber ausgehend auf einem ntfy-Command-Topic; ein Bestätigungs-
+Round-Trip (One-Time-Nonce) sichert den Trigger ab.
+
+> **Die 2FA bleibt der IB-Key-Tap in der IBKR-App.** Der Loop liefert nur
+> Trigger + Status - er kann den Login nicht selbst abschließen. Ein
+> unautorisierter Trigger kann daher keinen Schaden über einen
+> überflüssigen 2FA-Push hinaus anrichten (Bedrohungsmodell:
+> [`docs/04-security.md`](../04-security.md) Sektion 7.5).
+
+### Ablauf vom Handy
+
+1. Der **Live-DOWN-Alarm** des Watchdog (Abschnitt 3) trägt den Button
+   **„Live-tws neu starten"**. Antippen -> postet `recreate-live` ins
+   Command-Topic. (Manuell äquivalent: `recreate-live` ins Command-Topic
+   senden.)
+2. Der Listener antwortet mit einem **Bestätigungs-Push** (Nonce, ~120 s
+   gültig) und einem **„Jetzt neu starten"-Button**. Antippen -> postet
+   `confirm <nonce>`.
+3. Der Listener führt **genau einen** `ops/recreate-tws-live.sh` aus
+   (inkl. Pre-Recreate-Forensik, Abschnitt 6) und pusht „Recreate gestartet".
+4. **IB-Key-Push in der IBKR-App bestätigen** - das ist die eigentliche 2FA.
+5. Der Listener pollt die tws-Health und meldet **„tws wieder OK"** oder
+   **„tws weiterhin down"** (dann bleibt Abschnitt 2, manueller Recovery).
+
+Ein Cooldown (Default 300 s) unterbindet einen zweiten Trigger, solange der
+erste noch läuft - genau EIN force-recreate pro Fenster (konkurrierende
+2FA-Pushes vermeiden).
+
+### Installation auf cma-pi-1
+
+Der Listener ist ein **always-on** systemd-Dienst (kein Timer), der sich die
+env-Datei mit dem Watchdog teilt.
+
+```bash
+cd /mnt/ssd/broker-gateway && git pull
+
+# 1. Zwei getrennte ntfy-Topics festlegen (beide mit Zufallssuffix, ntfy.sh
+#    ist oeffentlich) und auf dem Handy in der ntfy-App abonnieren:
+#      - Status/Alarm-Topic (= BG_WATCHDOG_NTFY_URL, dort ist der Operator schon)
+#      - Command-Topic (NEU, bewusst getrennt - siehe 04-security.md 7.5)
+sudoedit /etc/default/broker-gateway-watchdog
+#    Ergaenzen (Vorlage: ops/systemd/tws-watchdog.env.example):
+#      BG_CMD_COMMAND_TOPIC_URL=https://ntfy.sh/<command-topic>
+#      BG_CMD_STATUS_TOPIC_URL=https://ntfy.sh/<status-topic>
+#      BG_WATCHDOG_COMMAND_TOPIC_URL=https://ntfy.sh/<command-topic>  # = BG_CMD_COMMAND_TOPIC_URL
+#      BG_LIVE_REPO_DIR=/mnt/ssd/broker-gateway
+
+# 2. Unit installieren + aktivieren (always-on, Restart=always).
+sudo cp ops/systemd/tws-command-listener.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now tws-command-listener.service
+
+# 3. Verifikation / Smoke-Test (ohne echten Ausfall).
+systemctl status tws-command-listener.service
+journalctl -u tws-command-listener.service -f &
+#    Manuellen Trigger senden -> Bestaetigungs-Push mit Button muss kommen:
+curl -d "recreate-live" "$BG_CMD_COMMAND_TOPIC_URL"
+#    NICHT bestaetigen, wenn kein echter Recreate gewuenscht ist - der Nonce
+#    laeuft nach ~120 s ab.
+```
+
+Der Watchdog-Button erscheint nur bei gesetztem `BG_WATCHDOG_COMMAND_TOPIC_URL`
+(Abschnitt 3); ohne die Var alarmiert der Watchdog wie bisher ohne Button.
+
+## 5. Praeventiv: AutoRestartTime (taeglicher 2FA-freier Reset)
 
 **Karte:** `387cf5c0` (AP-15) · **Bezug:** v2.10.0 (gemeinsamer Release mit
 dem reaktiven Remote-Restart-Loop, ebenfalls AP-15)
@@ -185,8 +256,8 @@ Paper-Pfad nicht anfasst. Empfohlene Uhrzeit: eine wache Tageszeit
 Der **woechentliche** IBKR-Server-Reset (Sonntag) bleibt bewusst
 2FA-pflichtig — dafuer ist `ColdRestartTime` (`TWS_COLD_RESTART`)
 absichtlich NICHT gesetzt. Dieser verbleibende woechentliche Restart
-wird ueber den reaktiven Remote-Trigger (AP-15, separate Karte)
-bequem vom Handy ausloesbar gemacht.
+wird ueber den reaktiven Remote-Trigger (Abschnitt 4, Remote-Restart
+Live) bequem vom Handy ausloesbar gemacht.
 
 ### Verifikationsstatus
 
@@ -207,7 +278,7 @@ falls die Nacht trotzdem in `tws_down` endet. Rollback bei Bedarf:
 `BG_TWS_AUTO_RESTART_TIME` in der Pi-`.env` leeren + `tws
 force-recreate` stellt den alten Zustand wieder her.
 
-## 5. Ursachen-Forensik (fuer die Zukunft)
+## 6. Ursachen-Forensik (fuer die Zukunft)
 
 Der Prozesstod vom 22.06. liess sich **nicht** rekonstruieren: der
 Recovery-force-recreate hat die Container-Logs des toten Containers

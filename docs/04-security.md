@@ -476,6 +476,41 @@ mit Support-Ticket. Die Throttle-Defaults (max 1/5min, 3/h, 5/Tag,
 Backoff 5/15/45min) bleiben deutlich unter diesen Werten und
 vermeiden bot-typisches Hammering-Pattern.
 
+### 7.5 Remote-Restart-Command-Topic (Bedrohungsmodell)
+
+Seit AP-15 (v2.10.0) kann der Live-tws-force-recreate ferngesteuert vom
+Handy ausgelöst werden (Runbook
+[`docs/runbooks/tws-recovery.md`](runbooks/tws-recovery.md) Abschnitt 4).
+Der `tws-command-listener`-Dienst abonniert dazu ein **öffentliches**
+ntfy.sh-Command-Topic. Das Bedrohungsmodell:
+
+- **Das Command-Topic ist öffentlich.** Wer den Topic-Namen kennt, kann
+  `recreate-live` senden. Schutz ist allein die Schwer-Erratbarkeit
+  (Zufallssuffix) - keine Authentifizierung.
+- **Der Bestätigungs-Round-Trip (One-Time-Nonce)** bindet ein `confirm` an
+  einen zuvor angeforderten Request und verhindert versehentliche
+  Doppel-Trigger. Er ist **kein Vollschutz** gegen einen Mitleser: wer den
+  Nonce-Push mitliest, könnte innerhalb der TTL (Default 120 s) selbst
+  bestätigen.
+- **Inhärente Schadensgrenze:** Ein unautorisierter Recreate kann den Login
+  **nicht** abschließen - die 2FA bleibt der IB-Key-Tap am Handy des
+  Operators (siehe 7.1). Der Worst Case ist damit ein **überflüssiger
+  2FA-Push** bzw. Push-Spam, kein Kontrollverlust über die Session.
+- **Mitigationen:**
+  - Command- und Status-(Alarm-)Topic **getrennt** und **beide** mit
+    Zufallssuffix wählen (nicht dasselbe Topic) - erschwert, den
+    Nonce-Push über das breiter geteilte Alarm-Topic mitzulesen.
+  - **Cooldown** (Default 300 s) im Listener begrenzt die Recreate-Frequenz
+    und damit potenziellen 2FA-Push-Spam.
+  - Optional (für den aktuellen ntfy.sh-Betrieb bewusst nicht umgesetzt):
+    ein self-hosted ntfy mit Access-Token/ACL, falls das Restrisiko nicht
+    akzeptiert wird.
+
+Die Topic-URLs und der Opt-in-Guard des Skripts liegen ausschließlich auf
+der Pi (`/etc/default/broker-gateway-watchdog`), nicht im Repo:
+`BG_CMD_COMMAND_TOPIC_URL`, `BG_CMD_STATUS_TOPIC_URL`,
+`BG_WATCHDOG_COMMAND_TOPIC_URL`, `BG_ALLOW_LIVE_RECREATE` (siehe Glossar).
+
 ---
 
 ## 8. Netzwerk-Sicherheit

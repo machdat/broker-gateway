@@ -12,7 +12,8 @@ bzw. ntfy-Topic), die im Repo nicht erscheinen.
 | `doc-drift.service` / `.timer` | taeglicher IBKR-OpenAPI-Doku-Drift-Check (AP-03), `scripts/check_doc_drift.py --auto-card` |
 | `doc-drift.env.example` | Vorlage fuer `/etc/default/doc-drift` (Schluessel + Konfig) |
 | `tws-watchdog.service` / `.timer` | tws-Stack-Watchdog alle 15 min (Karte `53c10ff4`), `scripts/tws_watchdog.py`: ntfy-Push-Alarm bei dauerhaftem `tws_down` + Paper-Auto-Recovery. Installation + Details: [`docs/runbooks/tws-recovery.md`](../../docs/runbooks/tws-recovery.md) |
-| `tws-watchdog.env.example` | Vorlage fuer `/etc/default/broker-gateway-watchdog` (ntfy-Topic) |
+| `tws-command-listener.service` | always-on ntfy-Command-Listener (Karte `a529e59a`, AP-15), `scripts/tws_command_listener.py`: ferngesteuerter Live-tws-force-recreate mit Bestätigungs-Round-Trip. Installation + Ablauf: [`docs/runbooks/tws-recovery.md`](../../docs/runbooks/tws-recovery.md) Abschnitt 4 |
+| `tws-watchdog.env.example` | Vorlage fuer `/etc/default/broker-gateway-watchdog` (ntfy-Alarm-Topic + Command-Listener-`BG_CMD_*`) |
 
 > Die Installations-Schritte unten beziehen sich auf **doc-drift**. Der
 > tws-Watchdog hat einen eigenen Installations-Abschnitt im Runbook
