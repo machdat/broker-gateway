@@ -54,6 +54,22 @@ Der Live-Stack laeuft am Service-Konto mit Mobile-2FA; ein force-recreate
 loest einen 2FA-Push aus, den **nur der Operator am Handy** bestaetigen
 kann. Deshalb gibt es bewusst **keinen** automatischen Live-Recovery.
 
+Seit AP-15 (v2.10.0) ist dieser Recreate im Skript
+`ops/recreate-tws-live.sh` gekapselt - inklusive Pre-Recreate-Forensik
+(Container-Logs vor dem Recreate sichern, siehe Abschnitt 5). Das Skript
+wird nur scharf, wenn das Opt-in-Env `BG_ALLOW_LIVE_RECREATE=yes` gesetzt
+ist (der ntfy-Command-Listener setzt es nach dem Bestaetigungs-Round-Trip);
+von der Shell aus:
+
+```bash
+BG_ALLOW_LIVE_RECREATE=yes /mnt/ssd/broker-gateway/ops/recreate-tws-live.sh
+# -> 2FA-Push am Handy bestaetigen (TWOFA_DEVICE=IB Key, IBC klickt OK selbst)
+# wartet NICHT auf den Healthcheck; danach connected=true verifizieren.
+```
+
+Der manuelle Mehrzeiler bleibt als Fallback (falls das Skript nicht
+verfuegbar ist):
+
 ```bash
 cd /mnt/ssd/broker-gateway
 COMPOSE_PROJECT_NAME=broker-gateway docker compose --env-file .env \

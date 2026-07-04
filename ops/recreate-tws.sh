@@ -9,6 +9,10 @@
 # kann. Ein Live-Aufruf wird daher mit Exit 2 abgelehnt
 # (siehe docs/runbooks/tws-recovery.md).
 #
+# Der Live-force-recreate liegt bewusst im getrennten Skript
+# recreate-tws-live.sh hinter dem Opt-in BG_ALLOW_LIVE_RECREATE=yes (Karte
+# c3839836, AP-15) - so bleibt die Paper-Safety-Default hier unangetastet.
+#
 # Aufruf:
 #   ./ops/recreate-tws.sh paper
 
