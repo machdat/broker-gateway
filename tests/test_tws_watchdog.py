@@ -42,10 +42,12 @@ def _stacks(*, live: bool = True, paper: bool = True) -> tuple[wd.StackConfig, .
 class _Ntfy:
     def __init__(self, ok: bool = True) -> None:
         self.ok = ok
-        self.calls: list[tuple[str, str, str]] = []
+        self.calls: list[tuple[str, str, str, str | None]] = []
 
-    def __call__(self, title: str, message: str, priority: str) -> bool:
-        self.calls.append((title, message, priority))
+    def __call__(
+        self, title: str, message: str, priority: str, actions: str | None = None
+    ) -> bool:
+        self.calls.append((title, message, priority, actions))
         return self.ok
 
 
@@ -79,6 +81,7 @@ def _run(
     down_threshold: int = 2,
     realert_hours: float = 6.0,
     auto_recreate_paper: bool = True,
+    command_topic_url: str = "",
 ):
     return wd.run(
         stacks=stacks,
@@ -91,6 +94,7 @@ def _run(
         http_get=_http(http_map),
         ntfy_send=ntfy,
         recreate=recreate,
+        command_topic_url=command_topic_url,
     )
 
 
@@ -441,3 +445,69 @@ class TestRecreateScript:
         )
         assert r.returncode == 2
         assert "nicht gefunden" in r.stderr
+
+
+# ---- Live-DOWN Action-Button (Karte bd6ff0d5, AP-15) --------------------
+
+
+class TestLiveDownActionButton:
+    _CMD = "https://ntfy.sh/cmd-xyz"
+
+    def _drive_live_down(
+        self, state: Path, ntfy: _Ntfy, recreate: _Recreate, *, command_topic_url: str = ""
+    ) -> None:
+        stacks = _stacks(paper=False)
+        inspect_map = {"live-tws": "unhealthy"}
+        http_map = {"http://live/v1/health": False}
+        for _ in range(2):  # 2 Laeufe -> Schwelle erreicht -> Alarm
+            _run(
+                stacks, state_file=state, inspect_map=inspect_map, http_map=http_map,
+                ntfy=ntfy, recreate=recreate, command_topic_url=command_topic_url,
+            )
+
+    def test_live_down_carries_button_when_command_topic_set(
+        self, tmp_path: Path
+    ) -> None:
+        ntfy, recreate = _Ntfy(), _Recreate()
+        self._drive_live_down(
+            tmp_path / "s.json", ntfy, recreate, command_topic_url=self._CMD
+        )
+        _t, _m, prio, actions = ntfy.calls[-1]
+        assert prio == "urgent"
+        assert actions is not None
+        assert "recreate-live" in actions
+        assert self._CMD in actions
+        assert "Live-tws neu starten" in actions
+
+    def test_live_down_no_button_without_command_topic(self, tmp_path: Path) -> None:
+        ntfy, recreate = _Ntfy(), _Recreate()
+        self._drive_live_down(tmp_path / "s.json", ntfy, recreate)  # default ""
+        assert ntfy.calls[-1][3] is None  # kein Actions-Header
+        assert "DOWN" in ntfy.calls[-1][0]  # Text unveraendert
+
+    def test_paper_down_never_carries_button(self, tmp_path: Path) -> None:
+        ntfy, recreate = _Ntfy(), _Recreate(ok=True)
+        stacks = _stacks(live=False)
+        inspect_map = {"paper-tws": "unhealthy"}
+        http_map = {"http://paper/v1/health": False}
+        for _ in range(2):
+            _run(
+                stacks, state_file=tmp_path / "s.json", inspect_map=inspect_map,
+                http_map=http_map, ntfy=ntfy, recreate=recreate,
+                command_topic_url=self._CMD,
+            )
+        # Auch bei gesetztem Command-Topic traegt der Paper-Alarm keinen Button.
+        assert ntfy.calls[-1][3] is None
+
+    def test_recovery_push_never_carries_button(self, tmp_path: Path) -> None:
+        state = tmp_path / "s.json"
+        ntfy, recreate = _Ntfy(), _Recreate()
+        self._drive_live_down(state, ntfy, recreate, command_topic_url=self._CMD)
+        stacks = _stacks(paper=False)
+        _run(
+            stacks, state_file=state, inspect_map={"live-tws": "healthy"},
+            http_map={"http://live/v1/health": True}, ntfy=ntfy, recreate=recreate,
+            command_topic_url=self._CMD,
+        )
+        assert "WIEDER OK" in ntfy.calls[-1][0]
+        assert ntfy.calls[-1][3] is None  # Recovery-Push ohne Button

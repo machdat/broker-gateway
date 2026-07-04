@@ -160,7 +160,7 @@ class WatchdogState:
 # Typ-Aliase fuer die injizierbaren Hooks (Tests reichen Fakes rein).
 DockerInspectFn = Callable[[str], str]
 HttpGetFn = Callable[[str], bool]
-NtfySendFn = Callable[[str, str, str], bool]  # (title, message, priority) -> ok
+NtfySendFn = Callable[..., bool]  # (title, message, priority, actions=None) -> ok
 RecreateFn = Callable[[str], bool]  # (stack_name) -> ok
 
 
@@ -248,16 +248,21 @@ def _default_ntfy_send(
 ) -> NtfySendFn:
     """Baut einen ntfy-Sender, der gegen ``ntfy_url`` postet."""
 
-    def _send(title: str, message: str, priority: str) -> bool:
+    def _send(
+        title: str, message: str, priority: str, actions: str | None = None
+    ) -> bool:
+        headers = {
+            "Title": title,
+            "Priority": priority,  # "urgent" | "high" | "default"
+            "Tags": "warning,broker-gateway",
+        }
+        if actions:
+            headers["Actions"] = actions
         try:
             resp = httpx.post(
                 ntfy_url,
                 content=message.encode("utf-8"),
-                headers={
-                    "Title": title,
-                    "Priority": priority,  # "urgent" | "high" | "default"
-                    "Tags": "warning,broker-gateway",
-                },
+                headers=headers,
                 timeout=_HTTP_TIMEOUT_S,
             )
         except httpx.HTTPError as exc:
@@ -305,6 +310,16 @@ def _default_recreate(script_path: Path) -> RecreateFn:
     return _run
 
 
+def _recreate_live_action(command_topic_url: str) -> str:
+    """ntfy-Actions-Header: ein Button, der 'recreate-live' ins Command-Topic
+    postet - der tws-command-listener startet danach den Bestaetigungs-Round-
+    Trip. Button-Label bewusst umlautfrei (HTTP-Header)."""
+    return (
+        f"http, Live-tws neu starten, {command_topic_url}, "
+        f"method=POST, body=recreate-live, clear=true"
+    )
+
+
 # ---- Kern-Logik ---------------------------------------------------------
 
 
@@ -338,6 +353,7 @@ def process_stack(
     auto_recreate_paper: bool,
     ntfy_send: NtfySendFn,
     recreate: RecreateFn,
+    command_topic_url: str = "",
 ) -> StackOutcome:
     """Aktualisiert State und loest Alarm/Recreate fuer einen Stack aus."""
     st = state.for_stack(config.name)
@@ -397,11 +413,21 @@ def process_stack(
             action = "Auto-Recreate lief bereits, tws bleibt down - bitte manuell pruefen."
         else:
             action = "Auto-Recreate nicht moeglich/fehlgeschlagen - bitte pruefen."
+        # Nur der Live-DOWN-Alarm (manueller Recovery) traegt den Ein-Tipp-
+        # Button, der 'recreate-live' ins Command-Topic postet - und nur, wenn
+        # ein Command-Topic konfiguriert ist. Paper-/Recovery-Pushes bleiben
+        # buttonlos (Paper heilt automatisch, Recovery braucht keine Aktion).
+        actions = (
+            _recreate_live_action(command_topic_url)
+            if command_topic_url and not config.is_paper
+            else None
+        )
         sent = ntfy_send(
             f"broker-gateway {config.name}: tws DOWN",
             f"{config.name}-tws down seit {consecutive} Laeufen "
             f"({check.reason}). {action}",
             prio,
+            actions,
         )
         if sent:
             st["last_alert"] = now.isoformat()
@@ -422,6 +448,7 @@ def run(
     http_get: HttpGetFn,
     ntfy_send: NtfySendFn,
     recreate: RecreateFn,
+    command_topic_url: str = "",
 ) -> list[StackOutcome]:
     """Fuehrt einen Watchdog-Lauf ueber alle Stacks aus."""
     state = WatchdogState.load(state_file)
@@ -438,6 +465,7 @@ def run(
             auto_recreate_paper=auto_recreate_paper,
             ntfy_send=ntfy_send,
             recreate=recreate,
+            command_topic_url=command_topic_url,
         )
         outcomes.append(outcome)
         status = "UP" if outcome.up else f"DOWN (x{outcome.consecutive_down})"
@@ -496,6 +524,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_DEFAULT_RECREATE_SCRIPT,
         help=f"Pfad zu recreate-tws.sh (default {_DEFAULT_RECREATE_SCRIPT}).",
     )
+    p.add_argument(
+        "--command-topic-url",
+        default=os.environ.get("BG_WATCHDOG_COMMAND_TOPIC_URL", ""),
+        help=(
+            "Optionales ntfy-Command-Topic (= BG_CMD_COMMAND_TOPIC_URL des "
+            "Listeners). Gesetzt -> der Live-DOWN-Alarm traegt einen "
+            "'Live-tws neu starten'-Button. Leer -> kein Button (Default). "
+            "Env: BG_WATCHDOG_COMMAND_TOPIC_URL."
+        ),
+    )
     return p
 
 
@@ -519,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
         http_get=_default_http_get,
         ntfy_send=_default_ntfy_send(args.ntfy_url),
         recreate=_default_recreate(args.recreate_script),
+        command_topic_url=args.command_topic_url,
     )
     any_down = any(
         (not o.up) and o.consecutive_down >= args.down_threshold for o in outcomes
