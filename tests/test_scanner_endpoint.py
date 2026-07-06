@@ -233,6 +233,26 @@ class TestScan:
             ("marketCapAbove1e6", "500"),
         ]
 
+    async def test_passes_optional_filters_through(
+        self, client_with_scanner: TestClient, scanner_mock: MagicMock
+    ) -> None:
+        # Regressionsschutz: die sechs optionalen Marktdaten-/MarketCap-Filter
+        # muessen tatsaechlich vom Endpoint an service.scan durchgereicht werden.
+        scanner_mock.scan.return_value = _make_scan_response()
+        client_with_scanner.get(
+            "/v1/scanner?scan_code=TOP_PERC_GAIN&above_price=10&below_price=500"
+            "&above_volume=1000000&market_cap_above=5000000000"
+            "&market_cap_below=9000000000&stock_type_filter=CORP",
+            headers=_auth(_SCANNER_VALUE),
+        )
+        kwargs = scanner_mock.scan.await_args.kwargs
+        assert kwargs["above_price"] == 10.0
+        assert kwargs["below_price"] == 500.0
+        assert kwargs["above_volume"] == 1_000_000
+        assert kwargs["market_cap_above"] == 5_000_000_000.0
+        assert kwargs["market_cap_below"] == 9_000_000_000.0
+        assert kwargs["stock_type_filter"] == "CORP"
+
     async def test_invalid_filter_returns_422(
         self, client_with_scanner: TestClient, scanner_mock: MagicMock
     ) -> None:

@@ -2,9 +2,15 @@
 
 Coverage-Ziel: TWSScannerService (scan + scanner_parameters) plus die
 Parsing-/Validierungs-Helfer parse_filter_options + validate_number_of_rows.
-Mock-Strategie analog zu test_historical: SimpleNamespace fuer die
-ib_async-ScanData-Objekte, AsyncMock bzw. eigene Coroutine fuer die
-ib_async-Async-Methoden. Keine Live-TWS-Session noetig.
+
+Mock-Strategie: der ib_async-Handle wird als SimpleNamespace mit einem
+ECHTEN eventkit-Event (errorEvent) und einem AsyncMock fuer
+reqScannerDataAsync nachgebildet. reqScannerDataAsync liefert eine
+_FakeScanList (list + reqId) - genau wie ib_async.ScanDataList - und kann
+ueber den error_events-Parameter waehrend des Calls IBKR-Fehler-Events
+emittieren. So wird der real relevante Fehlerpfad (ib_async wirft bei
+RaiseRequestErrors=False NICHT, sondern liefert leer + errorEvent)
+getestet, nicht ein synthetisches Exception-Verhalten. Keine Live-TWS.
 """
 from __future__ import annotations
 
@@ -14,6 +20,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from eventkit import Event
 from fastapi import HTTPException
 from ib_async.contract import TagValue
 
@@ -34,6 +41,12 @@ from broker_gateway.tws.scanner import (
 # --------------------------------------------------------------------------
 # Fixture-Helper
 # --------------------------------------------------------------------------
+
+
+class _FakeScanList(list):
+    """Simuliert ib_async.ScanDataList: eine Liste mit reqId-Attribut."""
+
+    reqId: int
 
 
 def _make_scan_data(
@@ -72,17 +85,36 @@ def _make_scan_data(
 def _make_client(
     *,
     scan_result: list[SimpleNamespace] | None = None,
+    scan_req_id: int = 7,
+    error_events: list[tuple[int, int, str]] | None = None,
     scan_raises: Exception | None = None,
+    scan_hangs: bool = False,
     parameters_xml: str = "<ScanParameterResponse/>",
 ) -> MagicMock:
-    if scan_raises is not None:
-        scan = AsyncMock(side_effect=scan_raises)
-    else:
-        scan = AsyncMock(return_value=list(scan_result or []))
-    ib = SimpleNamespace(
-        reqScannerDataAsync=scan,
-        reqScannerParametersAsync=AsyncMock(return_value=parameters_xml),
-    )
+    """Baut einen ib-Handle-Fake mit echtem errorEvent.
+
+    ``error_events`` ist eine Liste von (reqId, errorCode, errorString),
+    die reqScannerDataAsync waehrend des Calls ueber errorEvent emittiert -
+    so wie der echte ib_async-Wrapper es tut (wrapper.error() ->
+    self.ib.errorEvent.emit(...)).
+    """
+    ib = SimpleNamespace(errorEvent=Event("errorEvent"))
+
+    result_list = _FakeScanList(scan_result or [])
+    result_list.reqId = scan_req_id
+
+    async def _side_effect(subscription: object, **_kw: object) -> _FakeScanList:
+        if scan_hangs:
+            await asyncio.sleep(3600)
+        if scan_raises is not None:
+            raise scan_raises
+        for reqid, code, msg in (error_events or []):
+            ib.errorEvent.emit(reqid, code, msg, None)
+        return result_list
+
+    ib.reqScannerDataAsync = AsyncMock(side_effect=_side_effect)
+    ib.reqScannerParametersAsync = AsyncMock(return_value=parameters_xml)
+
     client = MagicMock()
     client._ib = ib
     return client
@@ -268,33 +300,86 @@ class TestScan:
         # Bei Validierungsfehler darf IBKR gar nicht erst gerufen werden.
         client._ib.reqScannerDataAsync.assert_not_awaited()
 
-    async def test_pacing_violation_maps_to_429(self) -> None:
+    # ---- IBKR-Fehler kommen als errorEvent (NICHT als Exception) ----------
+
+    async def test_fatal_ibkr_error_event_raises_not_silent_empty(self) -> None:
+        # IBKR lehnt den Scan ab: leeres Ergebnis + errorEvent(code 162).
+        # Der Endpunkt darf NICHT still 200 {results: []} liefern.
         client = _make_client(
-            scan_raises=RuntimeError("Error 162: market data pacing violation")
+            scan_result=[],
+            scan_req_id=7,
+            error_events=[(7, 162, "market data pacing violation")],
         )
         service = TWSScannerService(client)
         with pytest.raises(HTTPException) as exc_info:
             await service.scan(scan_code="TOP_PERC_GAIN")
         assert exc_info.value.status_code == 429
         assert exc_info.value.detail["code"] == "ibkr_pacing_violation"
+        assert exc_info.value.detail["ibkr_code"] == 162
 
-    async def test_invalid_scan_code_maps_to_422(self) -> None:
+    async def test_benign_no_results_165_returns_empty(self) -> None:
+        # Code 165 (no matching results) ist ein legitimer Leerlauf, KEIN Fehler.
         client = _make_client(
-            scan_raises=RuntimeError("Error 10: Invalid scan code NOT_A_CODE")
+            scan_result=[],
+            scan_req_id=7,
+            error_events=[(7, 165, "no longer matching results")],
+        )
+        service = TWSScannerService(client)
+        result = await service.scan(scan_code="TOP_PERC_GAIN")
+        assert result.results == []
+
+    async def test_market_data_not_subscribed_maps_422_not_429(self) -> None:
+        # Regressionsschutz: '162' als Teilstring von 10162 darf NICHT als
+        # Pacing (429/Retry) fehlklassifiziert werden - exaktes Code-Mapping.
+        client = _make_client(
+            scan_result=[],
+            scan_req_id=7,
+            error_events=[(7, 10162, "Requested market data is not subscribed")],
         )
         service = TWSScannerService(client)
         with pytest.raises(HTTPException) as exc_info:
-            await service.scan(scan_code="NOT_A_CODE")
+            await service.scan(scan_code="TOP_PERC_GAIN")
         assert exc_info.value.status_code == 422
         assert exc_info.value.detail["code"] == "invalid_scan_request"
+        assert exc_info.value.detail["ibkr_code"] == 10162
 
-    async def test_unknown_error_maps_to_502(self) -> None:
-        client = _make_client(scan_raises=RuntimeError("something exploded"))
+    async def test_ignores_error_event_for_other_reqid(self) -> None:
+        # Ein Fehler-Event mit fremder reqId (paralleler Request) darf den
+        # eigenen Scan nicht faelschlich scheitern lassen.
+        client = _make_client(
+            scan_result=[_make_scan_data()],
+            scan_req_id=7,
+            error_events=[(999, 162, "pacing on another request")],
+        )
+        service = TWSScannerService(client)
+        result = await service.scan(scan_code="TOP_PERC_GAIN")
+        assert len(result.results) == 1
+
+    async def test_scan_times_out(self) -> None:
+        client = _make_client(scan_hangs=True)
+        service = TWSScannerService(client, scan_timeout_s=0.05)
+        with pytest.raises(HTTPException) as exc_info:
+            await service.scan(scan_code="TOP_PERC_GAIN")
+        assert exc_info.value.status_code == 504
+        assert exc_info.value.detail["code"] == "scanner_timeout"
+
+    async def test_transport_exception_maps_to_502(self) -> None:
+        # Echte Transport-/Verbindungs-Exception (kein IBKR-Business-Fehler).
+        client = _make_client(scan_raises=ConnectionError("socket closed"))
         service = TWSScannerService(client)
         with pytest.raises(HTTPException) as exc_info:
             await service.scan(scan_code="TOP_PERC_GAIN")
         assert exc_info.value.status_code == 502
         assert exc_info.value.detail["code"] == "ib_async_error"
+
+    async def test_error_handler_is_detached_after_scan(self) -> None:
+        # Der errorEvent-Handler darf nach dem Scan nicht am ib-Handle haengen
+        # bleiben (sonst Leak + Cross-Talk zwischen Scans).
+        client = _make_client(scan_result=[])
+        service = TWSScannerService(client)
+        before = len(client._ib.errorEvent)
+        await service.scan(scan_code="TOP_PERC_GAIN")
+        assert len(client._ib.errorEvent) == before
 
 
 # --------------------------------------------------------------------------
@@ -312,16 +397,21 @@ class TestConcurrencyLimit:
         concurrent = 0
         max_seen = 0
 
-        async def _slow_scan(_sub: object, **_kw: object) -> list[SimpleNamespace]:
+        result_list = _FakeScanList([])
+        result_list.reqId = 1
+
+        async def _slow_scan(_sub: object, **_kw: object) -> _FakeScanList:
             nonlocal concurrent, max_seen
             concurrent += 1
             max_seen = max(max_seen, concurrent)
             await asyncio.sleep(0.02)
             concurrent -= 1
-            return []
+            return result_list
 
+        ib = SimpleNamespace(errorEvent=Event("errorEvent"))
+        ib.reqScannerDataAsync = _slow_scan
         client = MagicMock()
-        client._ib = SimpleNamespace(reqScannerDataAsync=_slow_scan)
+        client._ib = ib
         service = TWSScannerService(client, max_concurrent_scans=3)
 
         await asyncio.gather(
@@ -337,7 +427,9 @@ class TestConcurrencyLimit:
 
 class TestScannerParameters:
     async def test_returns_xml(self) -> None:
-        client = _make_client(parameters_xml="<ScanParameterResponse>xml</ScanParameterResponse>")
+        client = _make_client(
+            parameters_xml="<ScanParameterResponse>xml</ScanParameterResponse>"
+        )
         service = TWSScannerService(client)
         result = await service.scanner_parameters()
         assert isinstance(result, ScannerParametersResponse)

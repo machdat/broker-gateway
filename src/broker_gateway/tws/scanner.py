@@ -59,10 +59,23 @@ MAX_ROWS = 50
 # IBKR: maximal 10 gleichzeitig aktive Scanner-Subscriptions pro Session.
 MAX_CONCURRENT_SCANS = 10
 
+# Timeout fuer einen einzelnen Scan-Aufruf. reqScannerDataAsync selbst hat
+# keinen Timeout; ohne Guard wuerde ein ausbleibendes scannerDataEnd (oder ein
+# Fehler-Event mit fremder reqId) den Call unbegrenzt haengen lassen.
+SCAN_TIMEOUT_S = 30.0
+
 # Defaults fuer einen typischen US-Aktien-Scan.
 DEFAULT_INSTRUMENT = "STK"
 DEFAULT_LOCATION_CODE = "STK.US.MAJOR"
 DEFAULT_NUMBER_OF_ROWS = MAX_ROWS
+
+# IBKR-Fehlercodes, die fuer einen Scanner-Request KEIN echter Fehler sind:
+# ib_async behandelt sie als Warnings (wrapper.error), dazu die 2100-2199
+# System-/Connectivity-Meldungen. 165 = "no longer matching results" = der
+# Scan ist legitim leer.
+_SCANNER_WARNING_CODES: frozenset[int] = frozenset(
+    {105, 110, 165, 321, 329, 399, 404, 434, 492, 10167}
+)
 
 
 class ScanRow(BaseModel):
@@ -129,9 +142,11 @@ class TWSScannerService:
         client: TWSClient,
         *,
         max_concurrent_scans: int = MAX_CONCURRENT_SCANS,
+        scan_timeout_s: float = SCAN_TIMEOUT_S,
     ) -> None:
         self._client = client
         self._max_concurrent_scans = max_concurrent_scans
+        self._scan_timeout_s = scan_timeout_s
         self._scan_semaphore = asyncio.Semaphore(max_concurrent_scans)
 
     # ---- Public API ---------------------------------------------------
@@ -179,13 +194,47 @@ class TWSScannerService:
         ]
 
         ib = self._client._ib  # noqa: SLF001 - Low-Level-Bruecke
+
+        # ib_async wirft mit RaiseRequestErrors=False (Projekt-Default) bei
+        # IBKR-Request-Fehlern NICHT, sondern loest das Future mit einer leeren
+        # Liste auf und emittiert den Fehler ueber errorEvent. Ohne diese
+        # Erfassung waere ein Business-Reject (ungueltiger scanCode, Pacing,
+        # fehlendes Marktdaten-Abo) nicht von einem legitim leeren Scan zu
+        # unterscheiden - beides 200 {results: []} (Silent-Failure).
+        collected_errors: list[tuple[int, int, str]] = []
+
+        def _collect_error(
+            req_id: int, error_code: int, error_string: str, *_: object
+        ) -> None:
+            collected_errors.append((req_id, error_code, error_string))
+
         async with self._scan_semaphore:
             scanned_at = datetime.now(UTC)
+            ib.errorEvent += _collect_error
             try:
-                data = await ib.reqScannerDataAsync(
-                    subscription,
-                    scannerSubscriptionFilterOptions=filter_tagvalues,
+                data = await asyncio.wait_for(
+                    ib.reqScannerDataAsync(
+                        subscription,
+                        scannerSubscriptionFilterOptions=filter_tagvalues,
+                    ),
+                    timeout=self._scan_timeout_s,
                 )
+            except TimeoutError as exc:
+                logger.warning(
+                    "reqScannerDataAsync(scan_code=%s) Timeout nach %.1fs",
+                    scan_code,
+                    self._scan_timeout_s,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail={
+                        "code": "scanner_timeout",
+                        "message": (
+                            f"IBKR-Scan lieferte binnen {self._scan_timeout_s:.0f}s "
+                            "kein Ergebnis"
+                        ),
+                    },
+                ) from exc
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "reqScannerDataAsync(scan_code=%s) fehlgeschlagen: %s",
@@ -193,6 +242,20 @@ class TWSScannerService:
                     exc,
                 )
                 raise _map_ib_error(exc) from exc
+            finally:
+                ib.errorEvent -= _collect_error
+
+        req_id = getattr(data, "reqId", None)
+        fatal = _first_fatal_scanner_error(collected_errors, req_id)
+        if fatal is not None:
+            error_code, error_string = fatal
+            logger.warning(
+                "IBKR lehnt Scan ab (scan_code=%s, ibkr_code=%s): %s",
+                scan_code,
+                error_code,
+                error_string,
+            )
+            raise _map_scanner_error_code(error_code, error_string)
 
         results = [_map_scan_row(item) for item in (data or [])]
         return ScannerResultsResponse(
@@ -250,36 +313,72 @@ def _map_scan_row(data: Any) -> ScanRow:
     )
 
 
-def _map_ib_error(exc: Exception) -> HTTPException:
-    """Mappt typische ib_async-Scanner-Fehler auf HTTPException.
+def _is_benign_scanner_code(code: int) -> bool:
+    """True fuer IBKR-Codes, die fuer einen Scan-Request kein Fehler sind."""
+    return code in _SCANNER_WARNING_CODES or 2100 <= code < 2200
 
-    IBKR-Error 162 (Pacing Violation): 429.
-    Ungueltiger scanCode/locationCode/Filter: 422.
-    Sonst: 502.
+
+def _first_fatal_scanner_error(
+    errors: list[tuple[int, int, str]], req_id: int | None
+) -> tuple[int, str] | None:
+    """Erster fataler Fehler fuer die eigene reqId, sonst None.
+
+    Fehler-Events fremder reqIds (parallele Requests am geteilten IB-Handle)
+    und benigne Codes (165 no-results, 2100-2199 System-Meldungen) werden
+    ignoriert.
     """
-    message = str(exc)
-    lowered = message.lower()
-    if "162" in message or "pacing" in lowered:
+    for event_req_id, code, message in errors:
+        if req_id is not None and event_req_id != req_id:
+            continue
+        if _is_benign_scanner_code(code):
+            continue
+        return code, message
+    return None
+
+
+def _map_scanner_error_code(code: int, message: str) -> HTTPException:
+    """Mappt einen IBKR-Scanner-Fehlercode auf HTTPException.
+
+    Exakter Code-Vergleich, kein Substring: Error 162 (Pacing) -> 429. Der
+    Code 10162 ('market data not subscribed') enthaelt den Teilstring '162',
+    ist aber ein dauerhafter Berechtigungsfehler und darf NICHT als Retry
+    (429) erscheinen -> 422. Der echte IBKR-Code steht als ``ibkr_code`` im
+    Detail, damit der Konsument die Ursache kennt.
+    """
+    if code == 162:
         return HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "code": "ibkr_pacing_violation",
-                "message": (
-                    "IBKR-Pacing-Limit erreicht (Error 162). Spaeter erneut."
-                ),
-            },
-        )
-    if "invalid" in lowered or "scan code" in lowered or "not a valid" in lowered:
-        return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "code": "invalid_scan_request",
-                "message": f"IBKR lehnt die Scan-Anfrage ab: {message}",
+                "message": "IBKR-Pacing-Limit erreicht (Error 162). Spaeter erneut.",
+                "ibkr_code": 162,
             },
         )
     return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "code": "invalid_scan_request",
+            "message": f"IBKR lehnt die Scan-Anfrage ab (Code {code}): {message}",
+            "ibkr_code": code,
+        },
+    )
+
+
+def _map_ib_error(exc: Exception) -> HTTPException:
+    """Mappt eine ib_async-Exception auf HTTPException.
+
+    Der IBKR-Business-Fehlerpfad laeuft ueber errorEvent + _map_scanner_error_code
+    (ib_async wirft mit RaiseRequestErrors=False nicht). Diese Funktion greift
+    nur fuer echte Exceptions: eine ``RequestError`` (falls RaiseRequestErrors
+    doch aktiviert ist) traegt ein ``.code`` und wird ueber ihren exakten Code
+    gemappt; alles andere (ConnectionError, Socket-Fehler) auf 502.
+    """
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return _map_scanner_error_code(code, str(exc))
+    return HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
-        detail={"code": "ib_async_error", "message": message},
+        detail={"code": "ib_async_error", "message": str(exc)},
     )
 
 
