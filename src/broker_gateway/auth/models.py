@@ -21,6 +21,7 @@ SCOPE_ORDERS_READ = "orders:read"
 SCOPE_ORDERS_WRITE = "orders:write"
 SCOPE_HISTORICAL_READ = "historical:read"
 SCOPE_FUNDAMENTALS_READ = "fundamentals:read"
+SCOPE_SCANNER_READ = "scanner:read"
 SCOPE_ADMIN_ALL = "admin:*"
 
 ALL_SCOPES: frozenset[str] = frozenset(
@@ -33,6 +34,7 @@ ALL_SCOPES: frozenset[str] = frozenset(
         SCOPE_ORDERS_WRITE,
         SCOPE_HISTORICAL_READ,
         SCOPE_FUNDAMENTALS_READ,
+        SCOPE_SCANNER_READ,
         SCOPE_ADMIN_ALL,
     }
 )

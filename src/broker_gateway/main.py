@@ -28,6 +28,7 @@ from broker_gateway.api.v1.orders_stream import (
     OrdersBootstrapLoader,
     get_orders_bootstrap_loader,
 )
+from broker_gateway.api.v1.scanner import get_scanner_service
 from broker_gateway.api.v1.status import StatusProbe, get_status_probe
 from broker_gateway.api.v1.orders import (
     get_idempotency_store,
@@ -88,6 +89,7 @@ from broker_gateway.tws import (
 from broker_gateway.tws.calendar import TWSCalendarService
 from broker_gateway.tws.historical import TWSHistoricalService
 from broker_gateway.tws.instruments import TWSInstrumentsService
+from broker_gateway.tws.scanner import TWSScannerService
 from broker_gateway.tws.orders import (
     TWSOrdersBootstrapLoader,
     TWSOrdersService,
@@ -469,6 +471,13 @@ def create_app(
             if owned_tws_for_health is not None
             else None
         )
+        # RW-07: TWSScannerService bedient /v1/scanner + /v1/scanner/parameters.
+        # cp-Backend hat keinen Pendant — der Endpoint liefert dort 503.
+        scanner_service: TWSScannerService | None = (
+            TWSScannerService(owned_tws_for_health)
+            if owned_tws_for_health is not None
+            else None
+        )
         # AP `2a203c58-...` Phase 3: TWS-Backend bekommt TWSQuotesService
         # (ib_async-basiert), der sowohl Snapshot als auch Stream bedient.
         # cp-Pfad bleibt fuer Profile cp-legacy aktiv.
@@ -564,6 +573,7 @@ def create_app(
 
         app.state.instruments_service = inst_service
         app.state.historical_service = historical_service
+        app.state.scanner_service = scanner_service
         app.state.quotes_service = qts_service
         app.state.calendar_service = cal_service
         app.state.orders_broadcaster = orders_broadcaster
@@ -586,6 +596,10 @@ def create_app(
                 lambda: cast(
                     TWSHistoricalService, app.state.historical_service
                 )
+            )
+        if scanner_service is not None:
+            app.dependency_overrides[get_scanner_service] = (
+                lambda: cast(TWSScannerService, app.state.scanner_service)
             )
         app.dependency_overrides[get_quotes_service] = (
             lambda: cast(QuotesService, app.state.quotes_service)

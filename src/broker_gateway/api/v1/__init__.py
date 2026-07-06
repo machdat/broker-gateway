@@ -16,6 +16,7 @@ from broker_gateway.api.v1.portfolio import router as portfolio_router
 from broker_gateway.api.v1.quotes import router as quotes_router
 from broker_gateway.api.v1.quotes_stream import router as quotes_stream_router
 from broker_gateway.api.v1.quotes_ws import router as quotes_ws_router
+from broker_gateway.api.v1.scanner import router as scanner_router
 from broker_gateway.api.v1.status import router as status_router
 from broker_gateway.api.v1.trades import router as trades_router
 
@@ -26,6 +27,7 @@ router.include_router(internal_health_router)
 router.include_router(internal_seed_cookies_router)
 router.include_router(internal_tws_health_router)
 router.include_router(instruments_router)
+router.include_router(scanner_router)
 router.include_router(exchanges_router)
 router.include_router(quotes_router)
 router.include_router(quotes_stream_router)
