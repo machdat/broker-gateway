@@ -29,11 +29,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from broker_gateway.tws.ib_errors import (
+    collect_request_errors,
+    first_fatal_ib_error,
+)
 from broker_gateway.tws.types import Bar
 
 if TYPE_CHECKING:
@@ -147,6 +151,19 @@ class FundamentalsResponse(BaseModel):
     records: list[FundamentalReport]
 
 
+class _FundamentalResult(NamedTuple):
+    """Ergebnis eines einzelnen Reuters-Report-Fetch.
+
+    Genau eines von ``xml`` / ``reject`` ist gesetzt, oder beide sind None:
+      - ``xml`` gesetzt    -> Report mit Daten
+      - ``reject`` gesetzt -> IBKR-Reject ``(code, message)`` fuer diese reqId
+      - beide None         -> legitim kein Report (leer / Timeout)
+    """
+
+    xml: str | None
+    reject: tuple[int, str] | None
+
+
 class TWSHistoricalService:
     """Bars- und Fundamentals-Service auf Basis von ``ib_async``.
 
@@ -221,17 +238,30 @@ class TWSHistoricalService:
 
         contract = await self._resolve_contract(conid)
         records: list[FundamentalReport] = []
-        any_reuters_error = False
+        first_reject: tuple[int, str] | None = None
         for report_type in report_types:
-            xml = await self._fetch_one_fundamental(contract, report_type)
-            if xml is None:
-                any_reuters_error = True
-                continue
-            records.append(FundamentalReport(report_type=report_type, xml=xml))
+            result = await self._fetch_one_fundamental(contract, report_type)
+            if result.xml is not None:
+                records.append(
+                    FundamentalReport(report_type=report_type, xml=result.xml)
+                )
+            elif result.reject is not None and first_reject is None:
+                first_reject = result.reject
 
-        if not records and any_reuters_error:
-            # Kein einziger Report kam zurueck → Reuters-Berechtigung
-            # fehlt komplett oder Symbol hat keine Coverage.
+        if not records:
+            if first_reject is not None:
+                # Ein echter IBKR-Reject (Pacing, fehlende Berechtigung) - vom
+                # generischen 'kein Report' durch den ibkr_code unterscheidbar.
+                error_code, error_string = first_reject
+                logger.warning(
+                    "IBKR lehnt Fundamentals-Request ab (conid=%s, ibkr_code=%s): %s",
+                    conid,
+                    error_code,
+                    error_string,
+                )
+                raise _map_historical_error_code(error_code, error_string)
+            # Kein einziger Report kam zurueck, aber auch kein Reject →
+            # Reuters-Coverage fehlt fuer dieses Symbol (legitim leer).
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={
@@ -272,17 +302,24 @@ class TWSHistoricalService:
                     "message": f"conid {conid} unbekannt",
                 },
             )
+        # ib_async legt fuer eine unbekannte/delistete conid ein None in den
+        # Ergebnis-Slot (RaiseRequestErrors=False: IBKR-Error 200 loest das
+        # contractDetails-Future leer auf -> qualifyContractsAsync haengt None
+        # an). results ist bei einer Einzel-Probe immer laenge 1, also greift
+        # das obige `if not results` nicht - der None-Slot muss hier abgefangen
+        # werden, sonst laeuft ein None-Contract in den Request-Pfad (Historik
+        # -> 502, Fundamentals -> HTTP 500).
         first = results[0]
         if isinstance(first, list):
-            if not first:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={
-                        "code": "contract_not_found",
-                        "message": f"conid {conid} unbekannt",
-                    },
-                )
-            return first[0]
+            first = first[0] if first else None
+        if first is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "code": "contract_not_found",
+                    "message": f"conid {conid} unbekannt",
+                },
+            )
         return first
 
     async def _reqHistoricalData(
@@ -295,78 +332,135 @@ class TWSHistoricalService:
         use_rth: bool,
     ) -> list[Any]:
         ib = self._client._ib  # noqa: SLF001
+        # ib_async wirft mit RaiseRequestErrors=False (Projekt-Default) bei
+        # IBKR-Request-Fehlern NICHT, sondern loest das Future mit einer leeren
+        # BarDataList auf und emittiert den Fehler ueber errorEvent. Ohne diese
+        # Erfassung waere ein Business-Reject (Pacing 162, 200 no security def,
+        # 10162 market data not subscribed) nicht von legitim leeren Bars zu
+        # unterscheiden - beides 200 mit leeren records (Silent-Failure). Der
+        # gemeinsame Helper (auch vom Scanner genutzt) sammelt die Events und
+        # filtert nach der eigenen reqId aus der BarDataList.
         async with self._historical_lock:
             wait = self._historical_pacing_s - (
                 time.monotonic() - self._last_historical_at
             )
             if wait > 0:
                 await asyncio.sleep(wait)
-            try:
-                bars = await ib.reqHistoricalDataAsync(
-                    contract,
-                    endDateTime="",
-                    durationStr=duration,
-                    barSizeSetting=bar_size,
-                    whatToShow=what_to_show,
-                    useRTH=use_rth,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "reqHistoricalDataAsync(conid=%s, bar_size=%s) "
-                    "fehlgeschlagen: %s",
+            with collect_request_errors(ib) as collected_errors:
+                try:
+                    bars = await ib.reqHistoricalDataAsync(
+                        contract,
+                        endDateTime="",
+                        durationStr=duration,
+                        barSizeSetting=bar_size,
+                        whatToShow=what_to_show,
+                        useRTH=use_rth,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "reqHistoricalDataAsync(conid=%s, bar_size=%s) "
+                        "fehlgeschlagen: %s",
+                        getattr(contract, "conId", "?"),
+                        bar_size,
+                        exc,
+                    )
+                    raise _map_ib_error(exc) from exc
+                finally:
+                    self._last_historical_at = time.monotonic()
+
+        req_id = getattr(bars, "reqId", None)
+        fatal = first_fatal_ib_error(collected_errors, req_id)
+        if fatal is not None:
+            error_code, error_string = fatal
+            # IBKR-Code 162 ist ueberladen: neben der Pacing-Violation traegt er
+            # auch "HMDS query returned no data" - ein legitim leeres Ergebnis,
+            # KEIN Retry-Fall. Diesen eng umrissenen Sub-Case (nur bei exaktem
+            # Code 162 + no-data-Message; kein Rueckfall zum 10162-Teilstring-
+            # Bug) als leere 200 durchreichen statt als 429.
+            if error_code == 162 and "query returned no data" in error_string.lower():
+                logger.info(
+                    "IBKR-162 no-data (conid=%s): legitim leeres Ergebnis",
                     getattr(contract, "conId", "?"),
-                    bar_size,
-                    exc,
                 )
-                raise _map_ib_error(exc) from exc
-            finally:
-                self._last_historical_at = time.monotonic()
+                return list(bars or [])
+            logger.warning(
+                "IBKR lehnt Historik-Request ab (conid=%s, ibkr_code=%s): %s",
+                getattr(contract, "conId", "?"),
+                error_code,
+                error_string,
+            )
+            raise _map_historical_error_code(error_code, error_string)
         return list(bars or [])
 
     async def _fetch_one_fundamental(
         self, contract: Any, report_type: str
-    ) -> str | None:
-        """Holt einen Reuters-Report. None signalisiert "fehlt".
+    ) -> _FundamentalResult:
+        """Holt einen Reuters-Report ueber den ib_async-Low-Level-Pfad.
 
-        Wir kapseln pro Report einen Timeout + Exception-Pfad, damit ein
-        einzelner Reuters-Hicks die Gesamtantwort nicht killt. Bei
-        fehlender Reuters-Berechtigung liefert IBKR Error 430 oder
-        einen leeren String — beides mappt der Aufrufer auf
-        ``records``-Ausschluss.
+        ``reqFundamentalDataAsync`` liefert nur einen ``str`` ohne reqId; fuer
+        die errorEvent-Zuordnung (Reject vs. 'kein Report') brauchen wir aber
+        die reqId. Deshalb allozieren wir sie selbst (``client.getReqId``) und
+        starten den Request ueber ``wrapper.startReq`` +
+        ``client.reqFundamentalData`` — exakt das, was
+        ``reqFundamentalDataAsync`` intern tut, nur mit sichtbarer reqId. So
+        laesst sich ein IBKR-Reject fuer die eigene reqId von einem legitim
+        leeren Report unterscheiden, ohne Cross-Talk mit parallelen Requests
+        am geteilten IB-Handle.
+
+        Siehe :class:`_FundamentalResult` fuer die Rueckgabe-Semantik.
         """
         ib = self._client._ib  # noqa: SLF001
+        # Der synchrone Request-Aufbau (getReqId/reqFundamentalData) und das
+        # await werden von einem generischen Handler umschlossen: ib_async loest
+        # bei einem Socket-Abbruch das Future via set_exception(ConnectionError)
+        # auf bzw. getReqId wirft, wenn nicht verbunden. Analog Historik/Scanner
+        # mappen wir das auf einen strukturierten 502, statt es uncaught als
+        # HTTP 500 durchschlagen zu lassen. Der innere TimeoutError-Zweig
+        # returniert vorher (die "leerer Report bei Timeout"-Semantik bleibt).
         try:
-            xml = await asyncio.wait_for(
-                ib.reqFundamentalDataAsync(contract, report_type),
-                timeout=self._fundamentals_timeout_s,
-            )
-        except TimeoutError:
-            logger.warning(
-                "reqFundamentalDataAsync(conid=%s, report=%s) Timeout nach %.1fs",
-                getattr(contract, "conId", "?"),
-                report_type,
-                self._fundamentals_timeout_s,
-            )
-            return None
+            req_id = ib.client.getReqId()
+            with collect_request_errors(ib) as collected_errors:
+                future = ib.wrapper.startReq(req_id, contract)
+                ib.client.reqFundamentalData(req_id, contract, report_type, [])
+                try:
+                    raw = await asyncio.wait_for(
+                        future, timeout=self._fundamentals_timeout_s
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        "reqFundamentalData(conid=%s, report=%s) Timeout nach %.1fs",
+                        getattr(contract, "conId", "?"),
+                        report_type,
+                        self._fundamentals_timeout_s,
+                    )
+                    return _FundamentalResult(xml=None, reject=None)
         except Exception as exc:  # noqa: BLE001
-            # Reuters-Berechtigung fehlt o.ae. — Report ausschliessen,
-            # aber andere Reports weiter versuchen.
-            logger.info(
-                "reqFundamentalDataAsync(conid=%s, report=%s) ohne Daten: %s",
+            logger.warning(
+                "reqFundamentalData(conid=%s, report=%s) ib_async-Fehler: %s",
                 getattr(contract, "conId", "?"),
                 report_type,
                 exc,
             )
-            return None
-        if xml is None:
-            return None
-        text = str(xml)
-        # IBKR liefert manchmal einen leeren String statt eines Errors,
-        # wenn der Report nicht verfuegbar ist. Den ebenfalls als
-        # "fehlt" zaehlen, damit der 404-Pfad sauber greift.
-        if not text.strip():
-            return None
-        return text
+            raise _map_ib_error(exc) from exc
+
+        fatal = first_fatal_ib_error(collected_errors, req_id)
+        if fatal is not None:
+            logger.info(
+                "reqFundamentalData(conid=%s, report=%s) IBKR-Reject (code=%s): %s",
+                getattr(contract, "conId", "?"),
+                report_type,
+                fatal[0],
+                fatal[1],
+            )
+            return _FundamentalResult(xml=None, reject=fatal)
+
+        # ib_async loest das Future bei RaiseRequestErrors=False mit dem leeren
+        # Container ([]) auf, wenn kein fundamentalData-Callback kam — das ist
+        # KEIN str und darf nicht als Report-XML durchgehen. Ein leerer String
+        # zaehlt ebenfalls als "kein Report".
+        if not isinstance(raw, str) or not raw.strip():
+            return _FundamentalResult(xml=None, reject=None)
+        return _FundamentalResult(xml=raw, reject=None)
 
     async def _import_contract_class(self) -> Any:
         try:
@@ -382,35 +476,71 @@ class TWSHistoricalService:
         return Contract
 
 
-def _map_ib_error(exc: Exception) -> HTTPException:
-    """Mappt typische ib_async-Fehler auf HTTPException.
+def _map_historical_error_code(code: int, message: str) -> HTTPException:
+    """Mappt einen IBKR-Historik-/Fundamentals-Fehlercode auf HTTPException.
 
-    IBKR-Error-Code 162 (Pacing Violation): 429.
-    IBKR-Error-Code 200 (No security definition): 404.
-    Sonst: 502.
+    Exakter Code-Vergleich, kein Substring: Error 162 (Pacing) -> 429. Der
+    Code 10162 ('market data not subscribed') enthaelt den Teilstring '162',
+    ist aber ein Berechtigungs-/Verfuegbarkeitsfehler und darf NICHT als Retry
+    (429) erscheinen -> 404. Error 200 ('no security definition') -> 404
+    contract_not_found. Jeder andere fatale Code -> 404 mit dem echten
+    ``ibkr_code`` im Detail, damit der Konsument die Ursache kennt und einen
+    Reject von legitim leeren Daten unterscheiden kann.
+
+    Bewusste Divergenz zum Scanner: derselbe IBKR-Code kann je Endpunkt einen
+    anderen HTTP-Status ergeben (z.B. 10162 -> hier 404, im Scanner 422), weil
+    /historical und /fundamentals eine Daten-Ressource modellieren (fehlende
+    Verfuegbarkeit -> 404) und der Scanner eine Anfrage (Reject -> 422). Der
+    Konsument disambiguiert ueber das Body-Feld ``code``/``ibkr_code``, nicht
+    ueber den nackten HTTP-Status.
     """
-    message = str(exc)
-    if "162" in message or "pacing" in message.lower():
+    if code == 162:
         return HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "code": "ibkr_pacing_violation",
-                "message": (
-                    "IBKR-Pacing-Limit erreicht (Error 162). Spaeter erneut."
-                ),
+                "message": "IBKR-Pacing-Limit erreicht (Error 162). Spaeter erneut.",
+                "ibkr_code": 162,
             },
         )
-    if "200" in message or "no security definition" in message.lower():
+    if code == 200:
         return HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": "contract_not_found",
                 "message": "IBKR liefert keine Security-Definition fuer diesen conid",
+                "ibkr_code": 200,
             },
         )
     return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "code": "historical_data_unavailable",
+            "message": (
+                f"IBKR lehnt die Historik-/Fundamentals-Anfrage ab "
+                f"(Code {code}): {message}"
+            ),
+            "ibkr_code": code,
+        },
+    )
+
+
+def _map_ib_error(exc: Exception) -> HTTPException:
+    """Mappt eine echte ib_async-Exception auf HTTPException.
+
+    Der IBKR-Business-Fehlerpfad laeuft ueber errorEvent +
+    _map_historical_error_code (ib_async wirft mit RaiseRequestErrors=False
+    nicht). Diese Funktion greift nur fuer echte Exceptions: eine
+    ``RequestError`` (falls RaiseRequestErrors doch aktiviert ist) traegt ein
+    ``.code`` und wird ueber ihren exakten Code gemappt; alles andere
+    (ConnectionError, Socket-Fehler) auf 502.
+    """
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return _map_historical_error_code(code, str(exc))
+    return HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
-        detail={"code": "ib_async_error", "message": message},
+        detail={"code": "ib_async_error", "message": str(exc)},
     )
 
 

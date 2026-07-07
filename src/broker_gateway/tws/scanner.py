@@ -46,6 +46,11 @@ from typing import TYPE_CHECKING, Any
 from fastapi import HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from broker_gateway.tws.ib_errors import (
+    collect_request_errors,
+    first_fatal_ib_error,
+)
+
 if TYPE_CHECKING:
     from broker_gateway.tws.client import TWSClient
 
@@ -68,14 +73,6 @@ SCAN_TIMEOUT_S = 30.0
 DEFAULT_INSTRUMENT = "STK"
 DEFAULT_LOCATION_CODE = "STK.US.MAJOR"
 DEFAULT_NUMBER_OF_ROWS = MAX_ROWS
-
-# IBKR-Fehlercodes, die fuer einen Scanner-Request KEIN echter Fehler sind:
-# ib_async behandelt sie als Warnings (wrapper.error), dazu die 2100-2199
-# System-/Connectivity-Meldungen. 165 = "no longer matching results" = der
-# Scan ist legitim leer.
-_SCANNER_WARNING_CODES: frozenset[int] = frozenset(
-    {105, 110, 165, 321, 329, 399, 404, 434, 492, 10167}
-)
 
 
 class ScanRow(BaseModel):
@@ -200,53 +197,47 @@ class TWSScannerService:
         # Liste auf und emittiert den Fehler ueber errorEvent. Ohne diese
         # Erfassung waere ein Business-Reject (ungueltiger scanCode, Pacing,
         # fehlendes Marktdaten-Abo) nicht von einem legitim leeren Scan zu
-        # unterscheiden - beides 200 {results: []} (Silent-Failure).
-        collected_errors: list[tuple[int, int, str]] = []
-
-        def _collect_error(
-            req_id: int, error_code: int, error_string: str, *_: object
-        ) -> None:
-            collected_errors.append((req_id, error_code, error_string))
-
+        # unterscheiden - beides 200 {results: []} (Silent-Failure). Der
+        # gemeinsame Helper collect_request_errors/first_fatal_ib_error
+        # kapselt das Sammeln + den benign/fatal-Filter (auch von der
+        # Historik genutzt).
         async with self._scan_semaphore:
             scanned_at = datetime.now(UTC)
-            ib.errorEvent += _collect_error
-            try:
-                data = await asyncio.wait_for(
-                    ib.reqScannerDataAsync(
-                        subscription,
-                        scannerSubscriptionFilterOptions=filter_tagvalues,
-                    ),
-                    timeout=self._scan_timeout_s,
-                )
-            except TimeoutError as exc:
-                logger.warning(
-                    "reqScannerDataAsync(scan_code=%s) Timeout nach %.1fs",
-                    scan_code,
-                    self._scan_timeout_s,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                    detail={
-                        "code": "scanner_timeout",
-                        "message": (
-                            f"IBKR-Scan lieferte binnen {self._scan_timeout_s:.0f}s "
-                            "kein Ergebnis"
+            with collect_request_errors(ib) as collected_errors:
+                try:
+                    data = await asyncio.wait_for(
+                        ib.reqScannerDataAsync(
+                            subscription,
+                            scannerSubscriptionFilterOptions=filter_tagvalues,
                         ),
-                    },
-                ) from exc
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "reqScannerDataAsync(scan_code=%s) fehlgeschlagen: %s",
-                    scan_code,
-                    exc,
-                )
-                raise _map_ib_error(exc) from exc
-            finally:
-                ib.errorEvent -= _collect_error
+                        timeout=self._scan_timeout_s,
+                    )
+                except TimeoutError as exc:
+                    logger.warning(
+                        "reqScannerDataAsync(scan_code=%s) Timeout nach %.1fs",
+                        scan_code,
+                        self._scan_timeout_s,
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                        detail={
+                            "code": "scanner_timeout",
+                            "message": (
+                                f"IBKR-Scan lieferte binnen "
+                                f"{self._scan_timeout_s:.0f}s kein Ergebnis"
+                            ),
+                        },
+                    ) from exc
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "reqScannerDataAsync(scan_code=%s) fehlgeschlagen: %s",
+                        scan_code,
+                        exc,
+                    )
+                    raise _map_ib_error(exc) from exc
 
         req_id = getattr(data, "reqId", None)
-        fatal = _first_fatal_scanner_error(collected_errors, req_id)
+        fatal = first_fatal_ib_error(collected_errors, req_id)
         if fatal is not None:
             error_code, error_string = fatal
             logger.warning(
@@ -311,29 +302,6 @@ def _map_scan_row(data: Any) -> ScanRow:
         projection=getattr(data, "projection", "") or None,
         legs_str=getattr(data, "legsStr", "") or None,
     )
-
-
-def _is_benign_scanner_code(code: int) -> bool:
-    """True fuer IBKR-Codes, die fuer einen Scan-Request kein Fehler sind."""
-    return code in _SCANNER_WARNING_CODES or 2100 <= code < 2200
-
-
-def _first_fatal_scanner_error(
-    errors: list[tuple[int, int, str]], req_id: int | None
-) -> tuple[int, str] | None:
-    """Erster fataler Fehler fuer die eigene reqId, sonst None.
-
-    Fehler-Events fremder reqIds (parallele Requests am geteilten IB-Handle)
-    und benigne Codes (165 no-results, 2100-2199 System-Meldungen) werden
-    ignoriert.
-    """
-    for event_req_id, code, message in errors:
-        if req_id is not None and event_req_id != req_id:
-            continue
-        if _is_benign_scanner_code(code):
-            continue
-        return code, message
-    return None
 
 
 def _map_scanner_error_code(code: int, message: str) -> HTTPException:
