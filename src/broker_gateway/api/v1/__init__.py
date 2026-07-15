@@ -33,8 +33,16 @@ router.include_router(quotes_router)
 router.include_router(quotes_stream_router)
 router.include_router(quotes_ws_router)
 router.include_router(portfolio_router)
-router.include_router(orders_router)
+# REIHENFOLGE IST FACHLICH: orders_stream_router MUSS vor orders_router
+# stehen. Beide haben prefix="/orders"; orders_router enthält die
+# Platzhalter-Route GET "/{order_id}", die auch auf "/orders/stream"
+# passt. Starlette nimmt den ersten Treffer in Registrierungsreihenfolge
+# - steht orders_router vorn, ist GET /v1/orders/stream unerreichbar und
+# antwortet 404 "order_id unbekannt" (Karte cefcb57a). Nicht alphabetisch
+# sortieren. Festgenagelt von tests/test_orders_stream.py
+# ::TestOrdersStreamRouting und tests/test_api_routing.py.
 router.include_router(orders_stream_router)
+router.include_router(orders_router)
 router.include_router(orders_ws_router)
 router.include_router(trades_router)
 router.include_router(status_router)
