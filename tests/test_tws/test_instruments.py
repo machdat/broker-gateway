@@ -522,3 +522,115 @@ class TestCacheProperties:
         assert service.search_cache is service._search_cache
         assert service.isin_cache is service._isin_cache
         assert service.info_cache is service._info_cache
+
+
+# --------------------------------------------------------------------------
+# Hours-TTL (Karte 35162b2d)
+# --------------------------------------------------------------------------
+
+
+class TestHoursTtl:
+    """Der Hours-tragende info-Cache hängt an einer eigenen kurzen TTL.
+
+    IBKR liefert die Contract-Hours als rollierendes Fenster von 4
+    Handelstagen (Messung in docs/api/v1.md 4.2). Mit der alten 7-Tage-TTL
+    enthielt ein Cache-Eintrag nach wenigen Tagen kein Segment für den
+    aktuellen Tag mehr.
+    """
+
+    def test_info_cache_ttl_is_short_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("BG_INSTRUMENT_HOURS_TTL_S", raising=False)
+        client = _make_client()
+        service = TWSInstrumentsService(client, rate_limit_s=0.0)
+        assert service.hours_ttl_seconds == 3600.0
+        assert service.info_cache.ttl_seconds == 3600.0
+
+    def test_mapping_caches_keep_the_long_ttl(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("BG_INSTRUMENT_HOURS_TTL_S", raising=False)
+        client = _make_client()
+        service = TWSInstrumentsService(client, rate_limit_s=0.0)
+        seven_days = 7 * 24 * 60 * 60
+        assert service.search_cache.ttl_seconds == seven_days
+        assert service.isin_cache.ttl_seconds == seven_days
+        # Der Hours-Pfad darf gerade NICHT daran hängen.
+        assert service.info_cache.ttl_seconds < seven_days
+
+    def test_hours_ttl_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("BG_INSTRUMENT_HOURS_TTL_S", "120")
+        client = _make_client()
+        service = TWSInstrumentsService(client, rate_limit_s=0.0)
+        assert service.hours_ttl_seconds == 120.0
+
+    @pytest.mark.parametrize("raw", ["", "abc", "0", "-5", "nonsense"])
+    def test_hours_ttl_env_garbage_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str
+    ) -> None:
+        # Eine vertippte ENV darf den Service nicht am Start hindern.
+        monkeypatch.setenv("BG_INSTRUMENT_HOURS_TTL_S", raw)
+        client = _make_client()
+        service = TWSInstrumentsService(client, rate_limit_s=0.0)
+        assert service.hours_ttl_seconds == 3600.0
+
+    def test_explicit_argument_beats_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BG_INSTRUMENT_HOURS_TTL_S", "120")
+        client = _make_client()
+        service = TWSInstrumentsService(
+            client, hours_ttl_seconds=30.0, rate_limit_s=0.0
+        )
+        assert service.hours_ttl_seconds == 30.0
+
+    async def test_expired_hours_refetched_while_mapping_stays_cached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verification-Kriterium der Karte, wörtlich.
+
+        Ein Hours-Eintrag älter als die neue TTL wird neu geholt, während
+        das conid/symbol-Mapping weiter aus dem Cache kommt.
+        """
+
+        class _Contract:
+            def __init__(self, **kwargs: Any) -> None:
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        contract = _make_contract(conid=265598, symbol="AAPL")
+        client = _make_client(
+            matching_symbols=[_make_description(contract=contract)],
+            contract_details=[
+                _make_details(
+                    contract=contract,
+                    trading_hours="20260714:0400-20260714:2000",
+                    liquid_hours="20260714:0930-20260714:1600",
+                    time_zone_id="US/Eastern",
+                )
+            ],
+        )
+        service = TWSInstrumentsService(
+            client, hours_ttl_seconds=0.05, rate_limit_s=0.0
+        )
+
+        async def _fake_import(_self: Any) -> Any:
+            return _Contract
+
+        monkeypatch.setattr(
+            TWSInstrumentsService, "_import_contract_class", _fake_import
+        )
+
+        await service.search("AAPL")
+        await service.info(265598)
+        assert client._ib.reqContractDetailsAsync.await_count == 1
+
+        await asyncio.sleep(0.06)
+
+        # Hours abgelaufen -> neuer IBKR-Call.
+        await service.info(265598)
+        assert client._ib.reqContractDetailsAsync.await_count == 2
+        # conid/symbol-Mapping hängt an der 7-Tage-TTL und bleibt gecacht.
+        await service.search("AAPL")
+        assert client._ib.reqMatchingSymbolsAsync.await_count == 1

@@ -4,6 +4,29 @@ Alle bemerkenswerten Aenderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.12.1] — 2026-07-15 (Karte `35162b2d`: Contract-Hours bekommen eine eigene kurze TTL)
+
+`TWSInstrumentsService` cachte das gesamte `InstrumentDetail` mit der
+7-Tage-TTL des conid-Mappings — seit v2.6.0 samt der Contract-Hours. IBKR
+liefert die Hours aber als rollierendes Fenster, also enthielt ein älterer
+Cache-Eintrag kein Segment mehr für den aktuellen Tag. Konsumenten sahen
+keine Handelszeiten für heute, was wie „Börse geschlossen" aussieht, aber
+„Daten veraltet" bedeutet. Gefunden beim Bau des Konsumenten
+(trading_robot-Karte `345fe163`, ADR-0018).
+
+- **Fix:** `_info_cache` hängt an einer eigenen TTL (Default 1 Stunde, ENV
+  `BG_INSTRUMENT_HOURS_TTL_S`). Die Mapping-Caches `search`/`search_by_isin`
+  bleiben bei 7 Tagen — sie tragen keine Hours.
+- **Messung des IBKR-Fensters** (2026-07-15, Paper-Stack, an bewusst
+  ungecachten Small-Caps gemessen): IBKR liefert konstant 4 Handelstage.
+  NASDAQ/NYSE startet gestern und reicht bis heute+2 Handelstage, ARCA
+  startet heute und reicht bis heute+3. Der knappste Fall (NASDAQ/NYSE)
+  begrenzt die TTL nach oben auf ~2 Tage; die gewählte Stunde liegt weit
+  darunter und lässt höchstens einen `reqContractDetails` pro conid und
+  Stunde zu. Dokumentiert in `docs/api/v1.md` 4.2 (Spec v1.41.0).
+- **Kein Schema-Change.** Rein die Frische der Werte; der cp-Pfad liefert
+  die Hours ohnehin als `null` und bleibt unberührt.
+
 ## [2.10.0] - 2026-07-04 (AP-15: Remote-Restart Live-tws via ntfy + präventiver AutoRestartTime)
 
 Zwei ineinandergreifende Stränge gegen den nächtlichen Live-tws-2FA-Loop
