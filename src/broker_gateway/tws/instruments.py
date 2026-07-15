@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import time
 from typing import TYPE_CHECKING, Any
@@ -49,16 +50,50 @@ __all__ = [
 
 
 _DEFAULT_TTL_S = 7 * 24 * 60 * 60  # 7 Tage, analog zu cp-Variante
+_DEFAULT_HOURS_TTL_S = 60 * 60.0  # 1 Stunde, siehe _hours_ttl_from_env
+_HOURS_TTL_ENV = "BG_INSTRUMENT_HOURS_TTL_S"
 _MATCHING_SYMBOLS_RATE_LIMIT_S = 1.05  # IBKR: 1 req/sec, kleiner Sicherheitsabstand
+
+
+def _hours_ttl_from_env() -> float:
+    """TTL des ``info``-Cache aus der Umgebung, sonst Default.
+
+    Muster identisch zu ``cp.portfolio._ttl_from_env``. Ein unlesbarer oder
+    nicht-positiver Wert fällt still auf den Default zurück, damit eine
+    vertippte ENV den Service nicht am Start hindert.
+    """
+    raw = os.environ.get(_HOURS_TTL_ENV)
+    if not raw:
+        return _DEFAULT_HOURS_TTL_S
+    try:
+        value = float(raw)
+    except ValueError:
+        return _DEFAULT_HOURS_TTL_S
+    return value if value > 0 else _DEFAULT_HOURS_TTL_S
 
 
 class TWSInstrumentsService:
     """Read-Pfad fuer Instrument-Lookup via ib_async.
 
     Liefert dieselben Pydantic-Modelle wie ``cp.instruments.InstrumentsService``,
-    damit der Backend-Switch fuer Konsumenten transparent ist. TTL-Cache
-    analog zu cp-Variante (Default 7 Tage, conid-Mapping aendert sich
-    praktisch nie).
+    damit der Backend-Switch fuer Konsumenten transparent ist.
+
+    Zwei TTL-Klassen (Karte 35162b2d):
+
+    - ``search``/``search_by_isin`` cachen das **conid/symbol-Mapping**. Das
+      ändert sich praktisch nie, daher weiter ``ttl_seconds`` = 7 Tage.
+    - ``info`` liefert seit v2.6.0 zusätzlich die Contract-Hours, und die
+      sind ein rollierendes Fenster von 4 Handelstagen (Messung siehe
+      ``docs/api/v1.md`` 4.2). Ein Eintrag, der älter ist als das Fenster
+      nach vorn reicht, enthält kein Segment für heute mehr und ist für
+      Konsumenten nicht von "Börse geschlossen" zu unterscheiden. Deshalb
+      hängt ``_info_cache`` an der eigenen, kurzen ``hours_ttl_seconds``.
+
+    ``_info_cache`` ist bewusst **nicht** in Stammdaten + Hours gesplittet.
+    Beide Feldgruppen stammen aus derselben ``reqContractDetails``-Antwort,
+    ein Hours-Miss zwingt also ohnehin zum IBKR-Call, der die Stammdaten
+    gratis mitliefert. Ein zweiter, lang cachender Stammdaten-Cache wäre nie
+    die bindende Schranke und spart keinen einzigen Request.
     """
 
     def __init__(
@@ -66,6 +101,7 @@ class TWSInstrumentsService:
         client: TWSClient,
         *,
         ttl_seconds: float = _DEFAULT_TTL_S,
+        hours_ttl_seconds: float | None = None,
         rate_limit_s: float = _MATCHING_SYMBOLS_RATE_LIMIT_S,
     ) -> None:
         self._client = client
@@ -75,7 +111,12 @@ class TWSInstrumentsService:
         self._isin_cache: TTLCache[
             tuple[str, str | None], list[Instrument]
         ] = TTLCache(ttl_seconds)
-        self._info_cache: TTLCache[int, InstrumentDetail] = TTLCache(ttl_seconds)
+        hours_ttl = (
+            hours_ttl_seconds
+            if hours_ttl_seconds is not None
+            else _hours_ttl_from_env()
+        )
+        self._info_cache: TTLCache[int, InstrumentDetail] = TTLCache(hours_ttl)
         # IBKR-seitig 1 req/sec auf reqMatchingSymbols. Lock serialisiert
         # parallele Aufrufe; _last_search_at sorgt dafuer, dass aufeinander-
         # folgende Calls den Mindestabstand einhalten.
@@ -100,6 +141,11 @@ class TWSInstrumentsService:
     @property
     def info_cache(self) -> TTLCache[int, InstrumentDetail]:
         return self._info_cache
+
+    @property
+    def hours_ttl_seconds(self) -> float:
+        """TTL des Hours-tragenden ``info``-Cache (Karte 35162b2d)."""
+        return self._info_cache.ttl_seconds
 
     # ---- Endpunkt-Logik ----------------------------------------------
 
