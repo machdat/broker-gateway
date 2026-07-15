@@ -1,8 +1,20 @@
 # Changelog
 
-Alle bemerkenswerten Aenderungen am Service. Format lose an
+Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
+
+## [2.12.2] — 2026-07-15 (Hausputz: CHANGELOG-Lücke geschlossen, verwaister Import entfernt)
+
+Keine Verhaltensänderung am Service. Zwei Beobachtungen aus der Arbeit an Karte
+`35162b2d` nachgezogen:
+
+- **CHANGELOG-Lücke:** Für v2.11.0 (Marktscanner) und v2.12.0 (Historik-Rejects)
+  fehlten die Einträge — v2.12.1 stand direkt über v2.10.0. Beide Einträge sind
+  aus den zugehörigen PRs (#66, #67) nachgetragen.
+- **`tws/instruments.py`:** verwaister `import re` entfernt (ruff F401). Der
+  Import stammt aus einer früheren Fassung; die CI ruft nur pytest und hat ihn
+  daher nie gemeldet.
 
 ## [2.12.1] — 2026-07-15 (Karte `35162b2d`: Contract-Hours bekommen eine eigene kurze TTL)
 
@@ -26,6 +38,58 @@ keine Handelszeiten für heute, was wie „Börse geschlossen" aussieht, aber
   Stunde zu. Dokumentiert in `docs/api/v1.md` 4.2 (Spec v1.41.0).
 - **Kein Schema-Change.** Rein die Frische der Werte; der cp-Pfad liefert
   die Hours ohnehin als `null` und bleibt unberührt.
+
+## [2.12.0] — 2026-07-07 (Karte `dbc5edd7`: IBKR-Request-Rejects nicht mehr still 200-leer)
+
+`ib_async` läuft mit `RaiseRequestErrors=False` (Projekt-Default) und wirft bei
+IBKR-Request-Fehlern keine Exception, sondern löst das Future leer auf und meldet
+den Fehler nur über `errorEvent`. Historik- und Fundamentals-Endpunkt lieferten
+dadurch bei Rejects (Pacing 162, „no security def" 200, „market data not
+subscribed" 10162/10197) still HTTP 200 mit leeren `records` — Konsumenten
+konnten „keine Daten" nicht von „IBKR hat abgelehnt" unterscheiden.
+
+- **Gemeinsamer Helper `tws/ib_errors.py`** (`collect_request_errors`,
+  `is_benign_ib_code`, `first_fatal_ib_error`); der Scanner aus v2.11.0 wurde
+  darauf refactored.
+- **Historik:** `_reqHistoricalData` sammelt errorEvents, filtert nach der
+  eigenen `BarDataList.reqId` und wirft exakt gemappt (162 → 429, 200 → 404,
+  sonst 404 `historical_data_unavailable` mit `ibkr_code`). `_map_ib_error` von
+  Substring- auf exaktes `.code`-Mapping umgestellt.
+- **Fundamentals:** `_fetch_one_fundamental` läuft über den
+  ib_async-Low-Level-reqId-Pfad (`getReqId`/`startReq`/`reqFundamentalData`),
+  damit ein Reject von „kein Report vorhanden" unterscheidbar wird.
+- **Aus dem adversarialen Pre-Commit-Review** (7 bestätigte Befunde):
+  `_resolve_contract` bekam einen None-Guard (unbekannte conid → 404
+  `contract_not_found` statt 500/502), ein Socket-Abbruch endet als 502
+  `ib_async_error` statt als uncaught 500, und IBKR-162 „HMDS query returned no
+  data" liefert 200 leer statt 429, weil Code 162 überladen ist.
+- v1-Spec auf v1.40.0 (Fehlertabellen Historik + Fundamentals). Volle Suite grün
+  mit 1387 Tests.
+
+## [2.11.0] — 2026-07-06 (RW-07 / BRO-0144: IBKR-Marktscanner `GET /v1/scanner`)
+
+Programmatischer Zugriff auf die IBKR-Scanner-Engine (`reqScannerSubscription`)
+über die TWS-API, analog zum Historik-Endpunkt. Liefert Live-Screening für den
+trading_robot-Konsumenten.
+
+- **`TWSScannerService` (`tws/scanner.py`):** One-Shot `reqScannerDataAsync`,
+  `ScanData`→`ScanRow`-Mapping, Semaphore für die IBKR-Grenze von 10
+  gleichzeitigen Scans, 50-Treffer-Validierung (422) und `scanner_parameters`
+  (Discovery-XML).
+- **`GET /v1/scanner` + `GET /v1/scanner/parameters`** (`api/v1/scanner.py`),
+  Scope `scanner:read`, im cp-Modus 503 — der Endpunkt gibt es nur im
+  TWS-Backend.
+- **Fundamental-Ratio-Filter** laufen über `scannerSubscriptionFilterOptions`
+  (`filter=tag:value` / TagValue); die `ScannerSubscription`-Felder selbst decken
+  nur Preis, Volumen, MarketCap und Ratings.
+- **Rejection-Erkennung statt Silent-200-Empty** (Pre-Deploy-Review-Befund):
+  `scan()` hängt einen errorEvent-Sammler an, filtert nach der eigenen reqId und
+  wirft bei fatalen Codes; Code 165 „no matching results" bleibt ein legitimer
+  leerer 200. Dazu ein `asyncio.wait_for`-Timeout (504) und exaktes
+  Code-Mapping, damit 10162 „market data not subscribed" nicht mehr als
+  Pacing-Retry (429) fehlklassifiziert wird.
+- `docs/api/v1.md` Section 4.5 inklusive Kurs- und Fundamental-Nachladung der
+  Treffer. 41 neue Tests (27 Service, 14 Endpunkt).
 
 ## [2.10.0] - 2026-07-04 (AP-15: Remote-Restart Live-tws via ntfy + präventiver AutoRestartTime)
 
