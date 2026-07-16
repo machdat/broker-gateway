@@ -4,6 +4,34 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.12.4] — 2026-07-16 (Karte `601c6e09`: Order-Event-Pfade sperrten write-Token aus)
+
+`GET /v1/orders/stream` und `GET /v1/orders/ws` verlangten strikt den Scope
+`orders:read`, während alle lesenden REST-Endpunkte (`GET /v1/orders`,
+`GET /v1/orders/{order_id}`, `POST /v1/orders/whatif`) `orders:read` **oder**
+`orders:write` akzeptieren. Damit sperrten ausgerechnet die Event-Pfade einen
+Konsumenten aus, der dieselben Orders über die REST-Pfade längst lesen darf.
+
+Das blockierte trading_robot konkret: sein Token hat `orders:write`, aber kein
+`orders:read`. Nach dem Routing-Fix in v2.12.3 lieferte der Stream zwar
+`text/event-stream`, der Bot bekam aber weiterhin `403 missing_scope`. Erst
+beide Teile zusammen machen den Event-Pfad nutzbar.
+
+- **Fix:** beide Pfade auf `require_any_scope(orders:read, orders:write)`.
+  Die Factory war für genau diesen Fall gebaut — ihr Docstring
+  (`auth/middleware.py`) hält fest, dass eine Schreibberechtigung das
+  Leserecht auf dieselbe Ressource einschließt.
+- **`authenticate_websocket`** nimmt jetzt variadisch mehrere Scopes mit
+  OR-Semantik, als WS-Gegenstück zu `require_any_scope`. Aufrufer mit genau
+  einem Scope bleiben unverändert gültig; `quotes_ws` ist nicht betroffen, weil
+  es keinen `quotes:write`-Scope gibt.
+- **Keine neue Berechtigungsklasse.** Ein `orders:write`-Token kann dieselben
+  Order-Daten über `GET /v1/orders` und `GET /v1/orders/{order_id}` schon
+  heute lesen. Die schreibenden Endpunkte (`POST`/`DELETE`/`PATCH`) verlangen
+  unverändert strikt `orders:write`, und ein fremder Lese-Scope wird weiterhin
+  abgewiesen — beides durch Tests festgenagelt.
+- v1-Spec auf v1.43.0.
+
 ## [2.12.3] — 2026-07-16 (Karte `cefcb57a`: `GET /v1/orders/stream` war nie erreichbar)
 
 Der SSE-Endpunkt `GET /v1/orders/stream` war seit seiner Einführung
