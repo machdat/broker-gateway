@@ -261,8 +261,8 @@ Parallel und additiv zu SSE:
   Anforderung identisch zum SSE-Pfad.
 - `Last-Event-ID`-Äquivalent: optionaler `last_event_id`-Query-Param
   beim WS-Connect; Server replayt aus dem Snapshot-Cache.
-- Heartbeat: WS-Ping/Pong alle 15 s (Browser-Standard); kein
-  Application-Level-Heartbeat zusätzlich.
+- Heartbeat: WS-Ping/Pong des Transports (~20 s, uvicorn/`websockets`-Default);
+  kein Application-Level-Heartbeat zusätzlich.
 
 WS- und SSE-Pfad bedienen sich aus demselben `StreamHub`. Ein und
 derselbe Refcount-Slot (gleicher `conid`/Account) wird von allen

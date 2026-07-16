@@ -44,7 +44,7 @@ from typing import TypeVar
 
 T = TypeVar("T")
 
-# Der zugesagte Vertrag (Docstring orders_stream.py, ws-adapter-design.md:241,
+# Der zugesagte Vertrag (Docstring orders_stream.py, ws-adapter-design.md:243,
 # docs/api/v1.md): 15-s-Intervall, SSE-Comment ``: keepalive``.
 DEFAULT_HEARTBEAT_INTERVAL_S = 15.0
 DEFAULT_HEARTBEAT_COMMENT = b": keepalive\n\n"

@@ -4,6 +4,35 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.15.0] — 2026-07-16 (Karte `9b1d76ba`: SSE-Heartbeat einlösen, den Docstring und Design-Doc längst zusagen)
+
+Die SSE-Streams senden in stillen Phasen jetzt tatsächlich alle **15 Sekunden**
+einen Keepalive-Comment (`: keepalive\n\n`). Bisher versprachen das nur der
+Docstring von `orders_stream.py` und `docs/architecture/ws-adapter-design.md`,
+im Code gab es keinen Keepalive-Pfad. Die Folge war ein Reconnect-Sturm: ein
+Consumer mit üblichem Read-Timeout (trading_robot: 30 s) konnte eine gesunde,
+aber stille Verbindung nicht von einer toten unterscheiden und baute sie im
+Timeout-Takt neu auf — nachts und ausserhalb der Handelszeiten, also im
+Normalfall, dauerhaft.
+
+Umgesetzt über einen **cancel-sicheren** Wrapper
+`streams/heartbeat.py::sse_with_heartbeat`, den beide SSE-Endpunkte
+(`/v1/orders/stream`, `/v1/quotes/stream`) teilen. Der von der Karte
+vorgeschlagene naive Ansatz `asyncio.wait_for(source.__anext__(), 15s)` ist
+hier **nicht** cancel-sicher: der Timeout cancelt den gesamten
+Generator-Frame und triggert dessen `finally` (`detach`), womit der Consumer
+schon beim ersten Heartbeat aus dem Fan-Out fiele. Stattdessen hält der
+Wrapper das `__anext__`-Future über den Timeout hinweg am Leben (kein
+Event-Verlust) und schliesst die Quelle erst beim echten Disconnect via
+`aclose`. Der Comment ist ein SSE-konformer No-op: keine `id`, kein
+`data`-Frame, verschiebt die Last-Event-ID-Position nicht.
+
+Der WS-Egress (`/v1/orders/ws`, `/v1/quotes/ws`) bekommt **keinen**
+Application-Heartbeat — er verlässt sich auf das Ping/Pong des
+WS-Transports (uvicorn mit `websockets`-Backend, Default ~20 s; verifiziert:
+kein Ping-Override im `Dockerfile`-CMD). Dokumentiert in `docs/api/v1.md`
+(Vertragspunkt Heartbeat, Spec v1.46.0).
+
 ## [2.14.0] — 2026-07-16 (Karte `37fca2f3`: toten Events-Stream ersatzlos entfernt)
 
 `GET /v1/events/stream` wird ersatzlos entfernt — samt `EventBus`,

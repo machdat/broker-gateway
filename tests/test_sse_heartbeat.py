@@ -1,7 +1,7 @@
 """Tests fuer den cancel-sicheren SSE-Heartbeat-Wrapper (Karte 9b1d76ba).
 
 Der Wrapper umkreist einen Quell-Async-Iterator (in Produktion die queue-
-basierten Broadcaster/Bus/Manager-``subscribe``-Iteratoren mit ihrem
+basierten Broadcaster/Manager-``subscribe``-Iteratoren mit ihrem
 ``try/finally: detach``) mit einem Keepalive-Comment bei Stille. Die Tests
 verifizieren ihn ISOLIERT mit einem Fake-Source, der die reale Struktur
 spiegelt (echter async generator, queue-basiert, finally-Cleanup) - Live-SSE-
