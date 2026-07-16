@@ -4,6 +4,7 @@ den ``/v1/orders/stream``-SSE-Endpoint (AP-11 K6).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 import pytest
@@ -11,17 +12,17 @@ from fastapi.testclient import TestClient
 
 from broker_gateway.auth.models import (
     SCOPE_ADMIN_ALL,
-    SCOPE_ORDERS_READ,
     Token,
 )
 from broker_gateway.auth.store import InMemoryTokenStore
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.lifecycle import AuthLifecycle
-from broker_gateway.cp.topics.sor import SorFrame, SorTopicAdapter
+from broker_gateway.cp.topics.sor import SorFrame
 from broker_gateway.main import create_app
 from broker_gateway.streams.orders import (
     OrdersBroadcaster,
     OrderStreamEvent,
+    get_orders_broadcaster,
 )
 
 
@@ -153,6 +154,15 @@ async def client(store, lifecycle, cp_gateway_mock):
 def test_orders_stream_requires_orders_read_scope(
     client: TestClient, store: InMemoryTokenStore
 ) -> None:
+    """Ohne Scope 403.
+
+    Achtung: Dieser Test allein belegt NICHT, dass ``/orders/stream``
+    routbar ist. ``GET /orders/{order_id}`` verlangt ebenfalls einen
+    Scope und antwortet auf denselben Token identisch mit 403 - der
+    Test war deshalb auch dann grün, als die Route von der
+    Platzhalter-Route verschluckt wurde (Karte ``cefcb57a``). Die
+    Routbarkeit nagelt ``TestOrdersStreamRouting`` fest.
+    """
     no_scope = "orders-no-scope-aaaaaaaaaaaaaaaaaa"
     store.put(
         Token(value=no_scope, caller_id="other", scopes=[])
@@ -162,3 +172,245 @@ def test_orders_stream_requires_orders_read_scope(
         headers={"Authorization": f"Bearer {no_scope}"},
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# /v1/orders/stream - Routbarkeit (Karte cefcb57a)
+# ---------------------------------------------------------------------------
+
+
+class _EmptyBootstrapLoader:
+    """Bootstrap-Loader, der nichts lädt - hält den CP-Mock aus dem Spiel."""
+
+    async def load(self, account: str) -> list[Any]:
+        return []
+
+
+class _FiniteBroadcaster:
+    """Broadcaster mit ENDLICHEM Iterator, der seinen Aufruf protokolliert.
+
+    Der echte Broadcaster liefert einen endlosen Iterator. Starlettes
+    TestClient sammelt aber den kompletten Body, bevor er die Response
+    herausgibt - gegen den echten Stream hängt jeder Test, auch mit
+    ``client.stream`` (empirisch verifiziert). Deshalb hier eine
+    endliche Quelle: Route, Handler und SSE-Formatierung laufen
+    unverändert echt, nur die Events sind endlich.
+
+    ``last_subscribe_kwargs`` macht sichtbar, was der Endpunkt an
+    ``subscribe`` durchgereicht hat.
+    """
+
+    def __init__(self) -> None:
+        self.last_subscribe_kwargs: dict[str, Any] | None = None
+
+    async def subscribe(
+        self,
+        account: str,
+        consumer_id: str,
+        *,
+        bootstrap: Any = None,
+        last_event_id: int | None = None,
+    ):
+        self.last_subscribe_kwargs = {
+            "account": account,
+            "bootstrap": bootstrap,
+            "last_event_id": last_event_id,
+        }
+
+        async def _gen():
+            yield OrderStreamEvent(
+                event_id=1,
+                account=account,
+                event_type="bootstrap",
+                payload={"orders": []},
+            )
+
+        return _gen()
+
+
+@contextlib.contextmanager
+def _overridden(client: TestClient, overrides: dict[Any, Any]):
+    """Setzt ``dependency_overrides`` und stellt den Vorzustand wieder her.
+
+    Wichtig ist das Wiederherstellen statt bloßem Löschen: ``create_app``
+    installiert für einige dieser Dependencies selbst Overrides auf
+    ``app.state``. Ein blindes ``pop`` würde die wegwerfen. Heute
+    folgenlos, weil die ``client``-Fixture pro Test eine frische App
+    baut - aber genau die Sorte Fallstrick, die beim Hochziehen der
+    Fixture auf Modul-Scope still zuschlägt.
+    """
+    registry = client.app.dependency_overrides
+    sentinel = object()
+    previous = {key: registry.get(key, sentinel) for key in overrides}
+    registry.update(overrides)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is sentinel:
+                registry.pop(key, None)
+            else:
+                registry[key] = value
+
+
+class TestOrdersStreamRouting:
+    """``/v1/orders/stream`` darf nicht von ``/orders/{order_id}`` verdeckt werden.
+
+    Der Bug: ``orders_router`` (mit ``GET /{order_id}``) war vor
+    ``orders_stream_router`` registriert. Starlette nimmt den ersten
+    Treffer in Registrierungsreihenfolge, also landete jeder Aufruf von
+    ``/orders/stream`` in ``get_order`` mit ``order_id="stream"`` und
+    bekam 404 ``order_id unbekannt``.
+
+    Diese Tests laufen bewusst gegen die zusammengesetzte App und rufen
+    die Endpunkte wirklich auf. Zwei Sackgassen, die hier schon
+    besichtigt wurden:
+
+    - Ein Test gegen die Handler-Funktion allein prüft am Bug vorbei -
+      der Handler war nie defekt, nur unerreichbar.
+    - Ein Test, der Starlettes Routen-Tabelle introspiziert
+      (``app.routes``, ``route.endpoint``), ist an Framework-Interna
+      gekoppelt und zerbricht an Versionssprüngen: lokal (FastAPI 0.135)
+      liegen die Routen flach, ab 0.139 - CI und Produktion - steckt ein
+      ``_IncludedRouter`` davor, der sie nicht herausgibt. Deshalb hier
+      ausschließlich echte Requests.
+    """
+
+    def test_stream_with_valid_token_yields_event_stream_not_json_404(
+        self, client: TestClient
+    ) -> None:
+        """Der Aufruf liefert text/event-stream statt des JSON-404.
+
+        Deckt die ersten beiden Verification-Punkte der Karte in einem
+        Zug ab: richtiger Content-Type, und nie wieder das
+        ``order_id unbekannt``-404 aus ``get_order``.
+
+        Bootstrap-Loader und Broadcaster werden per
+        ``dependency_overrides`` ersetzt - beides sind die dafür
+        vorgesehenen Extension-Points (die echten Funktionen werfen ohne
+        Override). Warum der Broadcaster endlich sein muss, steht bei
+        ``_FiniteBroadcaster``. Route, Handler und SSE-Formatierung
+        laufen unverändert echt.
+        """
+        from broker_gateway.api.v1.orders_stream import (  # noqa: PLC0415
+            get_orders_bootstrap_loader,
+        )
+
+        with _overridden(
+            client,
+            {
+                get_orders_bootstrap_loader: lambda: _EmptyBootstrapLoader(),
+                get_orders_broadcaster: lambda: _FiniteBroadcaster(),
+            },
+        ):
+            response = client.get(
+                "/v1/orders/stream?account=U25235077",
+                headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+            )
+
+        content_type = response.headers.get("content-type", "")
+        assert "order_id unbekannt" not in response.text, (
+            "Der Aufruf landete in GET /orders/{order_id} - "
+            "die Stream-Route ist verdeckt."
+        )
+        assert response.status_code == 200, (
+            f"Erwartet 200, bekam {response.status_code} "
+            f"(content-type {content_type!r})"
+        )
+        assert content_type.startswith("text/event-stream"), (
+            f"Erwartet text/event-stream, bekam {content_type!r}"
+        )
+        assert "event: bootstrap" in response.text
+
+    def test_last_event_id_header_reaches_the_broadcaster(
+        self, client: TestClient
+    ) -> None:
+        """Der ``Last-Event-ID``-Header landet als ``last_event_id`` im subscribe.
+
+        Der Reconnect-Vertrag hängt an dieser einen Durchreichung. Die
+        Broadcaster-Logik dahinter ist separat unit-getestet, die
+        Verdrahtung Header -> Handler -> ``subscribe`` bisher nicht.
+        Bricht der Header-Alias, fällt jeder Reconnect still auf „von
+        vorn" zurück: der Konsument bekommt Bootstrap statt Delta, ohne
+        jede Fehlermeldung. Diese Route sieht gerade zum ersten Mal
+        echte Konsumenten - der Test schließt die Lücke, bevor sie
+        jemand findet.
+        """
+        from broker_gateway.api.v1.orders_stream import (  # noqa: PLC0415
+            get_orders_bootstrap_loader,
+        )
+
+        broadcaster = _FiniteBroadcaster()
+        with _overridden(
+            client,
+            {
+                get_orders_bootstrap_loader: lambda: _EmptyBootstrapLoader(),
+                get_orders_broadcaster: lambda: broadcaster,
+            },
+        ):
+            response = client.get(
+                "/v1/orders/stream?account=U25235077",
+                headers={
+                    "Authorization": f"Bearer {_ADMIN_VALUE}",
+                    "Last-Event-ID": "42",
+                },
+            )
+
+        assert response.status_code == 200
+        assert broadcaster.last_subscribe_kwargs is not None, (
+            "subscribe wurde nie gerufen"
+        )
+        assert broadcaster.last_subscribe_kwargs["last_event_id"] == 42, (
+            "Der Last-Event-ID-Header kam nicht am Broadcaster an: "
+            f"{broadcaster.last_subscribe_kwargs!r}"
+        )
+        assert broadcaster.last_subscribe_kwargs["account"] == "U25235077"
+
+    def test_stream_without_token_is_rejected_by_auth_not_by_404(
+        self, client: TestClient
+    ) -> None:
+        """Ohne Token greift Auth (401), nicht das 404 der Platzhalter-Route.
+
+        Vierter Verification-Punkt der Karte. Wie bei
+        ``test_orders_stream_requires_orders_read_scope`` gilt: dieser
+        Test allein belegt die Routbarkeit NICHT - ohne Token antworten
+        beide Handler identisch 401, weil die Auth-Dependency wirft,
+        bevor irgendetwas Routen-Spezifisches passiert. Der Wert liegt
+        woanders: er nagelt fest, dass die Stream-Route nicht
+        versehentlich am Auth vorbeigeführt wird. Die Routbarkeit
+        beweisen die beiden Tests darüber.
+        """
+        response = client.get("/v1/orders/stream?account=U25235077")
+
+        assert response.status_code in (401, 403), (
+            f"Erwartet 401/403, bekam {response.status_code}: "
+            f"{response.text[:200]}"
+        )
+
+    def test_get_order_with_real_id_still_resolves_to_get_order(
+        self, client: TestClient
+    ) -> None:
+        """Regression: eine echte Order-ID geht weiter an ``get_order``.
+
+        Der Fix verschiebt nur die Reihenfolge - die Platzhalter-Route
+        selbst bleibt unverändert erreichbar. Die Gegenrichtung des
+        Bugs: die Stream-Route darf keine echten Order-IDs schlucken.
+        Ein SSE-Response hier wäre der Beweis, dass sie es tut.
+
+        Dass ``get_order`` sich auch inhaltlich unverändert verhält,
+        decken die bestehenden Tests in ``tests/test_orders.py`` mit
+        echten Requests ab.
+        """
+        response = client.get(
+            "/v1/orders/1234567",
+            headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+        )
+
+        content_type = response.headers.get("content-type", "")
+        assert not content_type.startswith("text/event-stream"), (
+            "GET /v1/orders/<id> landete im SSE-Stream - die Stream-Route "
+            "schluckt echte Order-IDs."
+        )
+        assert content_type.startswith("application/json"), (
+            f"Erwartet eine JSON-Antwort aus get_order, bekam {content_type!r}"
+        )

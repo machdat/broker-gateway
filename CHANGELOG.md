@@ -4,6 +4,39 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.12.3] — 2026-07-16 (Karte `cefcb57a`: `GET /v1/orders/stream` war nie erreichbar)
+
+Der SSE-Endpunkt `GET /v1/orders/stream` war seit seiner Einführung
+(v1.21.0) tot. `orders_router` mit seiner Platzhalter-Route
+`GET /orders/{order_id}` war vor `orders_stream_router` registriert; da
+Starlette den ersten Treffer in Registrierungsreihenfolge nimmt, landete
+jeder Stream-Aufruf in `get_order` mit `order_id="stream"` und bekam
+`404 not_found` („order_id unbekannt"). Deklariert war der Pfad korrekt,
+routbar war er nie.
+
+Tragweite über dieses Repo hinaus: trading_robot konnte seinen
+Order-Event-Pfad nicht anbinden und sah dadurch weder in Paper noch Live
+einen einzigen Fill. Der Befund beweist zugleich, dass der Endpunkt nie
+von einem Konsumenten benutzt wurde.
+
+- **Fix:** `orders_stream_router` wird vor `orders_router` registriert.
+  Die Reihenfolge ist jetzt als fachlich notwendig kommentiert — sie darf
+  nicht alphabetisch sortiert werden.
+- **`tests/test_api_routing.py` (neu):** strukturelle Invariante über die
+  ganze App — jede statische Route muss unter jeder ihrer Methoden
+  erreichbar sein. Deckt die Fehlerklasse ab, nicht nur diesen Fall. Der
+  Sweep meldet aktuell keine weitere verdeckte Route; `POST /orders/whatif`
+  ist unauffällig, weil das Matching Pfad und Methode prüft.
+- **Warum es so lange überlebt hat:** Es gab bereits einen Test auf
+  `/v1/orders/stream` gegen die zusammengesetzte App — grün, obwohl die
+  Route tot war. Er schickt einen Token ohne Scopes und erwartet 403, und
+  die verdeckende Route verlangt ebenfalls einen Scope. Der Test wurde von
+  der falschen Route erfüllt. Sein Docstring hält das jetzt fest.
+- **Kein Vertragswechsel.** `GET /orders/{order_id}` verhält sich
+  unverändert; das SSE-Frame-Format bleibt wie dokumentiert. v1-Spec auf
+  v1.42.0 (Korrektur der Implementation-Status-Tabelle und des
+  Drift-Berichts, der den Endpunkt fälschlich als driftfrei führte).
+
 ## [2.12.2] — 2026-07-15 (Hausputz: CHANGELOG-Lücke geschlossen, verwaister Import entfernt)
 
 Keine Verhaltensänderung am Service. Zwei Beobachtungen aus der Arbeit an Karte
