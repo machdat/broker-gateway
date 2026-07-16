@@ -4,6 +4,14 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.16.1] — 2026-07-16 (Karte `9b1d76ba`: SSE-Heartbeat-Nachbesserung aus dem Nach-Review)
+
+Nachbesserung des SSE-Heartbeats (v2.15.0) nach einem adversarischen Nach-Review. Der Live-Code war korrekt; behoben werden Test-Lücken und ein Härtungspunkt, keine Vertragsänderung.
+
+- **Härtung `sse_with_heartbeat`:** `suppress(BaseException)` um `await pending` durch `asyncio.gather(pending, return_exceptions=True)` ersetzt. Das schluckt weiterhin die erwartete `CancelledError` des gecancelten pending-Future, verschluckt aber keinen externen Cancel des Wrapper-Tasks mehr - der im schmalen Race hereinkommen konnte, wenn das detach-`finally` der Quelle an einem contended Lock hängt. Für ein cancel-sicheres Modul die richtige Semantik.
+- **Observability:** Modul-Logger ergänzt. Ein im Cleanup gescheitertes detach der Quelle (heute unmöglich - ein reiner dict-pop; latent bei künftigem WS-Unsubscribe) wird jetzt sichtbar geloggt statt still geschluckt, wie in den Schwester-Stream-Modulen.
+- **Test-Lücken geschlossen:** Die Wrapper-Einbindung war an keinem der beiden Endpunkte test-gesichert (`quotes_stream` rief `sse_with_heartbeat` in keinem Test auf; `orders_stream`-Tests wären mit dem alten `_to_sse` byte-identisch grün) - ein stiller Revert hätte den Reconnect-Sturm ungefangen zurückgebracht. Neu: Wiring-Tests für beide Endpunkte plus ein End-to-End-Test, der einen `: keepalive`-Comment im stillen Order-Stream nachweist. Dazu Tests für den Exception-Pfad (ein echter Quell-Fehler propagiert, wird nicht still zu EOF), die Task-Cancellation und den `aclose`-losen Iterator.
+
 ## [2.16.0] — 2026-07-16 (Karte `736c49a5`: Order-Frame-Qualität, nicht-vertragsbrechender Teil)
 
 Drei Korrekturen an den Order-Frames und der REST-Order-Antwort, alle ohne

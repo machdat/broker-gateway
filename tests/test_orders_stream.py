@@ -663,3 +663,114 @@ class TestOrdersStreamRouting:
         assert content_type.startswith("application/json"), (
             f"Erwartet eine JSON-Antwort aus get_order, bekam {content_type!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# /v1/orders/stream - Heartbeat-Verdrahtung (Karte 9b1d76ba, Nachbesserung)
+# ---------------------------------------------------------------------------
+
+
+def test_orders_stream_verdrahtet_heartbeat_wrapper(
+    client: TestClient,
+    store: InMemoryTokenStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Beweist die Verdrahtung: der Endpunkt ruft ``sse_with_heartbeat`` (nicht
+    das alte ``_to_sse``). Ohne diesen Test bliebe ein stiller Revert auf
+    ``_to_sse`` unbemerkt - die uebrigen Endpunkt-Tests waeren byte-identisch
+    gruen (die Reconnect-Sturm-Regression kaeme ungefangen zurueck)."""
+    from broker_gateway.api.v1 import orders_stream as mod
+    from broker_gateway.api.v1.orders_stream import (  # noqa: PLC0415
+        get_orders_bootstrap_loader,
+    )
+
+    calls: list[dict[str, Any]] = []
+
+    def _spy(source: Any, render: Any, **kwargs: Any) -> Any:
+        calls.append({"render": render, "kwargs": kwargs})
+
+        async def _finite() -> Any:
+            await source.aclose()  # echte Quelle sauber schliessen, nicht konsumieren
+            return
+            yield b""  # macht die Fn zum async generator (unreachable)
+
+        return _finite()
+
+    monkeypatch.setattr(mod, "sse_with_heartbeat", _spy)
+    with _overridden(
+        client,
+        {
+            get_orders_bootstrap_loader: lambda: _EmptyBootstrapLoader(),
+            get_orders_broadcaster: lambda: _FiniteBroadcaster(),
+        },
+    ):
+        response = client.get(
+            "/v1/orders/stream?account=U25235077",
+            headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+        )
+    assert response.status_code == 200
+    assert len(calls) == 1, (
+        "sse_with_heartbeat wurde nicht aufgerufen - der Heartbeat-Wrapper "
+        "ist nicht mehr verdrahtet"
+    )
+    assert callable(calls[0]["render"])
+
+
+def test_orders_stream_sendet_keepalive_bei_stille(
+    client: TestClient,
+    store: InMemoryTokenStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-End: ein stiller Order-Stream sendet nachweislich einen
+    Keepalive-Comment - der eigentliche Vertrag der Karte 9b1d76ba, am echten
+    Endpunkt belegt (nicht nur an der isolierten Wrapper-Funktion). Das
+    Intervall wird per monkeypatch auf 0.02s gesetzt, damit der Heartbeat im
+    Test schnell feuert."""
+    import functools  # noqa: PLC0415
+
+    from broker_gateway.api.v1 import orders_stream as mod
+    from broker_gateway.api.v1.orders_stream import (  # noqa: PLC0415
+        get_orders_bootstrap_loader,
+    )
+    from broker_gateway.streams.heartbeat import (  # noqa: PLC0415
+        sse_with_heartbeat as _real,
+    )
+
+    class _SilentThenEvent:
+        async def subscribe(
+            self,
+            account: str,
+            consumer_id: str,
+            *,
+            bootstrap: Any = None,
+            last_event_id: Any = None,
+        ) -> Any:
+            async def _gen() -> Any:
+                await asyncio.sleep(0.05)  # Stille > interval 0.02 -> Heartbeat(s)
+                yield OrderStreamEvent(
+                    event_id=0,
+                    account=account,
+                    event_type="order",
+                    payload={"order_id": 7},
+                )
+
+            return _gen()
+
+    monkeypatch.setattr(
+        mod, "sse_with_heartbeat", functools.partial(_real, interval_s=0.02)
+    )
+    with _overridden(
+        client,
+        {
+            get_orders_bootstrap_loader: lambda: _EmptyBootstrapLoader(),
+            get_orders_broadcaster: lambda: _SilentThenEvent(),
+        },
+    ):
+        response = client.get(
+            "/v1/orders/stream?account=U25235077",
+            headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+        )
+    assert response.status_code == 200
+    body = response.text
+    assert ": keepalive" in body, f"kein Heartbeat im stillen Stream: {body!r}"
+    assert '"order_id":7' in body  # das Event kam nach der Stille auch durch

@@ -29,7 +29,7 @@ sendet nur einen Comment und wartet weiter auf dasselbe Future - ein direkt
 nach dem Heartbeat eintreffendes Event geht dadurch nicht verloren. Erst beim
 tatsaechlichen Ende (Client-Disconnect, ``aclose``) wird das Future gecancelt
 und der Quell-Iterator ueber ``aclose`` sauber geschlossen, sodass dessen
-``detach``-``finally`` garantiert und ohne GC-Verzoegerung laeuft.
+``detach``-``finally`` synchron laeuft, statt erst beim GC.
 
 Der Wrapper ist generisch: er nimmt einen beliebigen Async-Iterator plus eine
 ``render``-Funktion (Event -> SSE-Bytes) und ist damit fuer beide
@@ -38,9 +38,11 @@ Endpunkte identisch verwendbar.
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import logging
 from collections.abc import AsyncIterator, Callable
 from typing import TypeVar
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -90,18 +92,37 @@ async def sse_with_heartbeat(
     finally:
         # Ein noch laufendes __anext__ beenden - das injiziert CancelledError
         # an dessen await queue.get() und loest damit das detach-finally der
-        # Quelle aus.
+        # Quelle aus. gather(return_exceptions=True) schluckt die erwartete
+        # CancelledError des gecancelten pending, respektiert aber eine
+        # Cancellation des Wrapper-Tasks selbst - anders als ein
+        # suppress(BaseException) um `await pending`, das auch einen externen
+        # Cancel verschluckt haette (fatal fuer ein cancel-sicheres Modul).
         if pending is not None:
             pending.cancel()
-            with contextlib.suppress(BaseException):
-                await pending
-        # Direktes aclose der Quelle: garantiert das detach-finally auch dann,
-        # wenn zuletzt an einem Event-yield (pending bereits None) gestanden
-        # wurde - ohne auf den GC zu warten.
+            outcome = await asyncio.gather(pending, return_exceptions=True)
+            # Alles ausser der erwarteten CancelledError ist ein echter Fehler
+            # aus dem detach-finally der Quelle - sichtbar machen (Konvention
+            # wie manager.py / orders.py), aber nicht weiterwerfen (Cleanup).
+            source_exc = outcome[0]
+            if isinstance(source_exc, BaseException) and not isinstance(
+                source_exc, asyncio.CancelledError
+            ):
+                logger.warning(
+                    "Quell-detach im Heartbeat-Cleanup (pending-cancel) fehlgeschlagen",
+                    exc_info=source_exc,
+                )
+        # Direktes aclose der Quelle: laesst das detach-finally auch dann
+        # synchron laufen, wenn zuletzt an einem Event-yield (pending bereits
+        # None) gestanden wurde - statt erst beim GC.
         aclose = getattr(iterator, "aclose", None)
         if aclose is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await aclose()
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Quell-aclose im Heartbeat-Cleanup fehlgeschlagen",
+                    exc_info=True,
+                )
 
 
 async def _next_or_exhausted(iterator: AsyncIterator[T]) -> object:

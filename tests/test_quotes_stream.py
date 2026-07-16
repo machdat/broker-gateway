@@ -18,7 +18,6 @@ import pytest
 from broker_gateway.auth.models import (
     SCOPE_ADMIN_ALL,
     SCOPE_PORTFOLIO_READ,
-    SCOPE_QUOTES_READ,
     Token,
 )
 from broker_gateway.auth.store import InMemoryTokenStore, generate_token_value
@@ -270,5 +269,54 @@ async def test_stream_endpoint_above_limit_returns_429(
         await it.aclose()
     finally:
         await small_manager.shutdown()
+
+
+# ---- Heartbeat-Verdrahtung (Karte 9b1d76ba, Nachbesserung) ----
+
+
+async def test_quotes_stream_verdrahtet_heartbeat_wrapper(
+    store: InMemoryTokenStore,
+    lifecycle: AuthLifecycle,
+    manager: SubscriptionManager,
+    cp_gateway_mock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Beweist die Verdrahtung am Quotes-Endpunkt: er ruft ``sse_with_heartbeat``.
+    Zuvor rief KEIN quotes-Test den Wrapper auf (alle pruefen nur 401/403/429
+    ohne Body-Konsum) - ein Revert auf ``_to_sse`` waere voellig unbemerkt
+    geblieben. Der Spy gibt einen endlichen Body zurueck, sodass der
+    ASGITransport-Konsum nicht haengt."""
+    from broker_gateway.api.v1 import quotes_stream as mod
+
+    calls: list[dict] = []
+
+    def _spy(source, render, **kwargs):
+        calls.append({"render": render})
+
+        async def _finite():
+            await source.aclose()  # echte Quelle sauber schliessen, nicht konsumieren
+            return
+            yield b""  # macht die Fn zum async generator (unreachable)
+
+        return _finite()
+
+    monkeypatch.setattr(mod, "sse_with_heartbeat", _spy)
+    application = create_app(
+        store=store, lifecycle=lifecycle, subscription_manager=manager
+    )
+    transport = httpx.ASGITransport(app=application)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with application.router.lifespan_context(application):
+            response = await ac.get(
+                "/v1/quotes/stream",
+                params={"conids": "265598"},
+                headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+            )
+    assert response.status_code == 200
+    assert len(calls) == 1, (
+        "sse_with_heartbeat wurde nicht aufgerufen - der Heartbeat-Wrapper "
+        "ist am Quotes-Stream nicht verdrahtet"
+    )
+    assert callable(calls[0]["render"])
 
 
