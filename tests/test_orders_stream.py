@@ -179,6 +179,45 @@ async def test_broadcaster_does_not_dedup_across_order_ids() -> None:
     assert sorted(e.payload["order_id"] for e in events) == [1, 2]
 
 
+async def test_broadcaster_dedup_cache_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Der Dedup-Merker darf bei einer Dauerverbindung (refcount bleibt >=1)
+    # nicht unbegrenzt wachsen - die aeltesten, laengst ruhenden order_ids
+    # altern als LRU heraus (Review-Befund).
+    import broker_gateway.streams.orders as orders_mod
+
+    monkeypatch.setattr(orders_mod, "_DEDUP_CACHE_SIZE", 3)
+    bc = OrdersBroadcaster()
+    await bc.subscribe("U1", "keepalive", bootstrap=None)
+    for oid in range(6):
+        bc.publish("U1", SorFrame(order_id=oid, account="U1", status="accepted"))
+    sub = bc._subs["U1"]
+    # Gedeckelt auf 3, und es bleiben die drei juengsten order_ids.
+    assert len(sub._last_order_key) == 3
+    assert set(sub._last_order_key.keys()) == {3, 4, 5}
+
+
+async def test_broadcaster_active_order_survives_lru_pressure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Eine weiter aktive Order darf trotz LRU-Druck NICHT evakuiert werden:
+    # jeder neue Frame frischt sie ans Ende der LRU auf.
+    import broker_gateway.streams.orders as orders_mod
+
+    monkeypatch.setattr(orders_mod, "_DEDUP_CACHE_SIZE", 3)
+    bc = OrdersBroadcaster()
+    await bc.subscribe("U1", "keepalive", bootstrap=None)
+    # order_id=99 bleibt aktiv, dazwischen laufen viele andere Orders.
+    for oid in range(6):
+        bc.publish("U1", SorFrame(order_id=99, account="U1", status="accepted",
+                                  last_event_at=f"t{oid}"))
+        bc.publish("U1", SorFrame(order_id=oid, account="U1", status="accepted"))
+    sub = bc._subs["U1"]
+    assert 99 in sub._last_order_key
+    assert len(sub._last_order_key) == 3
+
+
 async def _first(iterator) -> OrderStreamEvent:
     async for event in iterator:
         return event

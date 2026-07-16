@@ -34,6 +34,15 @@ logger = logging.getLogger(__name__)
 
 _REPLAY_BUFFER_SIZE = 200
 _CONSUMER_QUEUE_MAX = 1024
+# Obergrenze fuer den Dedup-Merker je Account (Karte 736c49a5). Eine
+# Dauerverbindung (trading_robot, durch den 15-s-Heartbeat am Leben gehalten)
+# haelt refcount>=1, die Subscription wird nie gedroppt - ohne Cap waechst der
+# Merker monoton mit jeder je gesehenen order_id (auch laengst terminale).
+# Als LRU gefuehrt: nur die aeltesten, laengst ruhenden (praktisch terminalen)
+# Orders altern heraus; aktive Orders werden bei jedem Frame aufgefrischt und
+# nie evakuiert. Grosszuegig ueber jeder realistischen Zahl gleichzeitig
+# aktiver Orders.
+_DEDUP_CACHE_SIZE = 1024
 
 
 @dataclass(frozen=True)
@@ -58,8 +67,12 @@ class _AccountSubscription:
             collections.deque(maxlen=_REPLAY_BUFFER_SIZE)
         )
         # Letzter gesendeter "order"-Payload je order_id (ohne last_event_at)
-        # fuer die Dedup (Karte 736c49a5).
-        self._last_order_key: dict[Any, dict[str, Any]] = {}
+        # fuer die Dedup (Karte 736c49a5). LRU-geordnet und auf
+        # _DEDUP_CACHE_SIZE gedeckelt, damit eine Dauerverbindung den Merker
+        # nicht unbegrenzt wachsen laesst.
+        self._last_order_key: collections.OrderedDict[Any, dict[str, Any]] = (
+            collections.OrderedDict()
+        )
 
     @property
     def refcount(self) -> int:
@@ -89,8 +102,17 @@ class _AccountSubscription:
         order_id = payload.get("order_id")
         key = {k: v for k, v in payload.items() if k != "last_event_at"}
         if self._last_order_key.get(order_id) == key:
+            # Aktive Order: warm halten (ans Ende der LRU), damit sie nicht
+            # trotz laufender Updates evakuiert wird.
+            self._last_order_key.move_to_end(order_id)
             return True
         self._last_order_key[order_id] = key
+        self._last_order_key.move_to_end(order_id)
+        # Aelteste (laengst ruhende, praktisch terminale) Orders evakuieren.
+        # Eine spaeter doch wieder aktive, evakuierte Order erzeugt hoechstens
+        # einen einzelnen re-emittierten Frame - unschaedlich.
+        while len(self._last_order_key) > _DEDUP_CACHE_SIZE:
+            self._last_order_key.popitem(last=False)
         return False
 
     def publish(
