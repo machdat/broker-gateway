@@ -4,6 +4,43 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.18.0] — 2026-07-16 (Karte `f43a1514`: Last-Event-ID-Durability auf `/v1/orders/stream` — Cool-Down + Doku-Ehrlichkeit)
+
+Der `Last-Event-ID`-Reconnect auf `/v1/orders/stream` war für einen
+Einzel-Konsumenten (trading_robot) nicht durable: Ringpuffer und Event-Zähler
+leben an der `_AccountSubscription` und wurden bei `refcount==0` (letzter
+Consumer weg) sofort verworfen. Nach jedem vollen Disconnect war der Puffer
+weg, der Zähler startete wieder bei `0` — ein Fill, der in die Reconnect-Pause
+fiel, tauchte weder als Event noch im frischen Bootstrap auf (die Order ist
+dann nicht mehr offen).
+
+Umgesetzt wurden zwei der drei in der Karte skizzierten Stufen (Owner-Wahl
+C + A; die durable Variante B blieb außen vor):
+
+- **(A) Cool-Down am `OrdersBroadcaster`**, gespiegelt vom Quotes-Pfad
+  (`streams/manager.py`): fällt der letzte Consumer weg, wird die Subscription
+  nicht sofort gedroppt, sondern nach `_DEFAULT_COOL_DOWN_S = 5.0` s über einen
+  Timer-Task (`_cool_down_then_teardown` → `_teardown`) abgeräumt. Ein Reconnect
+  binnen Frist cancelt den Task (`attach` → `_cancel_cool_down_locked`) und
+  findet Ringpuffer **und** `_next_event_id` intakt — der Last-Event-ID-Replay
+  trägt über kurze Disconnects (Netzwerk-Blips), inklusive der in der Lücke
+  aufgelaufenen Events. Der Teardown prüft den Refcount erneut unter Lock und
+  nimmt nur dieselbe Instanz aus der Registry (Race-Absicherung). Neuer
+  `OrdersBroadcaster.shutdown()` cancelt offene Cool-Down-Tasks im
+  Lifespan-Shutdown (`main.py`).
+- **(C) Doku-Ehrlichkeit** in `docs/api/v1.md` (Section 9.2, Spec v1.49.0): der
+  Replay trägt nur, solange die Subscription lebt; nach einem längeren
+  Disconnect muss der Konsument via REST reconcilen (`GET /v1/orders` +
+  `GET /v1/trades`). Zugleich richtiggestellt: der `Last-Event-ID`-Header wird
+  auf `/v1/orders/stream` seit jeher gelesen — die Konsumenten-Diagnose (Karte
+  trading_robot `9720825b`), er werde ignoriert, war für den SSE-Pfad falsch.
+
+Rückwärts kompatibel/additiv — der Vertrag (Header/Query, Frame-Format) bleibt.
+Das Risiko-Profil ist seit dem SSE-Heartbeat (v2.16.1) ohnehin kleiner: der
+Server hält stille Verbindungen warm, die Lücke tritt nur noch bei echten
+Netzwerk-Abbrüchen auf. Die durable Variante B (per-Account-Event-Log über den
+Teardown hinaus) und der bot-seitige REST-Reconcile bleiben davon unberührt.
+
 ## [2.17.0] — 2026-07-16 (Karte `a04adca8`: additives `raw_status` im Order-Frame)
 
 Additives Feld `raw_status` im Stream-Frame (`/v1/orders/stream`, `/v1/orders/ws`)

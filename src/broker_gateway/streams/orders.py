@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 
 _REPLAY_BUFFER_SIZE = 200
 _CONSUMER_QUEUE_MAX = 1024
+# Cool-Down analog zum Quotes-Pfad (streams/manager.py, Karte f43a1514). Faellt
+# der letzte Consumer weg (refcount==0), wird die _AccountSubscription NICHT
+# sofort verworfen, sondern erst nach dieser Frist abgeraeumt. Ein Reconnect
+# binnen Frist cancelt den Teardown und findet Ringpuffer UND _next_event_id
+# intakt, sodass der Last-Event-ID-Replay ueber einen kurzen Disconnect hinweg
+# traegt. Deckt Netzwerk-Blips - kein durabler Replay ueber lange Disconnects
+# (der Konsument reconciled dann via REST, siehe docs/api/v1.md Section 9.2).
+_DEFAULT_COOL_DOWN_S = 5.0
 # Obergrenze fuer den Dedup-Merker je Account (Karte 736c49a5). Eine
 # Dauerverbindung (trading_robot, durch den 15-s-Heartbeat am Leben gehalten)
 # haelt refcount>=1, die Subscription wird nie gedroppt - ohne Cap waechst der
@@ -59,7 +67,8 @@ class OrderStreamEvent:
 
 
 class _AccountSubscription:
-    def __init__(self, account: str) -> None:
+    def __init__(self, broadcaster: "OrdersBroadcaster", account: str) -> None:
+        self._broadcaster = broadcaster
         self.account = account
         self._next_event_id = 0
         self.consumers: dict[str, asyncio.Queue[OrderStreamEvent | None]] = {}
@@ -73,6 +82,8 @@ class _AccountSubscription:
         self._last_order_key: collections.OrderedDict[Any, dict[str, Any]] = (
             collections.OrderedDict()
         )
+        # Teardown-Aufschub bei refcount==0 (Cool-Down, Karte f43a1514).
+        self._cool_down_task: asyncio.Task[None] | None = None
 
     @property
     def refcount(self) -> int:
@@ -83,10 +94,36 @@ class _AccountSubscription:
         consumer_id: str,
         queue: asyncio.Queue[OrderStreamEvent | None],
     ) -> None:
+        # Ein (Re-)Connect cancelt einen laufenden Cool-Down: die Subscription
+        # bleibt mit intaktem Ringpuffer und Event-Zaehler warm.
+        self._cancel_cool_down_locked()
         self.consumers[consumer_id] = queue
 
     def detach(self, consumer_id: str) -> None:
         self.consumers.pop(consumer_id, None)
+        if self.refcount == 0:
+            # Nicht sofort abraeumen: Cool-Down-Frist starten, damit ein
+            # schneller Reconnect den Replay-Zustand wiederfindet. Erst der
+            # Ablauf ruft _teardown (analog streams/manager.py).
+            self._cool_down_task = asyncio.create_task(
+                self._cool_down_then_teardown(),
+                name=f"orders-cool-down-{self.account}",
+            )
+
+    def _cancel_cool_down_locked(self) -> None:
+        task = self._cool_down_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._cool_down_task = None
+
+    async def _cool_down_then_teardown(self) -> None:
+        try:
+            await asyncio.sleep(self._broadcaster.cool_down_s)
+        except asyncio.CancelledError:
+            return
+        if self.refcount > 0:
+            return
+        await self._broadcaster._teardown(self)
 
     def is_duplicate_order(self, payload: dict[str, Any]) -> bool:
         """True, wenn dieses ``order``-Frame semantisch identisch zum zuletzt
@@ -144,9 +181,10 @@ class _AccountSubscription:
 
 
 class OrdersBroadcaster:
-    def __init__(self) -> None:
+    def __init__(self, *, cool_down_s: float = _DEFAULT_COOL_DOWN_S) -> None:
         self._subs: dict[str, _AccountSubscription] = {}
         self._lock = asyncio.Lock()
+        self.cool_down_s = cool_down_s
 
     async def subscribe(
         self,
@@ -169,7 +207,7 @@ class OrdersBroadcaster:
         async with self._lock:
             sub = self._subs.get(account)
             if sub is None:
-                sub = _AccountSubscription(account)
+                sub = _AccountSubscription(self, account)
                 self._subs[account] = sub
             sub.attach(consumer_id, queue)
             # Bootstrap-Frame als ersten Snapshot publishen, sodass alle
@@ -196,9 +234,10 @@ class OrdersBroadcaster:
                     yield event
             finally:
                 async with self._lock:
+                    # Kein sofortiges pop mehr: detach startet bei refcount==0
+                    # den Cool-Down; erst dessen Ablauf raeumt die Subscription
+                    # via _teardown ab (Karte f43a1514).
                     sub.detach(consumer_id)
-                    if sub.refcount == 0:
-                        self._subs.pop(account, None)
 
         return _iterator()
 
@@ -223,6 +262,36 @@ class OrdersBroadcaster:
         if sub.is_duplicate_order(payload):
             return
         sub.publish(event_type="order", payload=payload)
+
+    async def _teardown(self, sub: _AccountSubscription) -> None:
+        """Raeumt eine ausgekuehlte Subscription ab (Cool-Down abgelaufen).
+
+        Analog zu ``SubscriptionManager._teardown`` (streams/manager.py):
+        refcount wird unter dem Lock erneut geprueft - ein Reconnect kann in
+        der Zwischenzeit einen Consumer angehaengt haben - und nur genau diese
+        Instanz aus ``_subs`` genommen (Identitaets-Check gegen einen
+        zwischenzeitlichen Ersatz). Es gibt keine externe Ressource wie beim
+        Quotes-Pfad (kein Poll-Task, kein CP-Unsubscribe); der Teardown ist
+        allein das Vergessen des Replay-Zustands.
+        """
+        async with self._lock:
+            if sub.refcount > 0:
+                return
+            if self._subs.get(sub.account) is sub:
+                self._subs.pop(sub.account, None)
+
+    async def shutdown(self) -> None:
+        """Cancelt alle offenen Cool-Down-Tasks und leert die Registry.
+
+        Wird im App-Lifespan-Shutdown gerufen (analog
+        ``SubscriptionManager.shutdown``), damit kein Cool-Down-Task den
+        Prozess-Exit ueberdauert.
+        """
+        async with self._lock:
+            subs = list(self._subs.values())
+            self._subs.clear()
+        for sub in subs:
+            sub._cancel_cool_down_locked()
 
     @property
     def active_accounts(self) -> set[str]:

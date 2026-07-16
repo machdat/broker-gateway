@@ -676,6 +676,12 @@ def create_app(
                     _logger.warning(
                         "TWSOrdersStreamPump.stop fehlgeschlagen", exc_info=True
                     )
+            try:
+                await orders_broadcaster.shutdown()
+            except Exception:  # noqa: BLE001
+                _logger.warning(
+                    "OrdersBroadcaster.shutdown fehlgeschlagen", exc_info=True
+                )
             if ws_source is not None:
                 try:
                     await ws_source.stop()
