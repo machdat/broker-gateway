@@ -29,6 +29,40 @@ from broker_gateway.streams.orders import (
 )
 
 
+@pytest.fixture(autouse=True)
+async def _reap_cool_down_tasks():
+    """Raeumt nach jedem Test verwaiste Cool-Down-Tasks ab.
+
+    Der Cool-Down (Karte f43a1514) startet beim Wegfall des letzten Consumers
+    einen Timer-Task. Aeltere Logik-Tests, die ihren Broadcaster nicht explizit
+    ``shutdown()``en und ihre Iteratoren dem GC ueberlassen, wuerden diesen
+    Task sonst als „Task was destroyed but it is pending" in den Loop-Teardown
+    schleppen. Produktiv erledigt das der Lifespan-Shutdown
+    (``OrdersBroadcaster.shutdown`` in main.py). Der Reaper zwingt die
+    Test-Generatoren zur Finalisierung und cancelt die entstandenen
+    Cool-Down-Tasks noch im lebenden Loop.
+    """
+    import gc  # noqa: PLC0415
+
+    yield
+    gc.collect()  # Test-Generatoren finalisieren -> geplante aclose/detach
+    # Mehrere Ticks: die geplanten asyncgen-aclose-Tasks laufen und erzeugen
+    # ihrerseits die Cool-Down-Tasks, die wir danach canceln.
+    for _ in range(5):
+        await asyncio.sleep(0)
+    pending = [
+        t
+        for t in asyncio.all_tasks()
+        if t is not asyncio.current_task()
+        and t.get_name().startswith("orders-cool-down-")
+    ]
+    for t in pending:
+        t.cancel()
+    for t in pending:
+        with contextlib.suppress(BaseException):
+            await t
+
+
 # ---------------------------------------------------------------------------
 # OrdersBroadcaster - reine Logik (ohne SSE)
 # ---------------------------------------------------------------------------
@@ -240,6 +274,129 @@ async def test_broadcaster_does_not_dedup_distinct_raw_status() -> None:
     ]
     events = await _publish_then_replay(bc, frames)
     assert [e.payload["raw_status"] for e in events] == ["PendingCancel", "Inactive"]
+
+
+# ---------------------------------------------------------------------------
+# OrdersBroadcaster - Cool-Down / Last-Event-ID-Durability (Karte f43a1514)
+# ---------------------------------------------------------------------------
+#
+# Hinweis: ``aclose()`` auf einem noch nicht gestarteten Async-Generator
+# ueberspringt dessen ``finally`` - also auch das ``detach``. Jeder Test treibt
+# deshalb erst einen ``__anext__`` (via ``_first``/``_collect``), bevor er den
+# Iterator schliesst, damit der Cool-Down-Pfad ueberhaupt ausgeloest wird.
+
+
+async def test_reconnect_within_cool_down_replays_gap_event() -> None:
+    """Reconnect binnen Cool-Down findet Ringpuffer + Event-Zaehler intakt und
+    bekommt ein waehrend der Luecke publishtes Event via Last-Event-ID
+    nachgeliefert - genau der Fall der Karte: ein Fill faellt in die
+    Reconnect-Pause und darf dem Konsumenten nicht verloren gehen."""
+    bc = OrdersBroadcaster(cool_down_s=30.0)  # lang: Teardown feuert nie im Test
+    try:
+        it1 = await bc.subscribe("U1", "c1", bootstrap=None)
+        bc.publish("U1", SorFrame(order_id=1, account="U1", status="accepted"))
+        e0 = await asyncio.wait_for(_first(it1), timeout=1.0)  # id=0
+        assert e0.event_id == 0
+        sub_before = bc._subs["U1"]
+
+        # c1 verschwindet -> Cool-Down startet, Subscription bleibt warm.
+        await it1.aclose()
+        assert "U1" in bc.active_accounts, "Cool-Down haelt die Subscription nicht warm"
+
+        # LUECKE: Order fillt vollstaendig, waehrend niemand verbunden ist.
+        bc.publish("U1", SorFrame(order_id=1, account="U1", status="filled"))  # id=1
+
+        # Reconnect binnen Cool-Down mit Last-Event-ID=0.
+        it2 = await bc.subscribe("U1", "c2", bootstrap=None, last_event_id=0)
+        assert bc._subs["U1"] is sub_before, "Reconnect traf eine frische Subscription"
+        assert sub_before._cool_down_task is None, "Cool-Down-Task nicht gecancelt (Leak)"
+
+        events = await _collect(it2, max_events=1)
+        assert [e.event_id for e in events] == [1]
+        assert events[0].payload["status"] == "filled"
+        await it2.aclose()
+    finally:
+        await bc.shutdown()
+
+
+async def test_teardown_after_cool_down_drops_subscription() -> None:
+    """Laeuft der Cool-Down ohne Reconnect ab, wird die Subscription (mit
+    Ringpuffer + Zaehler) verworfen - der zugesagte Replay traegt dann nicht
+    mehr, ein Reconnect faengt bei Zaehler 0 an (Stufe C: Konsument muss via
+    REST reconcilen)."""
+    bc = OrdersBroadcaster(cool_down_s=0.0)  # Teardown nach einem Loop-Tick
+    it = await bc.subscribe(
+        "U1", "c1", bootstrap=[SorFrame(order_id=1, account="U1", status="accepted")]
+    )
+    sub = bc._subs["U1"]
+    await asyncio.wait_for(_first(it), timeout=1.0)  # Generator starten (bootstrap id=0)
+    await it.aclose()  # detach -> Cool-Down-Task (sleep 0)
+    task = sub._cool_down_task
+    assert task is not None
+    await task  # Cool-Down durchlaufen lassen -> _teardown poppt die Subscription
+    assert "U1" not in bc.active_accounts
+
+    # Reconnect nach Teardown -> frische Subscription, Zaehler zurueck auf 0.
+    it2 = await bc.subscribe("U1", "c2", bootstrap=None, last_event_id=5)
+    assert bc._subs["U1"] is not sub
+    assert bc._subs["U1"]._next_event_id == 0
+    await it2.aclose()
+    await bc.shutdown()
+
+
+async def test_teardown_is_noop_when_consumer_reattached() -> None:
+    """Reconnect zwischen Cool-Down-Ablauf und _teardown: der refcount-Recheck
+    unter Lock verhindert, dass eine wieder benutzte Subscription abgeraeumt
+    wird (Race-Absicherung, deckungsgleich mit streams/manager.py)."""
+    bc = OrdersBroadcaster(cool_down_s=30.0)
+    try:
+        it1 = await bc.subscribe(
+            "U1", "c1",
+            bootstrap=[SorFrame(order_id=1, account="U1", status="accepted")],
+        )
+        sub = bc._subs["U1"]
+        await asyncio.wait_for(_first(it1), timeout=1.0)
+        await it1.aclose()  # refcount 0, Cool-Down laeuft
+        assert sub.refcount == 0
+
+        # Neuer Consumer haengt sich an, BEVOR wir _teardown von Hand ausloesen.
+        it2 = await bc.subscribe("U1", "c2", bootstrap=None)
+        assert sub.refcount == 1
+        assert sub._cool_down_task is None, "attach hat den Cool-Down nicht gecancelt"
+
+        # _teardown direkt gerufen (simuliert einen bereits-abgelaufenen
+        # Cool-Down, der die Lock-Runde gewinnt): darf NICHT abraeumen.
+        await bc._teardown(sub)
+        assert bc._subs.get("U1") is sub
+
+        await it2.aclose()
+    finally:
+        await bc.shutdown()
+
+
+async def test_shutdown_cancels_pending_cool_down() -> None:
+    """shutdown() cancelt offene Cool-Down-Tasks - kein Task ueberdauert den
+    Prozess-Exit (Lifespan-Cleanup, main.py)."""
+    bc = OrdersBroadcaster(cool_down_s=30.0)
+    it = await bc.subscribe(
+        "U1", "c1", bootstrap=[SorFrame(order_id=1, account="U1", status="accepted")]
+    )
+    sub = bc._subs["U1"]
+    await asyncio.wait_for(_first(it), timeout=1.0)
+    await it.aclose()
+    task = sub._cool_down_task
+    assert task is not None and not task.done()
+
+    await bc.shutdown()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    # Vertrag: kein Cool-Down-Task ueberdauert den Shutdown. task.done() ist
+    # robust gegen die Cancellation-Propagation - ob die CancelledError bis zum
+    # Task-Frame durchschlaegt (Task noch nicht gestartet -> cancelled()) oder
+    # vom eigenen except geschluckt wird (Task schon im sleep -> Ergebnis None),
+    # haengt an einer Scheduling-Feinheit und ist nicht der eigentliche Punkt.
+    assert task.done()
+    assert bc.active_accounts == set()
 
 
 async def _first(iterator) -> OrderStreamEvent:
