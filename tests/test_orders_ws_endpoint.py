@@ -72,7 +72,7 @@ def test_orders_ws_with_write_only_token_passes_auth(
     """Ein Token mit NUR orders:write kommt am Handshake vorbei.
 
     Scope-Semantik wie GET /v1/orders/{order_id}: das Schreibrecht
-    schliesst das Leserecht mit ein (Karte 601c6e09). Vorher verlangte
+    schließt das Leserecht mit ein (Karte 601c6e09). Vorher verlangte
     der WS-Pfad strikt orders:read und wies denselben Token mit 1008 ab.
 
     Der Unterschied zwischen 1008 und 1011 ist hier der ganze Test:

@@ -38,13 +38,13 @@ async def authenticate_websocket(
     """Akzeptiert die WS-Verbindung und prueft Token + Scope.
 
     ``required_scopes`` hat OR-Semantik: der Token muss MINDESTENS
-    einen davon besitzen. Das ist das WS-Gegenstueck zu
+    einen davon besitzen. Das ist das WS-Gegenstück zu
     :func:`broker_gateway.auth.middleware.require_any_scope` und aus
-    demselben Grund so - eine Schreibberechtigung schliesst das
+    demselben Grund so - eine Schreibberechtigung schließt das
     Leserecht auf dieselbe Ressource mit ein, ein Write-only-Token
     darf am Lese-Endpunkt also nicht brechen (Karte ``601c6e09``).
 
-    Aufrufer mit genau einem Scope bleiben unveraendert gueltig.
+    Aufrufer mit genau einem Scope bleiben unverändert gültig.
 
     Bei Erfolg ist die Verbindung offen und der Token wird zurueck-
     gegeben. Bei Fehler ist die Verbindung geschlossen und es wird

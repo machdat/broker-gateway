@@ -43,7 +43,7 @@ async def orders_ws(
 ) -> None:
     try:
         # Scope-Semantik wie GET /v1/orders/{order_id}: orders:write
-        # schliesst das Leserecht mit ein (Karte 601c6e09).
+        # schließt das Leserecht mit ein (Karte 601c6e09).
         await authenticate_websocket(
             websocket, store, SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE
         )

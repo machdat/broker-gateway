@@ -47,7 +47,7 @@ def get_orders_bootstrap_loader():
 async def orders_stream(
     account: Annotated[str, Query(min_length=1, description="Konto-Nummer")],
     # Scope-Semantik wie GET /v1/orders/{order_id}: orders:write
-    # schliesst das Leserecht mit ein (Karte 601c6e09).
+    # schließt das Leserecht mit ein (Karte 601c6e09).
     _scope: Annotated[
         Token, Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))
     ],

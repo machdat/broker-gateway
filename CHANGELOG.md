@@ -25,11 +25,20 @@ beide Teile zusammen machen den Event-Pfad nutzbar.
   OR-Semantik, als WS-Gegenstück zu `require_any_scope`. Aufrufer mit genau
   einem Scope bleiben unverändert gültig; `quotes_ws` ist nicht betroffen, weil
   es keinen `quotes:write`-Scope gibt.
-- **Keine neue Berechtigungsklasse.** Ein `orders:write`-Token kann dieselben
-  Order-Daten über `GET /v1/orders` und `GET /v1/orders/{order_id}` schon
-  heute lesen. Die schreibenden Endpunkte (`POST`/`DELETE`/`PATCH`) verlangen
-  unverändert strikt `orders:write`, und ein fremder Lese-Scope wird weiterhin
-  abgewiesen — beides durch Tests festgenagelt.
+- **Keine neue Berechtigungsklasse.** Ein `orders:write`-Token darf dieselben
+  Orders über `GET /v1/orders` und `GET /v1/orders/{order_id}` schon heute
+  lesen. Feld für Feld sind die beiden Sichten nicht deckungsgleich — der
+  Stream trägt `client_order_id`, `parent_id`, `symbol`, `last_event_at` und
+  `reject_reason`, die REST-Sicht dafür `order_type`, Stop-/Limit-Level,
+  `oca_group` und `commission`. Keine ist Obermenge der anderen, und die
+  heikleren Felder liegen auf der REST-Seite, die dem Token ohnehin offensteht.
+  Im Ressourcen-Zugriff ist der Stream sogar enger: er verlangt einen
+  expliziten `account`-Parameter, während `GET /v1/orders` ungefiltert alle
+  Konten liefert.
+- **Abgrenzung.** Die schreibenden Endpunkte (`POST`/`DELETE`/`PATCH`)
+  verlangen unverändert strikt `orders:write`, und ein fremder Lese-Scope
+  (z.B. `quotes:read`) wird an beiden Event-Pfaden weiterhin abgewiesen — die
+  Weitung gilt nur für `orders:*`. Beides durch Tests festgenagelt.
 - v1-Spec auf v1.43.0.
 
 ## [2.12.3] — 2026-07-16 (Karte `cefcb57a`: `GET /v1/orders/stream` war nie erreichbar)
