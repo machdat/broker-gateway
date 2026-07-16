@@ -157,9 +157,19 @@ async def test_client_order_id_ueberlebt_modify_und_cancel(
         assert response.status_code == 200, (
             f"modify: {response.status_code} (body={response.text!r})"
         )
-        nachher = response.json()
+
+        # Bewusst NICHT den Modify-Response prüfen: der trägt den orderRef
+        # aus demselben lokalen Order-Objekt, das der Adapter mutiert - das
+        # wäre nur das eigene Echo und bewiese über den Broker nichts (im
+        # Review angemerkt). Stattdessen frisch aus GET /v1/orders lesen:
+        # das ist IBKRs Sicht auf die per cancel/replace ersetzte Order.
+        nachher = await _find_order(paper_http_client, paper_account_id, order_id)
+        assert nachher is not None, (
+            f"order {order_id} nach Modify nicht mehr in GET /v1/orders"
+        )
         assert nachher["client_order_id"] == coid, (
-            "orderRef hat den cancel/replace des Modify NICHT überlebt: "
+            "orderRef hat den cancel/replace des Modify NICHT überlebt "
+            "(aus GET /v1/orders, nicht aus dem Modify-Echo): "
             f"{nachher.get('client_order_id')!r} statt {coid!r}"
         )
 

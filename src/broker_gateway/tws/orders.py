@@ -34,8 +34,9 @@ unter ``permId``. Am Paper-Stack reproduziert (Karte 0cfea205):
 nutzt deshalb ``client_order_id`` - den Schlüssel des Aufrufers, den
 ``_build_ib_order`` als IBKR-``orderRef`` mitgibt und den
 ``_trade_to_order`` und ``_trade_to_sor_frame`` unverändert
-zurückliefern. Der bleibt über Modify (cancel/replace) und Cancel
-gleich.
+zurückliefern. Beim Modify bleibt er erhalten, weil ``modify_order``
+dasselbe Order-Objekt weiterreicht (``orderRef`` wird nicht angefasst);
+broker-seitig geprüft in ``tests_paper/L3_pic/test_client_order_id.py``.
 
 AP ``2a203c58-...`` Phase 4.
 """

@@ -194,10 +194,14 @@ def test_order_request_client_order_id_ist_optional() -> None:
         "a" * 64,  # exakt an der Grenze
         "x",  # ein Zeichen
         "550e8400-e29b-41d4-a716-446655440000",  # UUID, der Regelfall
+        "~",  # 0x7e, das oberste erlaubte Zeichen - pinnt die Grenze
+        " ",  # 0x20, das unterste erlaubte Zeichen
     ],
 )
 def test_order_request_client_order_id_erlaubt_druckbares_ascii(value: str) -> None:
-    """Alle vier Formen sind gegen Paper als lauffähig gemessen."""
+    """Die ersten vier Formen sind gegen Paper als lauffähig gemessen;
+    die Randzeichen 0x20 und 0x7e pinnen den erlaubten Bereich, damit ein
+    späterer Regex-Drift (z.B. Tilde verbieten) auffällt."""
     assert _order_request_with(value).client_order_id == value
 
 
@@ -207,9 +211,12 @@ def test_order_request_client_order_id_erlaubt_druckbares_ascii(value: str) -> N
         "bot-umlaut-äöüß",  # Umlaute
         "bot-emoji-\U0001f680",  # ausserhalb der BMP
         "bot-kyrillisch-д",
-        "bot\ttab",  # Control-Character
-        "bot\nnewline",
+        "bot\ttab",  # Control-Character mitten im String
+        "bot\nnewline",  # Newline mitten im String
+        "bot-task\n",  # ABSCHLIESSENDES Newline - die $-Regex-Falle
+        "bot-task\r",  # abschliessendes CR
         "bot\x00nul",  # das TWS-Protokoll ist NUL-separiert
+        "bot\x7f",  # 0x7f (DEL) - direkt oberhalb des erlaubten Bereichs
     ],
 )
 def test_order_request_client_order_id_lehnt_non_ascii_ab(value: str) -> None:

@@ -19,8 +19,10 @@ aus `order.orderRef`, doch `_build_ib_order` hat `orderRef` nie gesetzt. Der
 Lesepfad war vollständig, der Schreibpfad fehlte.
 
 - **`OrderRequest.client_order_id`** (optional) wird als IBKR-`orderRef` an den
-  Broker durchgereicht und kommt auf Order und Stream-Frame zurück. Über
-  Modify (cancel/replace) und Cancel bleibt er gleich.
+  Broker durchgereicht und kommt auf Order und Stream-Frame zurück. Beim Modify
+  bleibt er erhalten, weil `modify_order` dasselbe Order-Objekt weiterreicht
+  (`orderRef` wird nicht angefasst); der Paper-Test prüft das broker-seitig
+  über `GET /v1/orders` nach dem Modify.
 - **`Order.client_order_id`** ergänzt — ohne das Echo wäre das Feld write-only
   und der Aufrufer könnte nie prüfen, ob sein Schlüssel angekommen ist. Der
   Wert kommt **aus der Broker-Antwort**, nicht aus dem Request gespiegelt: ein

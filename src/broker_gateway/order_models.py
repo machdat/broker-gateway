@@ -31,8 +31,8 @@ from broker_gateway.money import Money
 # dass IBKR die Order angenommen hat). Die 64 hier ist deshalb bewusst
 # UNSERE Entscheidung und keine Broker-Grenze: ein Korrelationsschlüssel
 # ist ein Schlüssel und kein Datenfeld, und eine UUID (36) mit Präfix
-# passt bequem. Wer mehr braucht, kann die Zahl anheben - IBKR steht dem
-# nicht im Weg.
+# passt bequem. Wer mehr braucht, kann die Zahl anheben - bis mindestens
+# 500 Zeichen ist gemessen, dass IBKR nicht kürzt oder ablehnt.
 _CLIENT_ORDER_ID_MAX_LEN = 64
 
 # Zeichensatz: hier ist die Grenze NICHT verhandelbar. Ein orderRef mit
@@ -45,7 +45,13 @@ _CLIENT_ORDER_ID_MAX_LEN = 64
 # Das TWS-Protokoll ist NUL-separiert; Multi-Byte-UTF-8 verschiebt die
 # Feldgrenzen. Erlaubt ist druckbares ASCII (Space bis Tilde), was
 # Control-Characters einschließlich NUL mit abdeckt.
-_CLIENT_ORDER_ID_PATTERN = re.compile(r"^[\x20-\x7e]+$")
+#
+# Anker \Z, NICHT $: Pythons $ matcht ohne re.MULTILINE auch unmittelbar
+# VOR einem abschließenden \n. Mit $ rutschte ein "bot-task\n" durch den
+# Guard und landete als orderRef mit Control-Character auf der Wire -
+# genau die Zeichenklasse, die der Guard fernhalten soll. \Z ankert hart
+# am String-Ende. (Karte 0cfea205, im Review gefunden.)
+_CLIENT_ORDER_ID_PATTERN = re.compile(r"^[\x20-\x7e]+\Z")
 
 
 class OrderType(str, enum.Enum):
@@ -103,8 +109,8 @@ class OrderRequest(BaseModel):
         description=(
             "Aufrufer-eigener Korrelationsschlüssel, wird als IBKR-orderRef "
             "an den Broker durchgereicht und kommt auf Order und Stream-Frame "
-            "zurück. Anders als order_id bleibt er über den ganzen Lifecycle "
-            "gleich. Druckbares ASCII, max "
+            "zurück. Anders als order_id wird er beim Modify nicht neu "
+            "vergeben. Druckbares ASCII, max "
             f"{_CLIENT_ORDER_ID_MAX_LEN} Zeichen. KEIN Idempotency-Key: IBKR "
             "erzwingt auf orderRef keine Eindeutigkeit (gemessen) - dafür ist "
             "der Idempotency-Key-Header da."
