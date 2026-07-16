@@ -33,14 +33,25 @@ class WebSocketAuthError(Exception):
 async def authenticate_websocket(
     websocket: WebSocket,
     store: TokenStore,
-    required_scope: str,
+    *required_scopes: str,
 ) -> Token:
     """Akzeptiert die WS-Verbindung und prueft Token + Scope.
+
+    ``required_scopes`` hat OR-Semantik: der Token muss MINDESTENS
+    einen davon besitzen. Das ist das WS-Gegenstück zu
+    :func:`broker_gateway.auth.middleware.require_any_scope` und aus
+    demselben Grund so - eine Schreibberechtigung schließt das
+    Leserecht auf dieselbe Ressource mit ein, ein Write-only-Token
+    darf am Lese-Endpunkt also nicht brechen (Karte ``601c6e09``).
+
+    Aufrufer mit genau einem Scope bleiben unverändert gültig.
 
     Bei Erfolg ist die Verbindung offen und der Token wird zurueck-
     gegeben. Bei Fehler ist die Verbindung geschlossen und es wird
     ``WebSocketAuthError`` geworfen.
     """
+    if not required_scopes:
+        raise ValueError("authenticate_websocket braucht mindestens einen Scope")
     raw_token, subprotocol = _extract_token(websocket)
     if not raw_token:
         await _close(websocket, code=status.WS_1008_POLICY_VIOLATION)
@@ -51,10 +62,11 @@ async def authenticate_websocket(
         await _close(websocket, code=status.WS_1008_POLICY_VIOLATION)
         raise WebSocketAuthError("Token unbekannt oder abgelaufen")
 
-    if not token.has_scope(required_scope):
+    if not any(token.has_scope(scope) for scope in required_scopes):
         await _close(websocket, code=status.WS_1008_POLICY_VIOLATION)
         raise WebSocketAuthError(
-            f"Token besitzt nicht den erforderlichen Scope {required_scope!r}"
+            "Token besitzt keinen der erforderlichen Scopes: "
+            + ", ".join(repr(scope) for scope in required_scopes)
         )
 
     # Subprotocol echoen, wenn Auth via Sec-WebSocket-Protocol kam -

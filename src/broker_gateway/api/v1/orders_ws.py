@@ -19,7 +19,7 @@ from broker_gateway.api.v1.ws_auth import (
     authenticate_websocket,
 )
 from broker_gateway.auth.middleware import get_token_store
-from broker_gateway.auth.models import SCOPE_ORDERS_READ
+from broker_gateway.auth.models import SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE
 from broker_gateway.auth.store import TokenStore
 from broker_gateway.cp.lifecycle import AuthLifecycle, get_cp_lifecycle
 from broker_gateway.streams.orders import (
@@ -42,7 +42,11 @@ async def orders_ws(
     lifecycle: AuthLifecycle = Depends(get_cp_lifecycle),
 ) -> None:
     try:
-        await authenticate_websocket(websocket, store, SCOPE_ORDERS_READ)
+        # Scope-Semantik wie GET /v1/orders/{order_id}: orders:write
+        # schließt das Leserecht mit ein (Karte 601c6e09).
+        await authenticate_websocket(
+            websocket, store, SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE
+        )
     except WebSocketAuthError:
         return
 

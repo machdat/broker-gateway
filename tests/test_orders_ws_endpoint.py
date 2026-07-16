@@ -1,12 +1,15 @@
 """Tests fuer ``/v1/orders/ws`` (AP-11 K7)."""
 from __future__ import annotations
 
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 
-from broker_gateway.auth.models import SCOPE_ADMIN_ALL, Token
+from broker_gateway.auth.models import (
+    SCOPE_ADMIN_ALL,
+    SCOPE_ORDERS_WRITE,
+    SCOPE_QUOTES_READ,
+    Token,
+)
 from broker_gateway.auth.store import InMemoryTokenStore
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.lifecycle import AuthLifecycle
@@ -58,6 +61,64 @@ def test_orders_ws_without_token_is_rejected(client: TestClient) -> None:
     with pytest.raises(WebSocketDisconnect) as exc:
         with client.websocket_connect(
             "/v1/orders/ws?account=U25235077"
+        ) as ws:
+            ws.receive_text()
+    assert exc.value.code == 1008
+
+
+def test_orders_ws_with_write_only_token_passes_auth(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    """Ein Token mit NUR orders:write kommt am Handshake vorbei.
+
+    Scope-Semantik wie GET /v1/orders/{order_id}: das Schreibrecht
+    schließt das Leserecht mit ein (Karte 601c6e09). Vorher verlangte
+    der WS-Pfad strikt orders:read und wies denselben Token mit 1008 ab.
+
+    Der Unterschied zwischen 1008 und 1011 ist hier der ganze Test:
+    1008 = Auth abgelehnt, 1011 = Auth bestanden und danach der
+    Bootstrap-Loader am CP-Mock gescheitert (siehe Test darunter).
+    """
+    from starlette.websockets import WebSocketDisconnect  # noqa: PLC0415
+
+    write_only = "orders-ws-write-only-aaaaaaaaaaaaaa"
+    store.put(
+        Token(
+            value=write_only,
+            caller_id="trading-robot-like",
+            scopes=[SCOPE_ORDERS_WRITE],
+        )
+    )
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            f"/v1/orders/ws?account=U25235077&token={write_only}"
+        ) as ws:
+            ws.receive_text()
+    assert exc.value.code == 1011, (
+        "write-only-Token wurde am Handshake abgewiesen "
+        f"(Close-Code {exc.value.code}, 1008 = Auth-Fehler)"
+    )
+
+
+def test_orders_ws_with_unrelated_scope_is_rejected(
+    client: TestClient, store: InMemoryTokenStore
+) -> None:
+    """Die Weitung ist auf orders:* begrenzt - kein Freifahrtschein."""
+    from starlette.websockets import WebSocketDisconnect  # noqa: PLC0415
+
+    wrong_scope = "orders-ws-wrong-scope-aaaaaaaaaaaaa"
+    store.put(
+        Token(
+            value=wrong_scope,
+            caller_id="quotes-only",
+            scopes=[SCOPE_QUOTES_READ],
+        )
+    )
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            f"/v1/orders/ws?account=U25235077&token={wrong_scope}"
         ) as ws:
             ws.receive_text()
     assert exc.value.code == 1008

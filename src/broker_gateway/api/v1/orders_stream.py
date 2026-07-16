@@ -14,8 +14,12 @@ from typing import Annotated, AsyncIterator
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
-from broker_gateway.auth.middleware import require_scope
-from broker_gateway.auth.models import SCOPE_ORDERS_READ, Token
+from broker_gateway.auth.middleware import require_any_scope
+from broker_gateway.auth.models import (
+    SCOPE_ORDERS_READ,
+    SCOPE_ORDERS_WRITE,
+    Token,
+)
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.lifecycle import AuthLifecycle, require_session_ok
 from broker_gateway.cp.topics.sor import SorTopicAdapter
@@ -42,7 +46,11 @@ def get_orders_bootstrap_loader():
 )
 async def orders_stream(
     account: Annotated[str, Query(min_length=1, description="Konto-Nummer")],
-    _scope: Annotated[Token, Depends(require_scope(SCOPE_ORDERS_READ))],
+    # Scope-Semantik wie GET /v1/orders/{order_id}: orders:write
+    # schließt das Leserecht mit ein (Karte 601c6e09).
+    _scope: Annotated[
+        Token, Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))
+    ],
     _session: Annotated[AuthLifecycle, Depends(require_session_ok)],
     broadcaster: Annotated[
         OrdersBroadcaster, Depends(get_orders_broadcaster)

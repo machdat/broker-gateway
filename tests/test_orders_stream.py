@@ -12,6 +12,9 @@ from fastapi.testclient import TestClient
 
 from broker_gateway.auth.models import (
     SCOPE_ADMIN_ALL,
+    SCOPE_ORDERS_READ,
+    SCOPE_ORDERS_WRITE,
+    SCOPE_QUOTES_READ,
     Token,
 )
 from broker_gateway.auth.store import InMemoryTokenStore
@@ -172,6 +175,124 @@ def test_orders_stream_requires_orders_read_scope(
         headers={"Authorization": f"Bearer {no_scope}"},
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# /v1/orders/stream - Scope-Semantik (Karte 601c6e09)
+# ---------------------------------------------------------------------------
+
+
+class TestOrdersStreamScopes:
+    """``orders:write`` schließt das Leserecht am Stream mit ein.
+
+    Der Stream verlangte strikt ``orders:read``, während alle lesenden
+    REST-Endpunkte ``read`` ODER ``write`` akzeptieren. Damit sperrte
+    ausgerechnet der Event-Pfad einen Konsumenten aus, der dieselben
+    Orders über ``GET /v1/orders`` längst lesen darf - trading_robot
+    hat genau diesen Zuschnitt (``orders:write``, kein ``orders:read``).
+    """
+
+    def test_write_only_token_reaches_the_real_stream(
+        self, client: TestClient, store: InMemoryTokenStore
+    ) -> None:
+        """Ein Token mit NUR orders:write bekommt den echten SSE-Stream.
+
+        Prüft bewusst den Content-Type und nicht bloß „kein 403": Die
+        Lehre aus Karte ``cefcb57a`` ist, dass eine Assertion auf einen
+        Status-Code allein nicht verrät, welcher Handler geantwortet
+        hat. Erst ``text/event-stream`` beweist, dass der Token im
+        Stream angekommen ist.
+        """
+        from broker_gateway.api.v1.orders_stream import (  # noqa: PLC0415
+            get_orders_bootstrap_loader,
+        )
+
+        write_only = "orders-write-only-aaaaaaaaaaaaaaaaaa"
+        store.put(
+            Token(
+                value=write_only,
+                caller_id="trading-robot-like",
+                scopes=[SCOPE_ORDERS_WRITE],
+            )
+        )
+
+        with _overridden(
+            client,
+            {
+                get_orders_bootstrap_loader: lambda: _EmptyBootstrapLoader(),
+                get_orders_broadcaster: lambda: _FiniteBroadcaster(),
+            },
+        ):
+            response = client.get(
+                "/v1/orders/stream?account=U25235077",
+                headers={"Authorization": f"Bearer {write_only}"},
+            )
+
+        content_type = response.headers.get("content-type", "")
+        assert response.status_code == 200, (
+            f"write-only-Token abgewiesen: {response.status_code} "
+            f"{response.text[:200]}"
+        )
+        assert content_type.startswith("text/event-stream"), (
+            f"Erwartet text/event-stream, bekam {content_type!r}"
+        )
+
+    def test_read_only_token_still_reaches_the_stream(
+        self, client: TestClient, store: InMemoryTokenStore
+    ) -> None:
+        """Gegenrichtung: orders:read funktioniert unverändert weiter."""
+        from broker_gateway.api.v1.orders_stream import (  # noqa: PLC0415
+            get_orders_bootstrap_loader,
+        )
+
+        read_only = "orders-read-only-aaaaaaaaaaaaaaaaaaa"
+        store.put(
+            Token(
+                value=read_only,
+                caller_id="reader",
+                scopes=[SCOPE_ORDERS_READ],
+            )
+        )
+
+        with _overridden(
+            client,
+            {
+                get_orders_bootstrap_loader: lambda: _EmptyBootstrapLoader(),
+                get_orders_broadcaster: lambda: _FiniteBroadcaster(),
+            },
+        ):
+            response = client.get(
+                "/v1/orders/stream?account=U25235077",
+                headers={"Authorization": f"Bearer {read_only}"},
+            )
+
+        assert response.status_code == 200
+        assert response.headers.get("content-type", "").startswith(
+            "text/event-stream"
+        )
+
+    def test_unrelated_scope_is_still_rejected(
+        self, client: TestClient, store: InMemoryTokenStore
+    ) -> None:
+        """Die Weitung ist auf orders:* begrenzt - kein Freifahrtschein.
+
+        Ein Token mit einem fremden Lese-Scope darf den Order-Stream
+        weiterhin nicht sehen.
+        """
+        wrong_scope = "orders-wrong-scope-aaaaaaaaaaaaaaaa"
+        store.put(
+            Token(
+                value=wrong_scope,
+                caller_id="quotes-only",
+                scopes=[SCOPE_QUOTES_READ],
+            )
+        )
+        response = client.get(
+            "/v1/orders/stream?account=U25235077",
+            headers={"Authorization": f"Bearer {wrong_scope}"},
+        )
+
+        assert response.status_code == 403
 
 
 # ---------------------------------------------------------------------------
