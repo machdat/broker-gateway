@@ -854,6 +854,47 @@ class TestTradeToSorFrame:
         assert frame.avg_fill_price == Decimal("200.6")
         assert frame.filled_quantity == Decimal("10")
 
+    def test_raw_status_carries_pending_cancel(self) -> None:
+        # Karte a04adca8: PENDINGCANCEL faellt im semantischen status auf
+        # 'pending', bleibt aber ueber raw_status unterscheidbar.
+        trade = _make_trade(perm_id=1, status="PendingCancel")
+        frame = _trade_to_sor_frame(trade)
+        assert frame is not None
+        assert frame.status == "pending"
+        assert frame.raw_status == "PendingCancel"
+
+    def test_raw_status_carries_inactive(self) -> None:
+        trade = _make_trade(perm_id=1, status="Inactive")
+        frame = _trade_to_sor_frame(trade)
+        assert frame is not None
+        assert frame.status == "pending"
+        assert frame.raw_status == "Inactive"
+
+    def test_unknown_status_logs_warning_and_carries_raw(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        trade = _make_trade(perm_id=1, status="ExoticState")
+        with caplog.at_level(logging.WARNING):
+            frame = _trade_to_sor_frame(trade)
+        assert frame is not None
+        assert frame.status == "pending"
+        assert frame.raw_status == "ExoticState"
+        assert "Unbekannter IBKR-Order-Status" in caplog.text
+
+    def test_known_status_does_not_warn(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        trade = _make_trade(perm_id=1, status="Submitted")
+        with caplog.at_level(logging.WARNING):
+            frame = _trade_to_sor_frame(trade)
+        assert frame is not None
+        assert frame.status == "accepted"
+        assert "Unbekannter IBKR-Order-Status" not in caplog.text
+
 
 # --------------------------------------------------------------------------
 # Pure helper utilities

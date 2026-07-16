@@ -241,6 +241,7 @@ def _frame_to_payload(frame: SorFrame) -> dict[str, Any]:
         "filled_quantity": _decimal_str(frame.filled_quantity),
         "avg_fill_price": _decimal_str(frame.avg_fill_price),
         "status": frame.status,
+        "raw_status": frame.raw_status,
         "time_in_force": frame.time_in_force,
         "last_event_at": frame.last_event_at,
         "reject_reason": frame.reject_reason,

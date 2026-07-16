@@ -4,6 +4,31 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.17.0] — 2026-07-16 (Karte `a04adca8`: additives `raw_status` im Order-Frame)
+
+Additives Feld `raw_status` im Stream-Frame (`/v1/orders/stream`, `/v1/orders/ws`)
+— der nicht-vertragsbrechende Teil der aus `736c49a5` zurückgestellten
+Status-Frage. Es trägt den rohen IBKR-Status-String (z.B. `PendingCancel`,
+`Inactive`).
+
+Das semantische `status`-Feld reduziert `PENDINGCANCEL` und `INACTIVE` beide auf
+`pending` — eine Order im Storno sah damit aus wie eine noch nicht platzierte,
+und der Lebenszyklus zeigte einen scheinbaren Rückschritt `accepted`→`pending`.
+`raw_status` macht den Unterschied sichtbar, **ohne** das `status`-Vokabular zu
+ändern (kein Vertragsbruch). Ein unbekannter IBKR-Status fällt weiterhin auf
+`status: pending`, wird jetzt aber geloggt (statt still durchzugehen) und ist
+über `raw_status` erkennbar.
+
+Nebeneffekt für die Dedup aus v2.16.0: da `raw_status` in der Payload mitläuft,
+gilt ein Übergang `PendingCancel`→`Inactive` (beide `status: pending`) nicht
+mehr als Duplikat und kommt beim Konsumenten an, statt verschluckt zu werden.
+
+Nur der TWS-Pfad füllt das Feld; der cp-Legacy-Pfad liefert `null`. Dokumentiert
+in `docs/api/v1.md` (Section 9.2, Spec v1.48.0). Die eigentliche
+Vokabular-Erweiterung (`pending_cancel`/`inactive` als Werte) und die
+`order_id`-Typ-Konsistenz bleiben API-Bruch und der trading_robot-Abstimmung
+vorbehalten (Folge-Karte `c1c159d1`, extern blockiert).
+
 ## [2.16.1] — 2026-07-16 (Karte `9b1d76ba`: SSE-Heartbeat-Nachbesserung aus dem Nach-Review)
 
 Nachbesserung des SSE-Heartbeats (v2.15.0) nach einem adversarischen Nach-Review. Der Live-Code war korrekt; behoben werden Test-Lücken und ein Härtungspunkt, keine Vertragsänderung.

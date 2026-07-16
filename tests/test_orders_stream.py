@@ -218,6 +218,30 @@ async def test_broadcaster_active_order_survives_lru_pressure(
     assert len(sub._last_order_key) == 3
 
 
+async def test_frame_payload_includes_raw_status() -> None:
+    # Karte a04adca8: der rohe IBKR-Status laeuft additiv im Frame-Payload mit.
+    from broker_gateway.streams.orders import _frame_to_payload
+
+    payload = _frame_to_payload(
+        SorFrame(order_id=1, account="U1", status="pending", raw_status="PendingCancel")
+    )
+    assert payload["status"] == "pending"
+    assert payload["raw_status"] == "PendingCancel"
+
+
+async def test_broadcaster_does_not_dedup_distinct_raw_status() -> None:
+    # raw_status im Payload macht einen Uebergang PendingCancel -> Inactive
+    # (beide status='pending') wieder als Nicht-Duplikat sichtbar, statt ihn
+    # zu verschlucken (Karte a04adca8 x 736c49a5-Dedup).
+    bc = OrdersBroadcaster()
+    frames = [
+        SorFrame(order_id=7, account="U1", status="pending", raw_status="PendingCancel"),
+        SorFrame(order_id=7, account="U1", status="pending", raw_status="Inactive"),
+    ]
+    events = await _publish_then_replay(bc, frames)
+    assert [e.payload["raw_status"] for e in events] == ["PendingCancel", "Inactive"]
+
+
 async def _first(iterator) -> OrderStreamEvent:
     async for event in iterator:
         return event

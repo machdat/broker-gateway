@@ -94,6 +94,12 @@ class SorFrame:
     filled_quantity: Decimal | None = None
     avg_fill_price: Decimal | None = None
     status: OrderStatus | None = None
+    # Roher IBKR-Status-String (z.B. "PendingCancel", "Inactive"), additiv zum
+    # semantisch reduzierten ``status``. So bleibt PENDINGCANCEL/INACTIVE (beide
+    # fallen im ``status`` auf ``pending``) von einem echten ``pending``
+    # unterscheidbar (Karte a04adca8). Nur der TWS-Pfad fuellt ihn; der
+    # cp-Adapter normalisiert den Status frueh und laesst ihn None.
+    raw_status: str | None = None
     time_in_force: str | None = None
     last_event_at: str | None = None
     reject_reason: str | None = None
