@@ -57,6 +57,9 @@ class _AccountSubscription:
         self.event_buffer: collections.deque[OrderStreamEvent] = (
             collections.deque(maxlen=_REPLAY_BUFFER_SIZE)
         )
+        # Letzter gesendeter "order"-Payload je order_id (ohne last_event_at)
+        # fuer die Dedup (Karte 736c49a5).
+        self._last_order_key: dict[Any, dict[str, Any]] = {}
 
     @property
     def refcount(self) -> int:
@@ -71,6 +74,24 @@ class _AccountSubscription:
 
     def detach(self, consumer_id: str) -> None:
         self.consumers.pop(consumer_id, None)
+
+    def is_duplicate_order(self, payload: dict[str, Any]) -> bool:
+        """True, wenn dieses ``order``-Frame semantisch identisch zum zuletzt
+        fuer dieselbe ``order_id`` gesendeten ist; aktualisiert dabei den Merker.
+
+        Die drei ib_async-Callbacks (openOrderEvent/orderStatusEvent/
+        execDetailsEvent) feuern fuer denselben Trade-Zustand und liefern
+        byte-identische Frames inklusive ``last_event_at`` - der Zeitstempel
+        taugt darum nicht als Unterscheidung und wird aus dem Vergleich
+        ausgenommen. Ein reines Zeitstempel-Update traegt fuer den Konsumenten
+        ohnehin nichts Neues.
+        """
+        order_id = payload.get("order_id")
+        key = {k: v for k, v in payload.items() if k != "last_event_at"}
+        if self._last_order_key.get(order_id) == key:
+            return True
+        self._last_order_key[order_id] = key
+        return False
 
     def publish(
         self, *, event_type: str, payload: dict[str, Any]
@@ -165,11 +186,21 @@ class OrdersBroadcaster:
         Wenn fuer ``account`` keine Subscription aktiv ist, wird das
         Frame still verworfen - der WS-Server kann nach einem
         Unsubscribe noch kurz nachsenden.
+
+        Dedup (Karte 736c49a5): ein Frame, das mit dem zuletzt fuer
+        dieselbe order_id gesendeten identisch ist, wird nicht erneut
+        fan-outed. Sonst verdoppelt ein Fill-zaehlender Konsument die
+        Fills, weil die drei ib_async-Callbacks denselben Trade-Zustand
+        publishen. Bootstrap-Frames laufen ueber einen anderen event_type
+        und sind davon nicht betroffen.
         """
         sub = self._subs.get(account)
         if sub is None:
             return
-        sub.publish(event_type="order", payload=_frame_to_payload(frame))
+        payload = _frame_to_payload(frame)
+        if sub.is_duplicate_order(payload):
+            return
+        sub.publish(event_type="order", payload=payload)
 
     @property
     def active_accounts(self) -> set[str]:

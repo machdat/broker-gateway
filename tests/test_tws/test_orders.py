@@ -41,6 +41,7 @@ from broker_gateway.tws.orders import (
     _is_finite_number,
     _order_state_to_whatif,
     _parse_whatif_warning,
+    _price_or_none,
     _to_decimal,
     _trade_to_order,
     _trade_to_sor_frame,
@@ -771,6 +772,34 @@ class TestTradeToOrder:
         order = _trade_to_order(trade)
         assert order.oca_group is None
 
+    def test_limit_price_null_for_dbl_max_sentinel(self) -> None:
+        # Karte 736c49a5: STP-Order ohne Limit -> IBKR setzt lmtPrice=DBL_MAX.
+        # Nicht als Zahl durchreichen, die durch jede Plausibilitaetspruefung
+        # rutscht, sondern als null. request=None (GET-Pfad, kein Fallback).
+        trade = _make_trade(perm_id=1)
+        trade.order.orderType = "STP"
+        trade.order.lmtPrice = 1.7976931348623157e308
+        trade.order.auxPrice = 195.0
+        order = _trade_to_order(trade)
+        assert order.limit_price is None
+        assert order.stop_price == "195.0"
+
+    def test_limit_price_null_for_zero_sentinel(self) -> None:
+        # Sekunden spaeter meldet dieselbe STP-Order lmtPrice=0.0 - ebenfalls
+        # kein echter Preis, ebenfalls null.
+        trade = _make_trade(perm_id=1)
+        trade.order.orderType = "STP"
+        trade.order.lmtPrice = 0.0
+        trade.order.auxPrice = 195.0
+        order = _trade_to_order(trade)
+        assert order.limit_price is None
+
+    def test_limit_price_kept_for_real_value(self) -> None:
+        # Regression: ein echter Limit-Preis bleibt unveraendert.
+        trade = _make_trade(perm_id=1, lmt_price=200.5)
+        order = _trade_to_order(trade)
+        assert order.limit_price == "200.5"
+
 
 class TestTradeToSorFrame:
     def test_returns_none_when_no_perm_or_order_id(self) -> None:
@@ -805,6 +834,25 @@ class TestTradeToSorFrame:
         frame = _trade_to_sor_frame(trade)
         assert frame is not None
         assert frame.status == "pending"
+
+    def test_avg_fill_price_null_when_no_fill(self) -> None:
+        # Karte 736c49a5: ib_async liefert avgFillPrice=0.0 bei 0 Fills - der
+        # Frame darf keinen Preis behaupten, den es nicht gibt.
+        trade = _make_trade(perm_id=1, status="Submitted", filled=0.0, avg_fill_price=0.0)
+        frame = _trade_to_sor_frame(trade)
+        assert frame is not None
+        assert frame.avg_fill_price is None
+        # filled bleibt 0 (ehrlicher Wert), nur der Preis wird null.
+        assert frame.filled_quantity == Decimal("0")
+
+    def test_avg_fill_price_present_with_fill(self) -> None:
+        trade = _make_trade(
+            perm_id=1, status="Filled", filled=10.0, avg_fill_price=200.6
+        )
+        frame = _trade_to_sor_frame(trade)
+        assert frame is not None
+        assert frame.avg_fill_price == Decimal("200.6")
+        assert frame.filled_quantity == Decimal("10")
 
 
 # --------------------------------------------------------------------------
@@ -854,6 +902,21 @@ class TestPureHelpers:
 
     def test_is_finite_number_string_invalid(self) -> None:
         assert not _is_finite_number("abc")
+
+    def test_price_or_none_filters_dbl_max(self) -> None:
+        assert _price_or_none(1.7976931348623157e308) is None
+
+    def test_price_or_none_filters_zero(self) -> None:
+        assert _price_or_none(0.0) is None
+
+    def test_price_or_none_filters_negative(self) -> None:
+        assert _price_or_none(-5) is None
+
+    def test_price_or_none_keeps_positive(self) -> None:
+        assert _price_or_none(200.5) == "200.5"
+
+    def test_price_or_none_none(self) -> None:
+        assert _price_or_none(None) is None
 
 
 # --------------------------------------------------------------------------

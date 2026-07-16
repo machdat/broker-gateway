@@ -4,6 +4,36 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.16.0] — 2026-07-16 (Karte `736c49a5`: Order-Frame-Qualität, nicht-vertragsbrechender Teil)
+
+Drei Korrekturen an den Order-Frames und der REST-Order-Antwort, alle ohne
+Vertragsbruch. Beobachtet am 2026-07-15 gegen echtes IBKR-Paper (DUQ312230)
+über `/v1/orders/ws`, wo ein einziger STP-Lifecycle byte-identische Duplikate,
+einen `DBL_MAX`-Sentinel im `limit_price` und `avg_fill_price: "0.0"` ohne
+jeden Fill zeigte — alles an grünen Unit-Tests vorbei, weil das Test-Double
+saubere Werte liefert, wo ib_async Sentinels und Wiederholungen schickt.
+
+- **Dedup:** Der `OrdersBroadcaster` sendet keinen Frame mehr, der mit dem
+  zuletzt für dieselbe `order_id` gesendeten inhaltsgleich ist. Die drei
+  ib_async-Callbacks (`openOrderEvent`/`orderStatusEvent`/`execDetailsEvent`)
+  publishen denselben Trade-Zustand; bisher kam er als identischer Frame
+  mehrfach an und ein Fill-zählender Konsument verdoppelte Fills. Verglichen
+  wird die Payload **ohne** `last_event_at` (das wird bei Duplikaten
+  mitkopiert und taugt nicht als Unterscheidung).
+- **Sentinel-Filter:** `limit_price` und `stop_price` liefern `null` statt der
+  IBKR-„nicht gesetzt"-Sentinels `DBL_MAX` (`1.7976931348623157e308`) und
+  `0.0` — ein Wert, der sonst durch jede Plausibilitätsprüfung rutscht und
+  einen Risk-Check verfälscht. Gilt für die REST-Order-Antwort.
+- **Ehrliches null:** `avg_fill_price` im Stream-Frame ist `null`, solange
+  `filled_quantity` `0` ist, statt `0.0` einen Durchschnittspreis zu
+  behaupten, den es nicht gibt (die REST-Antwort filterte 0.0 schon).
+
+**Bewusst zurückgestellt** (potenzieller API-Bruch, erst mit trading_robot
+abzustimmen — Karte `caee94cb`): das Status-Vokabular für `PENDINGCANCEL`/
+`INACTIVE` (heute beide `pending`, ein Status-Rückschritt `accepted`→`pending`)
+und die Typ-Konsistenz von `order_id` (Frame `number` vs. REST `string`).
+Dokumentiert in `docs/api/v1.md` (Section 7.2, 9.2, Spec v1.47.0).
+
 ## [2.15.0] — 2026-07-16 (Karte `9b1d76ba`: SSE-Heartbeat einlösen, den Docstring und Design-Doc längst zusagen)
 
 Die SSE-Streams senden in stillen Phasen jetzt tatsächlich alle **15 Sekunden**

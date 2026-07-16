@@ -662,8 +662,8 @@ def _trade_to_order(trade: Any, *, request: OrderRequest | None = None) -> Order
         else (request.conid if request else 0)
     ) or (request.conid if request else 0)
 
-    limit_price = _decimal_str(getattr(order, "lmtPrice", None))
-    stop_price = _decimal_str(getattr(order, "auxPrice", None))
+    limit_price = _price_or_none(getattr(order, "lmtPrice", None))
+    stop_price = _price_or_none(getattr(order, "auxPrice", None))
     if limit_price is None and request is not None:
         limit_price = request.limit_price
     if stop_price is None and request is not None:
@@ -748,7 +748,15 @@ def _trade_to_sor_frame(trade: Any) -> SorFrame | None:
 
     quantity = _to_decimal(getattr(order, "totalQuantity", None))
     filled = _to_decimal(getattr(order_status_obj, "filled", None))
-    avg_price = _to_decimal(getattr(order_status_obj, "avgFillPrice", None))
+    # avg_fill_price ist null, solange kein Fill vorliegt (Karte 736c49a5):
+    # avgFillPrice ist kumulativ, ib_async liefert bei 0 Fills aber 0.0 - ein
+    # Preis, den es nicht gibt. An filled gekoppelt statt "0.0" durchreichen.
+    avg_raw = _to_decimal(getattr(order_status_obj, "avgFillPrice", None))
+    avg_price = (
+        avg_raw
+        if filled is not None and filled > 0 and avg_raw is not None and avg_raw > 0
+        else None
+    )
 
     return SorFrame(
         order_id=int(primary_id),
@@ -993,6 +1001,24 @@ def _decimal_str(value: Any) -> str | None:
         return str(Decimal(str(value)))
     except (InvalidOperation, ValueError):
         return None
+
+
+# IBKR nutzt DBL_MAX (~1.79e308, ib_async ``UNSET_DOUBLE``) als "Preis nicht
+# gesetzt"-Sentinel und meldet fuer nicht gesetzte Preise teils auch 0.0.
+# ib_async reicht beide roh durch. Fuer limit_price/stop_price ist keiner davon
+# ein echter Preis (ein Limit/Stop <= 0 gibt es nicht) - beides gehoert als
+# null ausgeliefert, nicht als Zahl, die durch jede Plausibilitaetspruefung
+# rutscht und einen Risk-Check verfaelscht (Karte 736c49a5).
+_IBKR_UNSET_PRICE = Decimal("1e308")
+
+
+def _price_or_none(value: Any) -> str | None:
+    """Order-Preis als Decimal-String, aber die IBKR-'nicht gesetzt'-Sentinels
+    (DBL_MAX und 0.0/negativ) werden zu ``None`` gefiltert."""
+    dec = _to_decimal(value)
+    if dec is None or dec <= 0 or dec >= _IBKR_UNSET_PRICE:
+        return None
+    return str(dec)
 
 
 def _to_decimal(value: Any) -> Decimal | None:
