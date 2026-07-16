@@ -104,10 +104,138 @@ async def test_publish_unknown_account_is_silent() -> None:
     assert bc.active_accounts == set()
 
 
+# ---------------------------------------------------------------------------
+# OrdersBroadcaster - Dedup (Karte 736c49a5)
+# ---------------------------------------------------------------------------
+
+
+async def _publish_then_replay(bc: OrdersBroadcaster, frames: list[SorFrame]) -> list:
+    """Publisht ``frames`` und liefert, was ein frisch verbundener Consumer
+    aus dem Ringpuffer-Replay sieht.
+
+    Der Replay-Puffer enthaelt exakt die tatsaechlich fan-outeten (also
+    deduplizierten) Events. Ein separater Replay-Consumer hat eine leere
+    Live-Queue und sieht darum jedes Event genau einmal - anders als der
+    publish-vor-iterieren-Pfad, in dem ein Event sowohl im Replay als auch in
+    der Queue desselben Consumers auftaucht.
+    """
+    # Ein Live-Consumer muss existieren, sonst ist publish ein No-op.
+    await bc.subscribe("U1", "keepalive", bootstrap=None)
+    for frame in frames:
+        bc.publish("U1", frame)
+    replay = await bc.subscribe("U1", "replay", bootstrap=None)
+    return await _collect(replay, max_events=len(frames) + 1)
+
+
+async def test_broadcaster_dedups_identical_consecutive_frames() -> None:
+    # Die drei ib_async-Callbacks publishen denselben Trade-Zustand als
+    # byte-identische Frames - der Konsument darf sie nur einmal sehen.
+    bc = OrdersBroadcaster()
+    ts = "2026-07-15T21:07:13.319738+00:00"
+    frames = [
+        SorFrame(order_id=7, account="U1", symbol="AAPL", status="accepted",
+                 last_event_at=ts)
+        for _ in range(3)
+    ]
+    events = await _publish_then_replay(bc, frames)
+    assert len(events) == 1
+    assert events[0].payload["order_id"] == 7
+
+
+async def test_broadcaster_dedups_when_only_last_event_at_differs() -> None:
+    # last_event_at allein taugt nicht als Unterscheidung: aendert sich NUR
+    # der Zeitstempel, ist der Frame fuer den Konsumenten ein No-op.
+    bc = OrdersBroadcaster()
+    frames = [
+        SorFrame(order_id=7, account="U1", status="accepted",
+                 last_event_at="2026-07-15T21:07:13.100000+00:00"),
+        SorFrame(order_id=7, account="U1", status="accepted",
+                 last_event_at="2026-07-15T21:07:13.900000+00:00"),
+    ]
+    events = await _publish_then_replay(bc, frames)
+    assert len(events) == 1
+
+
+async def test_broadcaster_forwards_changed_status() -> None:
+    # Ein echter Statuswechsel ist kein Duplikat und muss durchkommen.
+    bc = OrdersBroadcaster()
+    frames = [
+        SorFrame(order_id=7, account="U1", status="accepted"),
+        SorFrame(order_id=7, account="U1", status="cancelled"),
+    ]
+    events = await _publish_then_replay(bc, frames)
+    assert [e.payload["status"] for e in events] == ["accepted", "cancelled"]
+
+
+async def test_broadcaster_does_not_dedup_across_order_ids() -> None:
+    # Dedup ist pro order_id - zwei verschiedene Orders im selben Zustand
+    # sind keine Duplikate.
+    bc = OrdersBroadcaster()
+    frames = [
+        SorFrame(order_id=1, account="U1", status="accepted"),
+        SorFrame(order_id=2, account="U1", status="accepted"),
+    ]
+    events = await _publish_then_replay(bc, frames)
+    assert sorted(e.payload["order_id"] for e in events) == [1, 2]
+
+
+async def test_broadcaster_dedup_cache_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Der Dedup-Merker darf bei einer Dauerverbindung (refcount bleibt >=1)
+    # nicht unbegrenzt wachsen - die aeltesten, laengst ruhenden order_ids
+    # altern als LRU heraus (Review-Befund).
+    import broker_gateway.streams.orders as orders_mod
+
+    monkeypatch.setattr(orders_mod, "_DEDUP_CACHE_SIZE", 3)
+    bc = OrdersBroadcaster()
+    await bc.subscribe("U1", "keepalive", bootstrap=None)
+    for oid in range(6):
+        bc.publish("U1", SorFrame(order_id=oid, account="U1", status="accepted"))
+    sub = bc._subs["U1"]
+    # Gedeckelt auf 3, und es bleiben die drei juengsten order_ids.
+    assert len(sub._last_order_key) == 3
+    assert set(sub._last_order_key.keys()) == {3, 4, 5}
+
+
+async def test_broadcaster_active_order_survives_lru_pressure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Eine weiter aktive Order darf trotz LRU-Druck NICHT evakuiert werden:
+    # jeder neue Frame frischt sie ans Ende der LRU auf.
+    import broker_gateway.streams.orders as orders_mod
+
+    monkeypatch.setattr(orders_mod, "_DEDUP_CACHE_SIZE", 3)
+    bc = OrdersBroadcaster()
+    await bc.subscribe("U1", "keepalive", bootstrap=None)
+    # order_id=99 bleibt aktiv, dazwischen laufen viele andere Orders.
+    for oid in range(6):
+        bc.publish("U1", SorFrame(order_id=99, account="U1", status="accepted",
+                                  last_event_at=f"t{oid}"))
+        bc.publish("U1", SorFrame(order_id=oid, account="U1", status="accepted"))
+    sub = bc._subs["U1"]
+    assert 99 in sub._last_order_key
+    assert len(sub._last_order_key) == 3
+
+
 async def _first(iterator) -> OrderStreamEvent:
     async for event in iterator:
         return event
     raise AssertionError("Iterator hat kein Event geliefert")
+
+
+async def _collect(iterator, *, max_events: int, timeout: float = 0.5) -> list:
+    """Sammelt bis zu ``max_events`` Events; ein Timeout bedeutet 'nichts mehr
+    da' (die Dedup hat den erwarteten Frame verworfen)."""
+    events: list = []
+    try:
+        while len(events) < max_events:
+            events.append(
+                await asyncio.wait_for(iterator.__anext__(), timeout=timeout)
+            )
+    except (asyncio.TimeoutError, StopAsyncIteration):
+        pass
+    return events
 
 
 # ---------------------------------------------------------------------------

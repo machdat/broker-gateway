@@ -34,6 +34,15 @@ logger = logging.getLogger(__name__)
 
 _REPLAY_BUFFER_SIZE = 200
 _CONSUMER_QUEUE_MAX = 1024
+# Obergrenze fuer den Dedup-Merker je Account (Karte 736c49a5). Eine
+# Dauerverbindung (trading_robot, durch den 15-s-Heartbeat am Leben gehalten)
+# haelt refcount>=1, die Subscription wird nie gedroppt - ohne Cap waechst der
+# Merker monoton mit jeder je gesehenen order_id (auch laengst terminale).
+# Als LRU gefuehrt: nur die aeltesten, laengst ruhenden (praktisch terminalen)
+# Orders altern heraus; aktive Orders werden bei jedem Frame aufgefrischt und
+# nie evakuiert. Grosszuegig ueber jeder realistischen Zahl gleichzeitig
+# aktiver Orders.
+_DEDUP_CACHE_SIZE = 1024
 
 
 @dataclass(frozen=True)
@@ -57,6 +66,13 @@ class _AccountSubscription:
         self.event_buffer: collections.deque[OrderStreamEvent] = (
             collections.deque(maxlen=_REPLAY_BUFFER_SIZE)
         )
+        # Letzter gesendeter "order"-Payload je order_id (ohne last_event_at)
+        # fuer die Dedup (Karte 736c49a5). LRU-geordnet und auf
+        # _DEDUP_CACHE_SIZE gedeckelt, damit eine Dauerverbindung den Merker
+        # nicht unbegrenzt wachsen laesst.
+        self._last_order_key: collections.OrderedDict[Any, dict[str, Any]] = (
+            collections.OrderedDict()
+        )
 
     @property
     def refcount(self) -> int:
@@ -71,6 +87,33 @@ class _AccountSubscription:
 
     def detach(self, consumer_id: str) -> None:
         self.consumers.pop(consumer_id, None)
+
+    def is_duplicate_order(self, payload: dict[str, Any]) -> bool:
+        """True, wenn dieses ``order``-Frame semantisch identisch zum zuletzt
+        fuer dieselbe ``order_id`` gesendeten ist; aktualisiert dabei den Merker.
+
+        Die drei ib_async-Callbacks (openOrderEvent/orderStatusEvent/
+        execDetailsEvent) feuern fuer denselben Trade-Zustand und liefern
+        byte-identische Frames inklusive ``last_event_at`` - der Zeitstempel
+        taugt darum nicht als Unterscheidung und wird aus dem Vergleich
+        ausgenommen. Ein reines Zeitstempel-Update traegt fuer den Konsumenten
+        ohnehin nichts Neues.
+        """
+        order_id = payload.get("order_id")
+        key = {k: v for k, v in payload.items() if k != "last_event_at"}
+        if self._last_order_key.get(order_id) == key:
+            # Aktive Order: warm halten (ans Ende der LRU), damit sie nicht
+            # trotz laufender Updates evakuiert wird.
+            self._last_order_key.move_to_end(order_id)
+            return True
+        self._last_order_key[order_id] = key
+        self._last_order_key.move_to_end(order_id)
+        # Aelteste (laengst ruhende, praktisch terminale) Orders evakuieren.
+        # Eine spaeter doch wieder aktive, evakuierte Order erzeugt hoechstens
+        # einen einzelnen re-emittierten Frame - unschaedlich.
+        while len(self._last_order_key) > _DEDUP_CACHE_SIZE:
+            self._last_order_key.popitem(last=False)
+        return False
 
     def publish(
         self, *, event_type: str, payload: dict[str, Any]
@@ -165,11 +208,21 @@ class OrdersBroadcaster:
         Wenn fuer ``account`` keine Subscription aktiv ist, wird das
         Frame still verworfen - der WS-Server kann nach einem
         Unsubscribe noch kurz nachsenden.
+
+        Dedup (Karte 736c49a5): ein Frame, das mit dem zuletzt fuer
+        dieselbe order_id gesendeten identisch ist, wird nicht erneut
+        fan-outed. Sonst verdoppelt ein Fill-zaehlender Konsument die
+        Fills, weil die drei ib_async-Callbacks denselben Trade-Zustand
+        publishen. Bootstrap-Frames laufen ueber einen anderen event_type
+        und sind davon nicht betroffen.
         """
         sub = self._subs.get(account)
         if sub is None:
             return
-        sub.publish(event_type="order", payload=_frame_to_payload(frame))
+        payload = _frame_to_payload(frame)
+        if sub.is_duplicate_order(payload):
+            return
+        sub.publish(event_type="order", payload=payload)
 
     @property
     def active_accounts(self) -> set[str]:
