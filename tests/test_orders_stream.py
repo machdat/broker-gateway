@@ -9,7 +9,6 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.routing import Match
 
 from broker_gateway.auth.models import (
     SCOPE_ADMIN_ALL,
@@ -263,42 +262,19 @@ class TestOrdersStreamRouting:
     ``/orders/stream`` in ``get_order`` mit ``order_id="stream"`` und
     bekam 404 ``order_id unbekannt``.
 
-    Diese Tests laufen bewusst gegen die zusammengesetzte App. Ein Test
-    gegen die Handler-Funktion allein würde am Bug vorbeiprüfen, weil
-    der Handler selbst nie defekt war - nur unerreichbar.
+    Diese Tests laufen bewusst gegen die zusammengesetzte App und rufen
+    die Endpunkte wirklich auf. Zwei Sackgassen, die hier schon
+    besichtigt wurden:
+
+    - Ein Test gegen die Handler-Funktion allein prüft am Bug vorbei -
+      der Handler war nie defekt, nur unerreichbar.
+    - Ein Test, der Starlettes Routen-Tabelle introspiziert
+      (``app.routes``, ``route.endpoint``), ist an Framework-Interna
+      gekoppelt und zerbricht an Versionssprüngen: lokal (FastAPI 0.135)
+      liegen die Routen flach, ab 0.139 - CI und Produktion - steckt ein
+      ``_IncludedRouter`` davor, der sie nicht herausgibt. Deshalb hier
+      ausschließlich echte Requests.
     """
-
-    def test_stream_path_resolves_to_stream_handler(
-        self, client: TestClient
-    ) -> None:
-        """Der erste Routen-Treffer für GET /v1/orders/stream ist der Stream-Handler.
-
-        Prüft die Ursache direkt an Starlettes Matching-Mechanik, ohne
-        den Endpunkt auszuführen: welche Route greift zuerst?
-        """
-        from broker_gateway.api.v1.orders_stream import (  # noqa: PLC0415
-            orders_stream,
-        )
-
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": "/v1/orders/stream",
-            "path_params": {},
-            "root_path": "",
-            "headers": [],
-        }
-        matched = [
-            route
-            for route in client.app.routes
-            if route.matches(scope)[0] is Match.FULL
-        ]
-        assert matched, "Keine Route matcht GET /v1/orders/stream"
-        assert matched[0].endpoint is orders_stream, (
-            "Erster Treffer ist "
-            f"{getattr(matched[0], 'endpoint', matched[0])!r} statt "
-            "orders_stream - die Platzhalter-Route verdeckt den Stream."
-        )
 
     def test_stream_with_valid_token_yields_event_stream_not_json_404(
         self, client: TestClient
@@ -417,25 +393,24 @@ class TestOrdersStreamRouting:
         """Regression: eine echte Order-ID geht weiter an ``get_order``.
 
         Der Fix verschiebt nur die Reihenfolge - die Platzhalter-Route
-        selbst bleibt unverändert erreichbar. Prüft nur die
-        Routen-Auflösung; dass ``get_order`` sich auch inhaltlich
-        unverändert verhält, decken die bestehenden Tests in
-        ``tests/test_orders.py`` mit echten Requests ab.
-        """
-        from broker_gateway.api.v1.orders import get_order  # noqa: PLC0415
+        selbst bleibt unverändert erreichbar. Die Gegenrichtung des
+        Bugs: die Stream-Route darf keine echten Order-IDs schlucken.
+        Ein SSE-Response hier wäre der Beweis, dass sie es tut.
 
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": "/v1/orders/1234567",
-            "path_params": {},
-            "root_path": "",
-            "headers": [],
-        }
-        matched = [
-            route
-            for route in client.app.routes
-            if route.matches(scope)[0] is Match.FULL
-        ]
-        assert matched, "Keine Route matcht GET /v1/orders/1234567"
-        assert matched[0].endpoint is get_order
+        Dass ``get_order`` sich auch inhaltlich unverändert verhält,
+        decken die bestehenden Tests in ``tests/test_orders.py`` mit
+        echten Requests ab.
+        """
+        response = client.get(
+            "/v1/orders/1234567",
+            headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+        )
+
+        content_type = response.headers.get("content-type", "")
+        assert not content_type.startswith("text/event-stream"), (
+            "GET /v1/orders/<id> landete im SSE-Stream - die Stream-Route "
+            "schluckt echte Order-IDs."
+        )
+        assert content_type.startswith("application/json"), (
+            f"Erwartet eine JSON-Antwort aus get_order, bekam {content_type!r}"
+        )
