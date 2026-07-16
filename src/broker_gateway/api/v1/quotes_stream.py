@@ -1,8 +1,14 @@
-"""GET /v1/quotes/stream - SSE-Stream mit Subscription-Refcount + Fan-Out."""
+"""GET /v1/quotes/stream - SSE-Stream mit Subscription-Refcount + Fan-Out.
+
+Sendet in stillen Phasen alle 15 s einen SSE-Comment-Heartbeat
+(``: keepalive``), damit Konsumenten eine gesunde, aber stille Verbindung
+nicht mit einer toten verwechseln (Karte 9b1d76ba). Umsetzung ueber den
+cancel-sicheren :func:`broker_gateway.streams.heartbeat.sse_with_heartbeat`.
+"""
 from __future__ import annotations
 
 import secrets
-from typing import Annotated, AsyncIterator
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -11,6 +17,7 @@ from broker_gateway.auth.middleware import require_scope
 from broker_gateway.auth.models import SCOPE_QUOTES_READ, Token
 from broker_gateway.cp.lifecycle import AuthLifecycle, require_session_ok
 from broker_gateway.cp.quotes import normalize_default_fields, resolve_fields
+from broker_gateway.streams.heartbeat import sse_with_heartbeat
 from broker_gateway.streams.manager import (
     StreamEvent,
     SubscriptionLimitExceeded,
@@ -83,12 +90,11 @@ async def quotes_stream(
             headers={"Retry-After": str(_RETRY_AFTER_S)},
         ) from exc
 
-    async def _to_sse() -> AsyncIterator[bytes]:
-        async for event in iterator:
-            yield event.to_sse_payload().encode("utf-8")
+    def _render(event: StreamEvent) -> bytes:
+        return event.to_sse_payload().encode("utf-8")
 
     return StreamingResponse(
-        _to_sse(),
+        sse_with_heartbeat(iterator, _render),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
