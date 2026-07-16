@@ -20,8 +20,8 @@ einen einzigen Fill. Der Befund beweist zugleich, dass der Endpunkt nie
 von einem Konsumenten benutzt wurde.
 
 - **Fix:** `orders_stream_router` wird vor `orders_router` registriert.
-  Die Reihenfolge ist jetzt als fachlich kommentiert — sie darf nicht
-  alphabetisch sortiert werden.
+  Die Reihenfolge ist jetzt als fachlich notwendig kommentiert — sie darf
+  nicht alphabetisch sortiert werden.
 - **`tests/test_api_routing.py` (neu):** strukturelle Invariante über die
   ganze App — jede statische Route muss unter jeder ihrer Methoden
   erreichbar sein. Deckt die Fehlerklasse ab, nicht nur diesen Fall. Der

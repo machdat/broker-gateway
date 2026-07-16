@@ -8,9 +8,21 @@ landete jeder Stream-Aufruf in ``get_order`` mit ``order_id="stream"``
 und bekam 404.
 
 ``tests/test_orders_stream.py::TestOrdersStreamRouting`` nagelt den
-konkreten Fall fest. Dieses Modul sichert die ganze Fehlerklasse ab:
-JEDE statische Route muss erreichbar sein, auch die, die es heute noch
+konkreten Fall fest. Dieses Modul sichert die Fehlerklasse ab: jede
+statische HTTP-Route muss erreichbar sein, auch die, die es heute noch
 nicht gibt. Punkt 4 des Soll-Zustands der Karte.
+
+Reichweite bewusst begrenzt auf ``APIRoute``, also HTTP:
+
+- WebSocket-Routen (``APIWebSocketRoute``, z.B. ``/v1/orders/ws``) sind
+  nicht erfasst. Starlette matcht HTTP und WebSocket getrennt, sie
+  können sich also nicht gegenseitig verdecken - genau deshalb war der
+  WS-Zwilling vom Bug nie betroffen. Eine parametrisierte WS-Route, die
+  eine statische WS-Route verdeckt, gibt es heute nicht; käme sie, wäre
+  dieser Test blind dafür.
+- Platzhalter-gegen-Platzhalter ist nicht abgedeckt. Die Invariante ist
+  bewusst auf statische Routen formuliert, weil nur die eindeutig
+  „erreichbar" sein können.
 """
 from __future__ import annotations
 
@@ -48,11 +60,14 @@ def _first_match(routes: list[APIRoute], path: str, method: str) -> APIRoute | N
 
 
 def test_no_static_route_is_shadowed_by_a_placeholder_route() -> None:
-    """Jede statische Route ist unter jeder ihrer Methoden erreichbar.
+    """Jede statische HTTP-Route ist unter jeder ihrer Methoden erreichbar.
 
     Eine statische Route (ohne ``{param}``) gilt als verdeckt, wenn für
     ihren eigenen Pfad und ihre eigene Methode eine ANDERE Route zuerst
     matcht - dann ist sie toter Code, egal was die openapi.json behauptet.
+    Die openapi.json ist hier übrigens kein Zeuge: FastAPI generiert sie
+    aus den registrierten Routen, nicht aus den erreichbaren. Genau
+    deshalb ist der Bug durch jeden Doku-Drift-Review gerutscht.
 
     ``Match.FULL`` prüft Pfad UND Methode. Deshalb ist
     ``POST /orders/whatif`` neben ``GET /orders/{order_id}`` unauffällig
