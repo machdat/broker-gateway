@@ -123,7 +123,7 @@ korreliert mit den Inbound-Logs des Services für Support-Anfragen.
 
 ### 3.5 Streaming via SSE
 
-Quote- und Event-Streams sind **SSE** (`text/event-stream`). Verhalten
+Quote- und Order-Streams sind **SSE** (`text/event-stream`). Verhalten
 und Reconnect-Logik in Sektion 5.
 
 ### 3.6 Versions-Header
@@ -160,8 +160,8 @@ werden. Genaue Bodies, Status-Codes, Beispiele in `v1.md`.
 | **Quotes** | `GET /v1/quotes/snapshot`, `GET /v1/quotes/stream` | 5.1, 5.2 | `quotes:read` |
 | **Portfolio** | `GET /v1/portfolio/{accountId}`, `.../positions`, `.../ledger` | 6.1, 6.2, 6.3 | `portfolio:read` |
 | **Orders** | `POST /v1/orders`, `GET /v1/orders/{id}`, `DELETE /v1/orders/{id}` | 7.1, 7.2, 7.3 | `orders:write` |
+| **Order-Events** | `GET /v1/orders/stream` (SSE), `GET /v1/orders/ws` (WS) | 7.5, 7.6 | `orders:read` **oder** `orders:write` |
 | **Trades** | `GET /v1/trades`, `GET /v1/trades/aggregates` | 8.1, 8.2 | `portfolio:read` |
-| **Events** | `GET /v1/events/stream` | 9 | `events:read` |
 | **Metrics (intern)** | `GET /metrics` | 12 | keine (Compose-internal) |
 
 Die Routen-Wiring liegt in [`src/broker_gateway/main.py`](../src/broker_gateway/main.py)
@@ -170,16 +170,16 @@ Die Routen-Wiring liegt in [`src/broker_gateway/main.py`](../src/broker_gateway/
 
 ## 5. Stream-Patterns (SSE)
 
-Beide Streams (`/v1/quotes/stream`, `/v1/events/stream`) sind
+Die SSE-Streams (`/v1/quotes/stream`, `/v1/orders/stream`) sind
 Server-Sent Events (`Content-Type: text/event-stream`). SSE statt
 WebSocket, weil Push-only ohne Bidi-Bedarf reicht und einfaches
-HTTP-Tooling reicht. WS-Adapter ist als AP-04 in Discovery (siehe
-`02-architecture.md` Sektion 7.2-7.3).
+HTTP-Tooling reicht. Für Order-Events gibt es zusätzlich den
+WebSocket-Zwilling `/v1/orders/ws`.
 
 ### 5.1 Connect
 
 Standard-SSE-Client genügt. Beispiel-Skizze (nicht normativ — siehe
-`v1.md` Section 5.2 / 9 für die Wahrheit):
+`v1.md` Section 5.2 / 7.5 für die Wahrheit):
 
 ```python
 import httpx
@@ -187,7 +187,7 @@ import httpx
 async with httpx.AsyncClient() as client:
     async with client.stream(
         "GET",
-        "https://broker-gateway:4000/v1/events/stream",
+        "https://broker-gateway:4000/v1/orders/stream?account=<account-id>",
         headers={"Authorization": f"Bearer {token}"},
     ) as resp:
         async for line in resp.aiter_lines():

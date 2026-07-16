@@ -4,6 +4,50 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.14.0] — 2026-07-16 (Karte `37fca2f3`: toten Events-Stream ersatzlos entfernt)
+
+`GET /v1/events/stream` wird ersatzlos entfernt — samt `EventBus`,
+`EventSource`-Abstraktion, `ExecutionEvent`/`PositionEvent`/`StatusEvent`-
+Schemas und dem `events:read`-Scope.
+
+Der Endpunkt hatte seit seiner Einführung in v0.11.0 **nie einen Producer**.
+Der `EventBus` wurde an keiner Stelle im Service befüllt (`start_source` nie
+aufgerufen, `publish_execution`/`publish_position`/`publish_status` ohne
+Aufrufer in `src/`), `main.py` baute einen nackten Bus ohne Quelle. Ein
+verbundener Consumer bekam darum **nie ein Event** und lief nach dem
+Read-Timeout in einen endlosen Reconnect-Zyklus — genau das Verhalten, das
+trading_robot seit Monaten sah (der Bot hat deshalb nie einen Fill
+registriert). Die Doku behauptete das Gegenteil („Mock-Source; reale
+CP-WebSocket-Quelle Code-bereit, Lifespan-Wiring offen") und ist an allen
+Fundstellen richtiggestellt.
+
+Entscheidung (Karte ist Autonomie 1, Repo-Owner bestätigt): **Streichen statt
+Bauen.** Order-Lebenszyklus-Events liefert der bereits funktionierende Pfad
+`GET /v1/orders/stream` (SSE) bzw. `GET /v1/orders/ws` (WebSocket) auf
+derselben ib_async-Quelle — mit 14 `SorFrame`-Feldern (inkl.
+`client_order_id`, `reject_reason`, `parent_id`, `time_in_force`, `conid`)
+und damit strukturell **mehr** als die dünnen Event-Schemas. Ein zweiter
+Event-Pfad auf dieselbe Quelle wäre doppelte Wartung für geringere Abdeckung
+gewesen. trading_robot stellt auf `/v1/orders/stream` um (Karte `caee94cb`),
+PSM ist read-only — kein Konsument bleibt.
+
+**Auth-Härtung (Deploy-Sicherheit):** Der `events:read`-Scope fällt aus
+`ALL_SCOPES`; neue Token mit diesem Scope werden weiter mit `422` abgelehnt.
+Weil das bestehende trading_robot-Token `events:read` noch trägt, würde ein
+striktes Entfernen den Service-Start brechen (`FileTokenStore._load` ruft
+`deserialize_token` ohne Fehlerbehandlung). `deserialize_token` verwirft
+deshalb unbekannte Scopes beim Laden aus dem vertrauenswürdigen Store still
+(mit Log-Warnung), statt mit `ValueError` abzubrechen. Der tote Scope
+verschwindet lazy beim nächsten `put` auf das Token.
+
+Entfernt: `src/broker_gateway/streams/events.py`,
+`src/broker_gateway/api/v1/events_stream.py`, `tests/test_events_stream.py`,
+`tests_paper/L1_readonly/test_events_stream_connect.py`, Router-Registrierung,
+EventBus-Verdrahtung in `main.py`, Re-Exports in `streams/__init__.py`. Doku
+richtiggestellt in `docs/api/v1.md` (Section 9 → Removal-Notiz, jetzt
+v1.45.0), `docs/02-architecture.md`, `docs/architecture/ws-adapter-design.md`,
+`docs/05-api.md`, `docs/04-security.md` und `docs/runbooks/token-store-recreate.md`.
+
 ## [2.13.0] — 2026-07-16 (Karte `0cfea205`: `client_order_id` als stabiler Korrelationsschlüssel)
 
 Eine Order liess sich über ihren Lebenszyklus nicht zuverlässig wiedererkennen.

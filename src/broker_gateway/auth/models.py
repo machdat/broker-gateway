@@ -6,17 +6,20 @@ importieren.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 
+_log = logging.getLogger("broker_gateway")
+
+
 # Scope-Konstanten. Format `<bereich>:<recht>` mit `admin:*` als Wildcard.
 SCOPE_QUOTES_READ = "quotes:read"
 SCOPE_PORTFOLIO_READ = "portfolio:read"
 SCOPE_INSTRUMENTS_READ = "instruments:read"
-SCOPE_EVENTS_READ = "events:read"
 SCOPE_ORDERS_READ = "orders:read"
 SCOPE_ORDERS_WRITE = "orders:write"
 SCOPE_HISTORICAL_READ = "historical:read"
@@ -29,7 +32,6 @@ ALL_SCOPES: frozenset[str] = frozenset(
         SCOPE_QUOTES_READ,
         SCOPE_PORTFOLIO_READ,
         SCOPE_INSTRUMENTS_READ,
-        SCOPE_EVENTS_READ,
         SCOPE_ORDERS_READ,
         SCOPE_ORDERS_WRITE,
         SCOPE_HISTORICAL_READ,
@@ -131,10 +133,25 @@ def serialize_token(token: Token) -> dict[str, Any]:
 
 
 def deserialize_token(data: dict[str, Any]) -> Token:
+    # Persistierte Tokens duerfen den Service-Start nicht brechen, wenn ein
+    # Scope zwischenzeitlich zurueckgezogen wurde (z.B. `events:read` mit dem
+    # Entfernen von /v1/events/stream, Karte 37fca2f3). Die Token-ERSTELLUNG
+    # bleibt strikt (der Token-Validator lehnt unbekannte Scopes weiter mit
+    # ValueError ab); nur das Laden aus dem vertrauenswuerdigen Store filtert
+    # unbekannte Scopes heraus und protokolliert das, statt zu crashen.
+    raw_scopes = list(data.get("scopes", []))
+    known_scopes = [s for s in raw_scopes if s in ALL_SCOPES]
+    dropped = sorted(set(raw_scopes) - set(known_scopes))
+    if dropped:
+        _log.warning(
+            "Token %s: unbekannte Scopes beim Laden aus dem Store verworfen: %s",
+            data.get("caller_id", "?"),
+            dropped,
+        )
     return Token(
         value=data["value"],
         caller_id=data["caller_id"],
-        scopes=list(data.get("scopes", [])),
+        scopes=known_scopes,
         created_at=datetime.fromisoformat(data["created_at"]),
         expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
     )

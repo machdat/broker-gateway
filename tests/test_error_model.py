@@ -132,6 +132,18 @@ def test_unknown_route_returns_404_not_found(client: TestClient) -> None:
     _assert_envelope(response.json(), code="not_found", status_code=404)
 
 
+def test_removed_events_stream_returns_404(client: TestClient) -> None:
+    # Regressionsschutz: /v1/events/stream ist mit Karte 37fca2f3
+    # (Service v2.14.0) entfernt. Wird der events_stream_router bei einem
+    # Merge/Revert versehentlich wieder registriert, faellt dieser Test.
+    response = client.get(
+        "/v1/events/stream",
+        headers={"Authorization": f"Bearer {_ADMIN_VALUE}"},
+    )
+    assert response.status_code == 404
+    _assert_envelope(response.json(), code="not_found", status_code=404)
+
+
 # ---- Pflicht-Case: cp_pacing_violation (429 mit Retry-After) ----
 
 def test_pacing_violation_returns_429_cp_pacing_violation(

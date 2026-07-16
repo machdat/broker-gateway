@@ -16,9 +16,11 @@ CP-Gateway:
 - Reconnect mit exponential backoff + neuem Auth-Flow.
 - Single-Owner: pro Instanz nur ein ``connect()``-Aufruf erlaubt.
 
-NICHT in K3: Topic-Subscriptions, Konsum-Integration, EventBus-Mapping,
-``tic``-Dedup. Das ist Foundation - Konsumenten kommen spaeter
-(siehe AP-04 K6 + Folge-AP).
+NICHT in K3: Topic-Subscriptions, Konsum-Integration, ``tic``-Dedup. Das
+ist Foundation fuer den cp-legacy-Pfad. Der frueher hier vorgesehene
+EventBus-Mapping-Konsument (``/v1/events/stream``) wurde nie gebaut und
+ist mit Karte 37fca2f3 samt EventBus entfernt - Order-Events laufen ueber
+``/v1/orders/stream`` bzw. ``/v1/orders/ws`` auf der ib_async-Quelle.
 
 Die Klasse ist gegen einen injizierbaren ``connect_factory`` testbar - die
 Tests verwenden einen In-Memory-FakeConnection statt eines echten Sockets.

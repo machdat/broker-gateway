@@ -154,8 +154,8 @@ Definierte Scopes (Single Source of Truth: `src/broker_gateway/auth/models.py`):
 | `instruments:read` | Symbol-/conid-Lookup |
 | `quotes:read` | Snapshots + Streams |
 | `portfolio:read` | Portfolio + Positions + Ledger + Trades |
-| `orders:write` | Orders platzieren / canceln + Order-Status |
-| `events:read` | Events-Stream |
+| `orders:read` | Order-Status, Liste, Order-Event-Streams (`/v1/orders/stream`, `/v1/orders/ws`) |
+| `orders:write` | Orders platzieren / canceln / modifizieren (schließt `orders:read` mit ein) |
 | `admin:*` | Token-Verwaltung; passt automatisch alle Scope-Checks |
 
 ## Observability
@@ -312,4 +312,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 2.13.0*
+*Version 2.14.0*

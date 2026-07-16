@@ -373,10 +373,10 @@ async def test_sse_response_marked_as_streaming(
 ) -> None:
     """SSE-Endpunkt liefert response_streaming=true und kein response_body.
 
-    Test gegen eine minimale FastAPI-Mock-App, weil der vollstaendige
-    /v1/events/stream-Endpunkt asynchrone EventBus-Hooks aufbaut und beim
-    schnellen Disconnect race-prone Cleanup-Fehler in BaseHTTPMiddleware
-    triggert (nicht relevant fuer das Verhalten der Middleware selbst).
+    Test gegen eine minimale FastAPI-Mock-App mit einem generischen
+    text/event-stream-Endpunkt. Der Test prueft nur, dass die
+    ObservabilityMiddleware einen Streaming-Response als solchen markiert
+    und keinen Body puffert - dafuer genuegt eine beliebige SSE-Quelle.
     """
     from fastapi import FastAPI
     from starlette.responses import StreamingResponse

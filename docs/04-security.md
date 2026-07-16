@@ -173,7 +173,7 @@ einem PR-Body — die Default-Datei auf dem Pi (`/etc/default/broker-
 gateway-{consumer}.env`, 0640 root:cma) ist die einzige
 nicht-ephemere Spur außerhalb des `FileTokenStore`.
 
-Folge-Scopes (`events:read`, `portfolio:read`, `orders:write`) folgen
+Folge-Scopes (`portfolio:read`, `orders:read`, `orders:write`) folgen
 demselben Rezept — `scopes`-Liste im POST anpassen, Konsumenten-
 Default-Datei wegen Audit aktualisieren.
 
@@ -200,8 +200,7 @@ Single Source of Truth für Scope-Namen: [`src/broker_gateway/auth/models.py`](.
 | `instruments:read` | `/v1/instruments/search`, `/v1/instruments/{conid}` | `Depends(require_scope(SCOPE_INSTRUMENTS_READ))` |
 | `quotes:read` | `/v1/quotes/snapshot`, `/v1/quotes/stream` | analog |
 | `portfolio:read` | `/v1/portfolio/{accountId}/*`, `/v1/trades` | analog |
-| `events:read` | `/v1/events/stream` | analog |
-| `orders:read` | `GET /v1/orders/{id}` (Order-Status), `POST /v1/orders/whatif` (Margin-Preview, platziert nichts) — beide auch mit `orders:write` erreichbar | `Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))` |
+| `orders:read` | `GET /v1/orders/{id}` (Order-Status), `GET /v1/orders` (Liste), `GET /v1/orders/stream` + `/v1/orders/ws` (Order-Events), `POST /v1/orders/whatif` (Margin-Preview, platziert nichts) — alle auch mit `orders:write` erreichbar | `Depends(require_any_scope(SCOPE_ORDERS_READ, SCOPE_ORDERS_WRITE))` |
 | `orders:write` | `POST /v1/orders`, `DELETE /v1/orders/{id}` | analog |
 | `admin:*` | Token-Verwaltung; matcht **alle** Scope-Checks | analog (Wildcard in `Token.has_scope`) |
 
@@ -210,12 +209,23 @@ kann alles. Token mit `admin:*` werden ausschließlich für Operator-
 Aufgaben (Token-Erzeugen, Internal-Health, Notfall-Reauth) angelegt
 und sollten kurzlebig sein.
 
+**Zurückgezogener Scope `events:read`:** Mit dem Entfernen von
+`GET /v1/events/stream` (Karte `37fca2f3`, Service v2.14.0) fällt der
+Scope `events:read` aus `ALL_SCOPES` — neue Token mit diesem Scope werden
+seither mit `422` abgelehnt. Ein bereits persistiertes Token, das
+`events:read` noch trägt (z.B. der alte trading_robot-Token), bleibt
+nutzbar: die Store-Deserialisierung (`deserialize_token`) verwirft den
+unbekannten Scope beim Laden still und protokolliert das per Log-Warnung,
+statt den Service-Start mit einem `ValueError` abzubrechen. Der tote Scope
+verschwindet aus der `tokens.json` beim nächsten `put` auf das Token
+(z.B. Rotation).
+
 ### 3.2 Konsumenten-Mapping
 
 | Consumer | Erwartete Scopes | Begründung |
 |---|---|---|
-| **personal_stock_manager (PSM)** | `instruments:read`, `quotes:read`, `portfolio:read` | Lese-Konsument; kein Trade-Auftrag, kein Event-Stream nötig (heute) |
-| **trading-robot** | `instruments:read`, `quotes:read`, `portfolio:read`, `orders:write`, `events:read` | Auto-Trader, braucht alle Lesepfade plus Schreib-Rechte und Push-Events |
+| **personal_stock_manager (PSM)** | `instruments:read`, `quotes:read`, `portfolio:read` | Lese-Konsument; kein Trade-Auftrag, kein Order-Event-Stream nötig (heute) |
+| **trading-robot** | `instruments:read`, `quotes:read`, `portfolio:read`, `orders:write` | Auto-Trader, braucht alle Lesepfade plus Schreib-Rechte; Order-Events (`/v1/orders/stream`, `/v1/orders/ws`) deckt `orders:write` mit ab |
 | **Admin / CLI / Notebooks** | `admin:*` (kurzlebig) oder gezielt einzelne Scopes | Diagnose, Token-Rotation, Service-Health-Checks |
 
 Die Matrix ist nicht im Code zementiert — Operator wählt Scopes beim

@@ -39,8 +39,10 @@ einem getrennten `outline`-Lauf.
 Bestandscode-Bezug: `streams/manager.py` (SubscriptionManager mit
 Refcount und Fan-Out, heute Polling-basiert), `cp/lifecycle.py`
 (AuthLifecycle, Heartbeat-/Reauth-Loop), `api/v1/quotes_stream.py`
-(SSE-Endpoint `/v1/quotes/stream`), `api/v1/events_stream.py`
-(SSE-Endpoint `/v1/events`), `api/v1/instruments.py` (REST-Endpoint
+(SSE-Endpoint `/v1/quotes/stream`), `api/v1/orders_stream.py`
+(SSE-Endpoint `/v1/orders/stream`, Order-Lifecycle-Frames — der
+frühere `events_stream.py`/`/v1/events/stream` wurde mit Karte
+`37fca2f3` ersatzlos entfernt), `api/v1/instruments.py` (REST-Endpoint
 `/v1/instruments/...`).
 
 ---
