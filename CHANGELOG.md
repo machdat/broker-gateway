@@ -4,6 +4,67 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.13.0] — 2026-07-16 (Karte `0cfea205`: `client_order_id` als stabiler Korrelationsschlüssel)
+
+Eine Order liess sich über ihren Lebenszyklus nicht zuverlässig wiedererkennen.
+Die nach aussen sichtbare `order_id` **wechselt**: `POST /v1/orders` antwortet
+mit der IBKR-`orderId`, Sekunden später tragen Stream und Liste die `permId`
+(`primary_id = perm_id if perm_id else order_id`, `tws/orders.py`). Für
+trading_robot hiess das: die beim Platzieren verankerte ID trifft nie, jeder
+Fill wird still als Fremd-Order verworfen.
+
+Das Feld `client_order_id` gab es im Stream-Frame längst, es war auf dem
+TWS-Backend aber **strukturell immer `null`**: `_trade_to_sor_frame` liest es
+aus `order.orderRef`, doch `_build_ib_order` hat `orderRef` nie gesetzt. Der
+Lesepfad war vollständig, der Schreibpfad fehlte.
+
+- **`OrderRequest.client_order_id`** (optional) wird als IBKR-`orderRef` an den
+  Broker durchgereicht und kommt auf Order und Stream-Frame zurück. Beim Modify
+  bleibt er erhalten, weil `modify_order` dasselbe Order-Objekt weiterreicht
+  (`orderRef` wird nicht angefasst); der Paper-Test prüft das broker-seitig
+  über `GET /v1/orders` nach dem Modify.
+- **`Order.client_order_id`** ergänzt — ohne das Echo wäre das Feld write-only
+  und der Aufrufer könnte nie prüfen, ob sein Schlüssel angekommen ist. Der
+  Wert kommt **aus der Broker-Antwort**, nicht aus dem Request gespiegelt: ein
+  gespiegeltes Feld würde einen Schlüssel bestätigen, den IBKR nie bekommen hat.
+- **Verhaltensänderung, kein rein additives Feld.** `OrderRequest` hat
+  `extra=ignore`. Wer `client_order_id` bisher mitschickte, bekam ein `201` und
+  stillen Verwurf. Dieselbe Anfrage setzt jetzt ein Tag beim Broker — und kann
+  neu mit `422` scheitern, wenn sie die Zeichen- oder Längenregel verletzt.
+- **Non-ASCII wird mit `422` abgelehnt.** Gegen IBKR-Paper gemessen: ein
+  `orderRef` mit Umlauten zerlegt den TWS-Wire-Stream (NUL-separiert,
+  längenpräfigiert). IBKR antwortet `Error 320: Attempted read beyond end of
+  socket stream` und platziert die Order **nicht**. Ohne den Guard bekäme der
+  Aufrufer ein `201` auf eine Order, die nie existiert hat. Isoliert
+  nachgemessen: ASCII davor angenommen, Umlaut abgelehnt, ASCII danach wieder
+  angenommen.
+- **Die Längengrenze (64) ist unsere, nicht IBKRs.** Gemessen: `orderRef` mit
+  1, 40, 64, 100 und 500 Zeichen kam jedes Mal byte-identisch zurück, mit
+  vergebener `permId` als Beleg. IBKR kürzt nicht und lehnt nicht ab. Die
+  Karte vermutete „~40 Zeichen — IBKR begrenzt orderRef"; das trifft nicht zu.
+- **Kein Idempotency-Key.** Gemessen: zwei Orders mit identischem `orderRef`
+  werden beide angenommen und bekommen verschiedene `permId`s — IBKR erzwingt
+  keine Eindeutigkeit. Gegen Doppel-Submit schützt allein der
+  `Idempotency-Key`-Header. Ein Replay mit gleichem Key, aber geänderter
+  `client_order_id`, liefert die gespeicherte Antwort mit dem **ursprünglichen**
+  Schlüssel; der Aufrufer sieht das am Echo.
+- **Doku-Korrekturen.** `docs/api/v1.md` Section 7.8 sagte, die `order_id`
+  bleibe beim Modify „in der Regel stabil" — zu beruhigend: die `permId`
+  überlebt den Modify, aber die `order_id` wechselt schon ohne jeden Modify.
+  `docs/architecture/ws-adapter-design.md` führte `client_order_id` als
+  „Idempotency-Schlüssel"; das gilt nur für den cp-Pfad (`cOID`), nicht für
+  TWS (`orderRef`). Spec auf v1.44.0.
+- **cp-legacy** reicht den Schlüssel nicht durch (`client_order_id` bleibt dort
+  `null`). Weil das Feld in der Antwort mitläuft, ist das für den Aufrufer
+  sichtbar statt still.
+- **Tests:** `TestClientOrderIdRoundTrip` führt den Pfad durch das **echte**
+  `ib_async`-Order-Objekt aus `_build_ib_order` statt durch das
+  `SimpleNamespace`-Double — genau dieses Double konnte `orderRef` immer schon
+  und hätte den fehlenden Schreibpfad nie auffallen lassen. Per Mutationstest
+  belegt: entfernt man die `orderRef`-Zeile, werden drei Tests rot; baut man
+  den Request-Fallback ein, wird der Ehrlichkeits-Test rot. Dazu
+  `tests_paper/L3_pic/test_client_order_id.py` gegen echtes IBKR-Paper.
+
 ## [2.12.4] — 2026-07-16 (Karte `601c6e09`: Order-Event-Pfade sperrten write-Token aus)
 
 `GET /v1/orders/stream` und `GET /v1/orders/ws` verlangten strikt den Scope

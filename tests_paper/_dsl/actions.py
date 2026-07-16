@@ -59,6 +59,7 @@ async def place_limit_far_from_market(
     distance_pct: Decimal | float = _DEFAULT_DISTANCE_PCT,
     qty: Decimal | int = 1,
     idempotency_key: str | None = None,
+    client_order_id: str | None = None,
 ) -> int | None:
     """Platziert eine Limit-Order weit weg vom Markt.
 
@@ -67,6 +68,11 @@ async def place_limit_far_from_market(
     (BUY) bzw. ueber (SELL) dem letzten Quote liegt. Liefert die
     ``order_id`` aus dem 201-Body zurueck oder ``None``, wenn der
     Server eine andere Form liefert.
+
+    ``client_order_id`` reicht den Korrelationsschlüssel durch (Karte
+    0cfea205). Er ist etwas anderes als ``idempotency_key``: der Key
+    schützt gateway-lokal vor Doppel-Submit, der Schlüssel landet als
+    orderRef beim Broker und kommt auf Order und Stream-Frame zurück.
     """
     if kill_switch_active():
         raise PaperSafetyError(
@@ -120,6 +126,8 @@ async def place_limit_far_from_market(
         "limit_price": str(limit_price),
         "tif": "DAY",
     }
+    if client_order_id is not None:
+        body["client_order_id"] = client_order_id
     headers = (
         {"Idempotency-Key": idempotency_key} if idempotency_key else None
     )

@@ -154,6 +154,106 @@ def test_order_request_quantity_must_be_positive() -> None:
         )
 
 
+# ---- client_order_id (Karte 0cfea205) ----
+#
+# Die Grenzen unten sind gegen IBKR-Paper gemessen (2026-07-16), nicht
+# geraten. Belege im Karten-Log und in docs/api/v1.md Section 7.1.
+
+
+def _order_request_with(client_order_id: str) -> OrderRequest:
+    return OrderRequest(
+        account_id=_ACCOUNT_ID,
+        conid=_CONID,
+        side=OrderSide.BUY,
+        quantity="1",
+        order_type=OrderType.MKT,
+        client_order_id=client_order_id,
+    )
+
+
+def test_order_request_akzeptiert_client_order_id() -> None:
+    assert _order_request_with("bot-task-42").client_order_id == "bot-task-42"
+
+
+def test_order_request_client_order_id_ist_optional() -> None:
+    """Regression: bestehende Aufrufer schicken das Feld nicht."""
+    request = OrderRequest(
+        account_id=_ACCOUNT_ID,
+        conid=_CONID,
+        side=OrderSide.BUY,
+        quantity="1",
+        order_type=OrderType.MKT,
+    )
+    assert request.client_order_id is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "bot ref,1;2|3",  # Leerzeichen, Komma, Semikolon, Pipe
+        "a" * 64,  # exakt an der Grenze
+        "x",  # ein Zeichen
+        "550e8400-e29b-41d4-a716-446655440000",  # UUID, der Regelfall
+        "~",  # 0x7e, das oberste erlaubte Zeichen - pinnt die Grenze
+        " ",  # 0x20, das unterste erlaubte Zeichen
+    ],
+)
+def test_order_request_client_order_id_erlaubt_druckbares_ascii(value: str) -> None:
+    """Die ersten vier Formen sind gegen Paper als lauffähig gemessen;
+    die Randzeichen 0x20 und 0x7e pinnen den erlaubten Bereich, damit ein
+    späterer Regex-Drift (z.B. Tilde verbieten) auffällt."""
+    assert _order_request_with(value).client_order_id == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "bot-umlaut-äöüß",  # Umlaute
+        "bot-emoji-\U0001f680",  # ausserhalb der BMP
+        "bot-kyrillisch-д",
+        "bot\ttab",  # Control-Character mitten im String
+        "bot\nnewline",  # Newline mitten im String
+        "bot-task\n",  # ABSCHLIESSENDES Newline - die $-Regex-Falle
+        "bot-task\r",  # abschliessendes CR
+        "bot\x00nul",  # das TWS-Protokoll ist NUL-separiert
+        "bot\x7f",  # 0x7f (DEL) - direkt oberhalb des erlaubten Bereichs
+    ],
+)
+def test_order_request_client_order_id_lehnt_non_ascii_ab(value: str) -> None:
+    """Non-ASCII muss an der API-Grenze scheitern, nicht beim Broker.
+
+    Gegen IBKR-Paper gemessen: ein orderRef mit Umlauten zerlegt den
+    TWS-Wire-Stream. IBKR antwortet mit "Error 320: Attempted read beyond
+    end of socket stream" und platziert die Order NICHT (permId bleibt 0).
+    Isoliert nachgemessen - ASCII davor angenommen, Umlaut abgelehnt,
+    ASCII danach wieder angenommen.
+
+    Ohne diesen Guard bekommt der Aufrufer ein 201 auf eine Order, die
+    nie existiert hat. Ein 422 an der Grenze ist die einzige ehrliche
+    Antwort.
+    """
+    with pytest.raises(ValueError):
+        _order_request_with(value)
+
+
+def test_order_request_client_order_id_lehnt_zu_lange_werte_ab() -> None:
+    """65 Zeichen - eines über unserer eigenen Grenze.
+
+    Die Grenze ist NICHT die von IBKR: dort kamen auch 500 Zeichen
+    unverändert zurück (gemessen). Sie ist unsere Entscheidung, und ein
+    422 ist trotzdem richtig - ein still gekürzter
+    Korrelationsschlüssel wäre schlimmer als ein lauter Fehler.
+    """
+    with pytest.raises(ValueError):
+        _order_request_with("a" * 65)
+
+
+def test_order_request_client_order_id_lehnt_leerstring_ab() -> None:
+    """"" würde zu orderRef="" - ununterscheidbar von 'nicht gesetzt'."""
+    with pytest.raises(ValueError):
+        _order_request_with("")
+
+
 # ---- IdempotencyStore ----
 
 
