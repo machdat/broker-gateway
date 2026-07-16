@@ -9,7 +9,13 @@ kann. Die Unit-Tests in ``tests/test_tws/test_orders.py``
 ib_async-Objekt ab; erst hier ist IBKR selbst im Spiel.
 
 Cleanup-Disziplin wie im Nachbarmodul ``test_place_and_cancel.py``:
-jeder Test ruft ``cancel_all_open_orders`` im ``finally``.
+jeder Test ruft ``cancel_all_open_orders`` im ``finally``. Der
+Cleanup pollt in mehreren Runden, weil eine gerade platzierte Order im
+Moment des ersten GET noch nicht in der offenen Liste sein muss.
+Vor US-Marktöffnung verarbeitet IBKR-Paper Cancels verzögert (die Order
+bleibt kurz ``Submitted``, obwohl der Cancel mit 200 quittiert wurde) -
+der Cleanup ist dort best-effort; die LMT-Orders liegen 20% unter Markt
+und können ohnehin nicht fillen.
 
 Aufruf:
 
@@ -42,14 +48,17 @@ pytestmark = pytest.mark.paper_pic
 _TIMEOUT_S = 15.0
 
 
-async def _find_order(
-    client: httpx.AsyncClient, account_id: str, order_id: int | str
+async def _find_by_client_order_id(
+    client: httpx.AsyncClient, account_id: str, client_order_id: str
 ) -> dict | None:
-    """Sucht eine Order in ``GET /v1/orders``.
+    """Sucht eine Order in ``GET /v1/orders`` über ``client_order_id``.
 
-    Bewusst über die Liste statt über ``GET /v1/orders/{id}``: die Liste
-    ist der Pfad, auf dem der ID-Wechsel (orderId -> permId) überhaupt
-    sichtbar wird.
+    Bewusst NICHT über ``order_id``: genau die wechselt (orderId ->
+    permId), sobald IBKR die permId vergibt - der Grund für diese Karte.
+    Die aus dem POST zurückgegebene ``order_id`` taucht in der Liste
+    deshalb nicht mehr auf. Der stabile Korrelationsschlüssel ist der
+    einzige verlässliche Weg, die eigene Order wiederzufinden - und dass
+    das funktioniert, ist selbst schon der Nachweis.
     """
     response = await client.get("/v1/orders", params={"account_id": account_id})
     if response.status_code != 200:
@@ -57,9 +66,24 @@ async def _find_order(
     body = response.json()
     orders = body.get("orders", []) if isinstance(body, dict) else body
     for order in orders:
-        if str(order.get("order_id")) == str(order_id):
+        if order.get("client_order_id") == client_order_id:
             return order
     return None
+
+
+async def _get_order(
+    client: httpx.AsyncClient, account_id: str, order_id: int | str
+) -> dict | None:
+    """Liest eine einzelne Order über ``GET /v1/orders/{order_id}``.
+
+    Für Fälle ohne ``client_order_id`` (Regression). Der Lookup-Pfad
+    akzeptiert sowohl die orderId als auch die permId, ist gegen den
+    ID-Wechsel also robust.
+    """
+    response = await client.get(f"/v1/orders/{order_id}")
+    if response.status_code != 200:
+        return None
+    return response.json()
 
 
 async def test_client_order_id_kommt_vom_broker_zurueck(
@@ -95,12 +119,14 @@ async def test_client_order_id_kommt_vom_broker_zurueck(
             target=("submitted", "presubmitted", "presubmit"),
             timeout_s=_TIMEOUT_S,
         )
-        order = await _find_order(paper_http_client, paper_account_id, order_id)
-        assert order is not None, f"order {order_id} nicht in GET /v1/orders"
-        assert order["client_order_id"] == coid, (
-            "client_order_id kam nicht vom Broker zurück: "
-            f"{order.get('client_order_id')!r} statt {coid!r}"
+        order = await _find_by_client_order_id(
+            paper_http_client, paper_account_id, coid
         )
+        assert order is not None, (
+            f"Order mit client_order_id={coid!r} nicht in GET /v1/orders - "
+            "der Schlüssel kam nicht vom Broker zurück (oder blieb null)"
+        )
+        assert order["client_order_id"] == coid
     finally:
         await cancel_all_open_orders(paper_http_client, paper_account_id)
 
@@ -141,7 +167,9 @@ async def test_client_order_id_ueberlebt_modify_und_cancel(
             target=("submitted", "presubmitted", "presubmit"),
             timeout_s=_TIMEOUT_S,
         )
-        vorher = await _find_order(paper_http_client, paper_account_id, order_id)
+        vorher = await _find_by_client_order_id(
+            paper_http_client, paper_account_id, coid
+        )
         assert vorher is not None
         assert vorher["client_order_id"] == coid
 
@@ -161,17 +189,17 @@ async def test_client_order_id_ueberlebt_modify_und_cancel(
         # Bewusst NICHT den Modify-Response prüfen: der trägt den orderRef
         # aus demselben lokalen Order-Objekt, das der Adapter mutiert - das
         # wäre nur das eigene Echo und bewiese über den Broker nichts (im
-        # Review angemerkt). Stattdessen frisch aus GET /v1/orders lesen:
-        # das ist IBKRs Sicht auf die per cancel/replace ersetzte Order.
-        nachher = await _find_order(paper_http_client, paper_account_id, order_id)
+        # Review angemerkt). Stattdessen frisch aus GET /v1/orders lesen,
+        # und zwar über den client_order_id selbst: das ist zugleich der
+        # Beweis, dass er den cancel/replace des Modify überlebt hat.
+        nachher = await _find_by_client_order_id(
+            paper_http_client, paper_account_id, coid
+        )
         assert nachher is not None, (
-            f"order {order_id} nach Modify nicht mehr in GET /v1/orders"
+            "Order nach Modify nicht mehr über client_order_id auffindbar - "
+            f"orderRef hat den cancel/replace NICHT überlebt (coid={coid!r})"
         )
-        assert nachher["client_order_id"] == coid, (
-            "orderRef hat den cancel/replace des Modify NICHT überlebt "
-            "(aus GET /v1/orders, nicht aus dem Modify-Echo): "
-            f"{nachher.get('client_order_id')!r} statt {coid!r}"
-        )
+        assert nachher["client_order_id"] == coid
 
         cancel_response = await cancel_order(
             paper_http_client,
@@ -209,7 +237,7 @@ async def test_ohne_client_order_id_bleibt_das_feld_null(
             target=("submitted", "presubmitted", "presubmit"),
             timeout_s=_TIMEOUT_S,
         )
-        order = await _find_order(paper_http_client, paper_account_id, order_id)
+        order = await _get_order(paper_http_client, paper_account_id, order_id)
         assert order is not None
         assert order["client_order_id"] is None
     finally:

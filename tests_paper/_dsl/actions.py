@@ -276,39 +276,57 @@ async def cancel_order(
 async def cancel_all_open_orders(
     client: httpx.AsyncClient,
     account_id: str,
+    *,
+    max_rounds: int = 4,
+    settle_s: float = 1.0,
 ) -> list[Any]:
     """Liest ``GET /v1/orders?account=`` und DELETEt pro Order.
 
     Idempotent: wenn keine offenen Orders, liefert ``[]``. Liefert die
-    Liste der gecancelten ``order_id``-Werte.
+    Liste der gecancelten ``order_id``-Werte (mit Duplikaten ueber
+    Runden hinweg, falls eine Order spaeter erneut auftaucht).
+
+    Pollt in mehreren Runden, weil eine gerade erst platzierte Order im
+    Moment des ersten GET noch ``PendingSubmit`` und damit nicht in der
+    offenen Liste sein kann - ein einzelner Durchlauf liesse sie stehen
+    (am Paper-Stack beobachtet, Karte 0cfea205). Bricht ab, sobald eine
+    Runde keine offenen Orders mehr findet, spaetestens nach
+    ``max_rounds``.
     """
     assert_paper_account(account_id)
-    # Query-Param heisst account_id (GET /v1/orders, Karte def3e8f5) - nicht
-    # 'account'; sonst bleibt der Filter wirkungslos und es wuerden Orders
-    # ALLER Konten der Session storniert.
-    response = await client.get(
-        "/v1/orders", params={"account_id": account_id}
-    )
-    if response.status_code != 200:
-        return []
-    body = response.json()
-    if isinstance(body, dict):
-        orders = body.get("orders") or []
-    elif isinstance(body, list):
-        orders = body
-    else:
-        orders = []
     cancelled: list[Any] = []
-    for order in orders:
-        order_id = (
-            order.get("order_id")
-            or order.get("id")
-            or order.get("orderId")
+    for _ in range(max_rounds):
+        # Query-Param heisst account_id (GET /v1/orders, Karte def3e8f5) -
+        # nicht 'account'; sonst bleibt der Filter wirkungslos und es
+        # wuerden Orders ALLER Konten der Session storniert.
+        response = await client.get(
+            "/v1/orders", params={"account_id": account_id}
         )
-        if order_id is None:
-            continue
-        await cancel_order(client, account_id, order_id)
-        cancelled.append(order_id)
+        if response.status_code != 200:
+            break
+        body = response.json()
+        if isinstance(body, dict):
+            orders = body.get("orders") or []
+        elif isinstance(body, list):
+            orders = body
+        else:
+            orders = []
+        if not orders:
+            break
+        for order in orders:
+            order_id = (
+                order.get("order_id")
+                or order.get("id")
+                or order.get("orderId")
+            )
+            if order_id is None:
+                continue
+            await cancel_order(client, account_id, order_id)
+            cancelled.append(order_id)
+        # Cancels broker-seitig setzen lassen, bevor die naechste Runde
+        # prueft - und nachziehenden PendingSubmit-Orders Zeit geben,
+        # in der offenen Liste aufzutauchen.
+        await asyncio.sleep(settle_s)
     return cancelled
 
 
