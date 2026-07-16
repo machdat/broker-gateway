@@ -720,9 +720,19 @@ def _trade_to_sor_frame(trade: Any) -> SorFrame | None:
         or getattr(order, "status", None)
         or "Submitted"
     )
-    sor_status = _IB_TO_SOR_STATUS.get(
-        str(raw_status).upper().replace(" ", ""), "pending"
-    )
+    raw_status_str = str(raw_status)
+    normalized_key = raw_status_str.upper().replace(" ", "")
+    sor_status = _IB_TO_SOR_STATUS.get(normalized_key, "pending")
+    if normalized_key not in _IB_TO_SOR_STATUS:
+        # Karte a04adca8: ein unbekannter IBKR-Status faellt nicht mehr STILL
+        # auf 'pending' - er wird geloggt und bleibt ueber raw_status im Frame
+        # sichtbar, statt als echtes 'pending' fehlgedeutet zu werden.
+        logger.warning(
+            "Unbekannter IBKR-Order-Status %r faellt auf 'pending' zurueck "
+            "(order_id=%s); Rohwert im Frame-Feld raw_status",
+            raw_status_str,
+            primary_id,
+        )
 
     last_event_at: str | None = None
     log = getattr(trade, "log", None)
@@ -769,6 +779,7 @@ def _trade_to_sor_frame(trade: Any) -> SorFrame | None:
         filled_quantity=filled,
         avg_fill_price=avg_price,
         status=sor_status,
+        raw_status=raw_status_str,
         time_in_force=_str_or_none(getattr(order, "tif", None)),
         last_event_at=last_event_at,
         reject_reason=reject_reason,
