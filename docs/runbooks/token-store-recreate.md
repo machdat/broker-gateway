@@ -134,11 +134,13 @@ curl -sS -o /dev/null -w '%{http_code}\n' \
     "${BG_URL}/v1/instruments/search?symbol=AAPL"
 # Erwartet: 200
 
-# 3. Optionaler SSE-Smoke (Konsument mit events:read)
+# 3. Optionaler SSE-Smoke (Konsument mit orders:read oder orders:write)
 curl -sS -N --max-time 3 -w '\nstatus=%{http_code}\n' \
     -H "Authorization: Bearer ${NEW_TOKEN}" \
-    "${BG_URL}/v1/events/stream?types=execution,status,position"
-# Erwartet: status=200 (curl-Timeout 28 ist OK — Stream bleibt offen)
+    "${BG_URL}/v1/orders/stream?account=<account-id>"
+# Erwartet: status=200 (curl-Timeout 28 ist OK — Stream bleibt offen).
+# Hinweis: /v1/events/stream gibt es seit Service v2.14.0 nicht mehr
+# (Karte 37fca2f3) - Order-Events laufen ueber /v1/orders/stream.
 ```
 
 Liefern (1) und (2) HTTP 200, ist die Token-Rotation erfolgreich. (3) ist

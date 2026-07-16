@@ -1,6 +1,7 @@
 """Tests fuer Auth-Modell, Store, Middleware und /v1/auth-Endpunkte."""
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +23,7 @@ from broker_gateway.auth.models import (
     SCOPE_QUOTES_READ,
     Token,
     TokenView,
+    deserialize_token,
 )
 from broker_gateway.auth.store import (
     FileTokenStore,
@@ -117,6 +119,48 @@ def test_file_store_persists_across_instances(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.scopes == [SCOPE_PORTFOLIO_READ]
     assert loaded.caller_id == "psm"
+
+
+def test_deserialize_token_drops_unknown_scope_without_raising() -> None:
+    # Ein zurueckgezogener Scope (hier das mit Karte 37fca2f3 entfernte
+    # "events:read") in einem persistierten Token darf den Ladevorgang NICHT
+    # sprengen - er wird still verworfen, die bekannten Scopes bleiben.
+    token = deserialize_token(
+        {
+            "value": "x" * 20,
+            "caller_id": "trading-robot",
+            "scopes": ["events:read", SCOPE_ORDERS_WRITE],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": None,
+        }
+    )
+    assert token.scopes == [SCOPE_ORDERS_WRITE]
+    assert "events:read" not in token.scopes
+
+
+def test_file_store_loads_token_with_retired_scope(tmp_path: Path) -> None:
+    # Regressionsschutz gegen den Service-Start-Crash: liegt in der
+    # tokens.json noch ein Token mit einem inzwischen entfernten Scope,
+    # muss FileTokenStore es laden koennen (Scope gefiltert), statt beim
+    # Deserialisieren mit ValueError abzubrechen.
+    path = tmp_path / "tokens.json"
+    raw = {
+        "tokens": [
+            {
+                "value": "robot-token-value-1234567890",
+                "caller_id": "trading-robot",
+                "scopes": ["events:read", SCOPE_ORDERS_WRITE],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "expires_at": None,
+            }
+        ]
+    }
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    store = FileTokenStore(path)
+    loaded = store.get("robot-token-value-1234567890")
+    assert loaded is not None
+    assert loaded.scopes == [SCOPE_ORDERS_WRITE]
 
 
 def test_build_default_store_reads_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,6 +270,19 @@ def test_create_token_rejects_unknown_scope(client: TestClient) -> None:
         "/v1/auth/token",
         headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
         json={"caller_id": "psm", "scopes": ["does:not:exist"]},
+    )
+    assert response.status_code == 422
+
+
+def test_create_token_rejects_retired_events_read_scope(client: TestClient) -> None:
+    # Der events:read-Scope wurde mit /v1/events/stream entfernt (Karte
+    # 37fca2f3). Neue Token duerfen ihn nicht mehr anfordern - die
+    # Erstellung bleibt strikt, auch wenn die Store-Deserialisierung ihn
+    # aus Alt-Token still verwirft.
+    response = client.post(
+        "/v1/auth/token",
+        headers={"Authorization": f"Bearer {_BOOTSTRAP_VALUE}"},
+        json={"caller_id": "trading-robot", "scopes": ["events:read"]},
     )
     assert response.status_code == 422
 

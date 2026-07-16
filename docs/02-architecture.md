@@ -302,8 +302,8 @@ src/broker_gateway/
     quotes_stream.py     # /v1/quotes/stream (SSE)
     portfolio.py         # /v1/portfolio/{accountId}/*
     orders.py            # /v1/orders, /v1/orders/{id}
+    orders_stream.py     # /v1/orders/stream (SSE), orders_ws.py (/v1/orders/ws)
     trades.py            # /v1/trades
-    events_stream.py     # /v1/events/stream (SSE)
     errors.py            # zentrale Error-Envelope-Helper
   auth/                  # Token-Modell, Store, FastAPI-Middleware
   auth_status.py         # AuthStatus-Enum (SSOT, sechs Werte) +
@@ -328,9 +328,9 @@ src/broker_gateway/
     client.py            # TWSClient (ib_async-basiert), ClientIdPool
     lifecycle.py         # TWSLifecycle (Heartbeat) + TWSLifecycleCpAdapter
                          #   (cp-Slot-Kompatibilitaet)
-  streams/               # SSE-Stream-Manager (Quotes + EventBus)
+  streams/               # SSE-Stream-Manager (Quotes + Orders)
     manager.py           # Subscription-Refcount + Fan-Out
-    events.py            # EventBus fuer /v1/events/stream
+    orders.py            # OrdersBroadcaster fuer /v1/orders/stream + /ws
   throttle/              # Token-Bucket (Pro-Endpoint-Klasse)
   middleware/observability.py  # request_id, structlog binding, metrics
   metrics.py             # Prometheus-Collectoren
@@ -491,8 +491,8 @@ Variable arbeitet der Service mit In-Memory-Store.
 | `instruments:read` | Symbol- und conid-Lookup |
 | `quotes:read` | Snapshots + Streams |
 | `portfolio:read` | Portfolio + Positions + Ledger + Trades |
-| `orders:write` | Orders platzieren / canceln + Order-Status |
-| `events:read` | Events-Stream |
+| `orders:read` | Order-Status, Liste, Order-Event-Streams (`/v1/orders/stream`, `/v1/orders/ws`) |
+| `orders:write` | Orders platzieren / canceln / modifizieren (schließt `orders:read` mit ein) |
 | `admin:*` | Token-Verwaltung; passt automatisch alle Scope-Checks |
 
 Standard-Mapping pro Consumer:
@@ -500,7 +500,7 @@ Standard-Mapping pro Consumer:
 | Consumer | Erwartete Scopes |
 |---|---|
 | **personal_stock_manager (PSM)** | `quotes:read`, `portfolio:read`, `instruments:read` (kein `orders:write`) |
-| **trading-robot** | `quotes:read`, `portfolio:read`, `instruments:read`, `orders:write`, `events:read` |
+| **trading-robot** | `quotes:read`, `portfolio:read`, `instruments:read`, `orders:write` (deckt die Order-Event-Streams mit ab) |
 | Admin-CLI / Notebooks | konfigurierbar, mit Rotation, kurzlebig |
 
 ### 6.3 Lifecycle
@@ -601,14 +601,20 @@ gestoppt — bis ein Mensch den Service neu startet.
 
 ## 7. Streaming-Architektur
 
-### 7.1 Heute: SSE für Quotes und Events (v1.11.0)
+### 7.1 Heute: SSE für Quotes und Orders
 
 Zwei SSE-Endpunkte sind in Produktion:
 
 | Endpunkt | Modul | Reconnect | Inhalt |
 |---|---|---|---|
 | `GET /v1/quotes/stream` | `streams/manager.py`, `api/v1/quotes_stream.py` | Client-seitiges Reconnect via `Last-Event-ID` | Quote-Updates pro Symbol |
-| `GET /v1/events/stream` | `streams/events.py`, `api/v1/events_stream.py` | dito | Execution-Reports, Position-Updates, Status-Changes |
+| `GET /v1/orders/stream` | `streams/orders.py`, `api/v1/orders_stream.py` | dito, 15-s-Heartbeat | Order-Lifecycle-Frames (`SorFrame`): Fills, Status-Wechsel, Cancels |
+
+> **Historie:** Ein dritter SSE-Endpunkt `GET /v1/events/stream` samt
+> `EventBus` existierte von v0.11.0 bis v2.13.0, hatte aber nie einen
+> Producer und lieferte nie ein Event. Er wurde mit Karte `37fca2f3`
+> ersatzlos entfernt — Order-Events liefert `/v1/orders/stream` (SSE) bzw.
+> `/v1/orders/ws` (WebSocket) auf der echten ib_async-Quelle.
 
 Auf der IBKR-Seite gibt es **eine** Subscription pro `conid`. Mehrere
 Consumer für dasselbe Symbol bekommen den Fan-Out aus einer einzigen
@@ -643,20 +649,26 @@ pro Instanz nur ein `connect()`.**
 
 K5 ist ein Consumer-Fragebogen (PSM, trading-robot) zu Topics, SLOs,
 Symbol-Skala, Failure-Modes. K6 entscheidet das WS-Adapter-Design
-(Subscription-Manager, Topic-Adapter, EventBus-Producer). Die Anbindung
-an `/v1/quotes/stream` und `/v1/events/stream` (Migration von
-REST-Polling auf WS-Push) wird in einem Folge-AP-05 spezifiziert,
-nicht in AP-04.
+(Subscription-Manager, Topic-Adapter, Broadcaster-Producer). Die Anbindung
+an `/v1/quotes/stream` (Migration von REST-Polling auf WS-Push) wird in
+einem Folge-AP-05 spezifiziert, nicht in AP-04. (Der frühere
+`EventBus-Producer` für `/v1/events/stream` entfällt — der Endpunkt ist
+mit Karte `37fca2f3` entfernt; Order-Events laufen über
+`/v1/orders/stream`.)
 
 ### 7.4 WS-Lifespan-Aktivierung (AP-11 K9)
 
-> **Backend-Hinweis:** Der WS-Push-Pfad ist cp-spezifisch — er nutzt
-> die WebSocket-Quelle des CP Gateways (`/v1/api/ws`). Im
-> `BG_BACKEND=tws`-Pfad gibt es heute keinen aktiven Stream-Pfad; die
-> TWS-Event-Callbacks (`updateEvent`, `execDetailsEvent`,
-> `orderStatusEvent`) werden in der Single-Owner-Coordination-Karte 4
-> in den `EventBus` gebridged. Bis dahin ist `/v1/quotes/stream` /
-> `/v1/orders/stream` unter `BG_BACKEND=tws` nicht funktional.
+> **Backend-Hinweis:** Der hier beschriebene WS-Push-Pfad für
+> `/v1/quotes/stream` ist cp-spezifisch — er nutzt die WebSocket-Quelle
+> des CP Gateways (`/v1/api/ws`) und ist im `BG_BACKEND=tws`-Pfad nicht
+> aktiv. Die **Order**-Event-Callbacks von `ib_async`
+> (`openOrderEvent`, `orderStatusEvent`, `execDetailsEvent`) laufen im
+> TWS-Pfad dagegen bereits produktiv: der `TWSOrdersStreamPump`
+> (`tws/orders.py`) speist sie in den `OrdersBroadcaster`, der
+> `/v1/orders/stream` (SSE) und `/v1/orders/ws` (WebSocket) bedient. Der
+> früher an dieser Stelle vorgesehene Bridge in einen `EventBus` (für
+> `/v1/events/stream`) wurde nie gebaut und ist mit Karte `37fca2f3`
+> samt Endpunkt entfernt.
 
 Der WS-Push-Pfad ist Code-seitig komplett (AP-11 K1..K8: SmdTopicAdapter,
 SubscriptionRegistry, WSPushSource, OrdersBroadcaster, /v1/status).
@@ -886,11 +898,13 @@ Hier festgehalten, weil sie quer zu mehreren APs liegen — werden im
 Verlauf als Karten umgesetzt, **nicht** in diesem Dokument
 eigenmächtig entschieden:
 
-- **Stream-Transport für Consumer:** SSE bleibt für `quotes:read` und
-  `events:read`; ob Consumer zusätzlich einen WebSocket angeboten
-  bekommen, entscheidet AP-04 K6 nach Auswertung des Consumer-Fragebogens.
+- **Stream-Transport für Consumer:** SSE bleibt für `quotes:read`
+  (`/v1/quotes/stream`) und die Order-Events (`/v1/orders/stream`);
+  für Order-Events gibt es mit `/v1/orders/ws` bereits einen WebSocket.
+  Ob auch Quotes zusätzlich als WebSocket angeboten werden, entscheidet
+  AP-04 K6 nach Auswertung des Consumer-Fragebogens.
 - **WS-Adapter-Architektur:** Subscription-Manager-Refactor +
-  Topic-Adapter + EventBus-Producer aus Findings ableiten — Zielbild
+  Topic-Adapter + Broadcaster-Producer aus Findings ableiten — Zielbild
   für Folge-AP-05 (separat von Logging-AP-05; Naming-Kollision
   beobachten).
 - **Reauthenticate-Strategie nach Pause:** **geklaert** (AP-09,
@@ -908,8 +922,10 @@ eigenmächtig entschieden:
 - **TWS-Backend-Migration:** seit v1.34.0 läuft `tws/` parallel zu
   `cp/`, gewählt per `BG_BACKEND`. Nächste Schritte sind in der
   KanPrompt-Backlog: **Karte 4 (Single-Owner-Coordination)** macht die
-  Service-Schicht (Portfolio/Orders/Quotes/Events) TWS-fähig und
-  bridged TWS-Event-Callbacks in den EventBus; **Karte 6 (Hard-Cutover)**
+  Service-Schicht (Portfolio/Orders/Quotes) TWS-fähig und bridged die
+  TWS-Order-Callbacks in den `OrdersBroadcaster` (`/v1/orders/stream`,
+  `/v1/orders/ws`); der früher hier genannte `EventBus`/`/v1/events/stream`
+  wurde nie gebaut und ist mit Karte `37fca2f3` entfernt. **Karte 6 (Hard-Cutover)**
   reisst den cp-Pfad raus, entfernt `TWSLifecycleCpAdapter` und
   ersetzt den `cpgateway`-Compose-Service durch einen `tws`-Service
   mit Healthcheck. Bis dahin sind die Order/Portfolio/Quotes-Pfade

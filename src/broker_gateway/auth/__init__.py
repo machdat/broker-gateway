@@ -2,7 +2,6 @@
 from broker_gateway.auth.models import (
     ALL_SCOPES,
     SCOPE_ADMIN_ALL,
-    SCOPE_EVENTS_READ,
     SCOPE_INSTRUMENTS_READ,
     SCOPE_ORDERS_WRITE,
     SCOPE_PORTFOLIO_READ,
@@ -20,7 +19,6 @@ from broker_gateway.auth.store import (
 __all__ = [
     "ALL_SCOPES",
     "SCOPE_ADMIN_ALL",
-    "SCOPE_EVENTS_READ",
     "SCOPE_INSTRUMENTS_READ",
     "SCOPE_ORDERS_WRITE",
     "SCOPE_PORTFOLIO_READ",

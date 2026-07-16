@@ -68,7 +68,6 @@ from broker_gateway.metrics import (
     make_live_collector,
 )
 from broker_gateway.middleware.observability import ObservabilityMiddleware
-from broker_gateway.streams.events import EventBus, get_event_bus
 from broker_gateway.streams.manager import (
     SubscriptionManager,
     get_subscription_manager,
@@ -340,7 +339,6 @@ def create_app(
     orders_service: OrdersService | None = None,
     idempotency_store: IdempotencyStore | None = None,
     trades_service: TradesService | None = None,
-    event_bus: EventBus | None = None,
     throttle: ThrottleManager | None = None,
     metrics: BrokerGatewayMetrics | None = None,
     tws_client: TWSClient | None = None,
@@ -569,7 +567,6 @@ def create_app(
             )
         else:
             trd_service = TradesService(cast(CPGatewayClient, services_client))
-        evt_bus = event_bus if event_bus is not None else EventBus()
 
         app.state.instruments_service = inst_service
         app.state.historical_service = historical_service
@@ -582,7 +579,6 @@ def create_app(
         app.state.orders_service = ord_service
         app.state.idempotency_store = idem_store
         app.state.trades_service = trd_service
-        app.state.event_bus = evt_bus
         app.state.throttle_manager = actual_throttle
         app.state.metrics = actual_metrics
         app.dependency_overrides[get_throttle_manager] = (
@@ -630,9 +626,6 @@ def create_app(
         app.dependency_overrides[get_trades_service] = (
             lambda: cast(TradesService, app.state.trades_service)
         )
-        app.dependency_overrides[get_event_bus] = (
-            lambda: cast(EventBus, app.state.event_bus)
-        )
 
         await cp_lifecycle.start()
 
@@ -676,7 +669,6 @@ def create_app(
         try:
             yield
         finally:
-            await evt_bus.shutdown()
             if orders_pump is not None:
                 try:
                     orders_pump.stop()
