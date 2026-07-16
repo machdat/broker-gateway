@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from typing import Annotated, AsyncIterator
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -23,7 +23,9 @@ from broker_gateway.auth.models import (
 from broker_gateway.cp.client import CPGatewayClient
 from broker_gateway.cp.lifecycle import AuthLifecycle, require_session_ok
 from broker_gateway.cp.topics.sor import SorTopicAdapter
+from broker_gateway.streams.heartbeat import sse_with_heartbeat
 from broker_gateway.streams.orders import (
+    OrderStreamEvent,
     OrdersBroadcaster,
     get_orders_broadcaster,
 )
@@ -75,16 +77,15 @@ async def orders_stream(
         last_event_id=last_event_id,
     )
 
-    async def _to_sse() -> AsyncIterator[bytes]:
-        async for event in iterator:
-            yield (
-                f"id: {event.event_id}\n"
-                f"event: {event.event_type}\n"
-                f"data: {json.dumps(event.payload, separators=(',', ':'))}\n\n"
-            ).encode("utf-8")
+    def _render(event: OrderStreamEvent) -> bytes:
+        return (
+            f"id: {event.event_id}\n"
+            f"event: {event.event_type}\n"
+            f"data: {json.dumps(event.payload, separators=(',', ':'))}\n\n"
+        ).encode("utf-8")
 
     return StreamingResponse(
-        _to_sse(),
+        sse_with_heartbeat(iterator, _render),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
