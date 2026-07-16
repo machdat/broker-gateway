@@ -26,6 +26,17 @@ noch nicht gesetzt hat (typisch direkt nach ``placeOrder``), faellt der
 Adapter auf ``str(orderId)`` zurueck. Lookup-Pfade akzeptieren beide
 Varianten.
 
+Damit ist ``order_id`` nach außen NICHT stabil: dieselbe Order wird
+direkt nach dem POST unter ``orderId`` geführt und Sekunden später
+unter ``permId``. Am Paper-Stack reproduziert (Karte 0cfea205):
+``POST`` liefert "1204", der erste Stream-Frame derselben Order
+1400455970. Wer eine Order über ihren Lebenszyklus wiedererkennen muss,
+nutzt deshalb ``client_order_id`` - den Schlüssel des Aufrufers, den
+``_build_ib_order`` als IBKR-``orderRef`` mitgibt und den
+``_trade_to_order`` und ``_trade_to_sor_frame`` unverändert
+zurückliefern. Der bleibt über Modify (cancel/replace) und Cancel
+gleich.
+
 AP ``2a203c58-...`` Phase 4.
 """
 from __future__ import annotations
@@ -572,6 +583,13 @@ def _build_ib_order(request: OrderRequest) -> Any:
         kwargs["lmtPrice"] = float(Decimal(request.limit_price))
     if request.stop_price is not None:
         kwargs["auxPrice"] = float(Decimal(request.stop_price))
+    # Karte 0cfea205: der Korrelationsschlüssel des Aufrufers geht als
+    # orderRef an IBKR. Nur setzen wenn vorhanden - ib_async defaultet
+    # orderRef auf "", und _str_or_none macht daraus beim Zurückkehren
+    # wieder None. modify_order braucht hier nichts: es mutiert das
+    # bestehende Order-Objekt weiter (siehe dort), orderRef bleibt daran.
+    if request.client_order_id is not None:
+        kwargs["orderRef"] = request.client_order_id
     return IBOrder(**kwargs)
 
 
@@ -655,6 +673,14 @@ def _trade_to_order(trade: Any, *, request: OrderRequest | None = None) -> Order
     # eindeutig ist.
     oca_group = _str_or_none(getattr(order, "ocaGroup", None))
 
+    # Karte 0cfea205: ausschließlich aus dem Order-Objekt lesen, NIE aus
+    # request spiegeln. Das Objekt trägt nach dem openOrder-Echo den Wert,
+    # den IBKR wirklich hat (ib_async resynct ihn). Ein Fallback auf
+    # request.client_order_id würde einen Schlüssel bestätigen, der beim
+    # Broker nie ankam - dieselbe Lüge, die diese Karte überhaupt auslöst.
+    # Gleiche Quelle wie im Stream-Frame (_trade_to_sor_frame).
+    client_order_id = _str_or_none(getattr(order, "orderRef", None))
+
     return Order(
         order_id=order_id_str,
         account_id=str(account_id),
@@ -664,6 +690,7 @@ def _trade_to_order(trade: Any, *, request: OrderRequest | None = None) -> Order
         order_type=order_type,
         tif=tif,
         status=cp_status,
+        client_order_id=client_order_id,
         limit_price=limit_price,
         stop_price=stop_price,
         oca_group=oca_group,

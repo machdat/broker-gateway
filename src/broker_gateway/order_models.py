@@ -12,6 +12,7 @@ oder ignoriert, je nach Endpunkt-Doku.
 from __future__ import annotations
 
 import enum
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -19,6 +20,32 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from broker_gateway.money import Money
+
+
+# client_order_id -> IBKR-orderRef (Karte 0cfea205). Beide Grenzen sind
+# gegen IBKR-Paper (DUQ312230) gemessen, nicht aus der Doku übernommen
+# - Messprotokoll am 2026-07-16, Details in docs/api/v1.md Section 7.1.
+#
+# Länge: IBKR hat KEINE Grenze, die wir gefunden hätten - 1, 40, 64, 100
+# und 500 Zeichen kamen alle byte-identisch zurück (permId als Beleg,
+# dass IBKR die Order angenommen hat). Die 64 hier ist deshalb bewusst
+# UNSERE Entscheidung und keine Broker-Grenze: ein Korrelationsschlüssel
+# ist ein Schlüssel und kein Datenfeld, und eine UUID (36) mit Präfix
+# passt bequem. Wer mehr braucht, kann die Zahl anheben - IBKR steht dem
+# nicht im Weg.
+_CLIENT_ORDER_ID_MAX_LEN = 64
+
+# Zeichensatz: hier ist die Grenze NICHT verhandelbar. Ein orderRef mit
+# Non-ASCII zerlegt den TWS-Wire-Stream - IBKR antwortet mit
+# "Error 320: Attempted read beyond end of socket stream" und die Order
+# wird NICHT platziert (permId bleibt 0). Isoliert nachgemessen: ASCII
+# davor angenommen, Umlaut abgelehnt, ASCII danach wieder angenommen.
+# Ohne diesen Guard verliert ein Aufrufer mit einem Umlaut im Schlüssel
+# seine Order still - genau der stille Verlust, den die Karte ausschließt.
+# Das TWS-Protokoll ist NUL-separiert; Multi-Byte-UTF-8 verschiebt die
+# Feldgrenzen. Erlaubt ist druckbares ASCII (Space bis Tilde), was
+# Control-Characters einschließlich NUL mit abdeckt.
+_CLIENT_ORDER_ID_PATTERN = re.compile(r"^[\x20-\x7e]+$")
 
 
 class OrderType(str, enum.Enum):
@@ -69,6 +96,34 @@ class OrderRequest(BaseModel):
     tif: TimeInForce = TimeInForce.DAY
     limit_price: str | None = Field(default=None, description="Decimal-String, falls LMT/STP-LMT")
     stop_price: str | None = Field(default=None, description="Decimal-String, falls STP/STP-LMT")
+    client_order_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=_CLIENT_ORDER_ID_MAX_LEN,
+        description=(
+            "Aufrufer-eigener Korrelationsschlüssel, wird als IBKR-orderRef "
+            "an den Broker durchgereicht und kommt auf Order und Stream-Frame "
+            "zurück. Anders als order_id bleibt er über den ganzen Lifecycle "
+            "gleich. Druckbares ASCII, max "
+            f"{_CLIENT_ORDER_ID_MAX_LEN} Zeichen. KEIN Idempotency-Key: IBKR "
+            "erzwingt auf orderRef keine Eindeutigkeit (gemessen) - dafür ist "
+            "der Idempotency-Key-Header da."
+        ),
+    )
+
+    @field_validator("client_order_id")
+    @classmethod
+    def _client_order_id_printable_ascii(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not _CLIENT_ORDER_ID_PATTERN.match(v):
+            raise ValueError(
+                "client_order_id erlaubt nur druckbares ASCII (0x20-0x7e). "
+                "Non-ASCII zerlegt den TWS-Wire-Stream: IBKR lehnt die Order "
+                "dann mit 'Error 320: Attempted read beyond end of socket "
+                "stream' ab, ohne sie zu platzieren."
+            )
+        return v
 
     @field_validator("quantity")
     @classmethod
@@ -173,6 +228,18 @@ class Order(BaseModel):
     order_type: OrderType
     tif: TimeInForce
     status: OrderStatus
+    client_order_id: str | None = Field(
+        default=None,
+        description=(
+            "Der beim Platzieren mitgegebene Korrelationsschlüssel, wie ihn "
+            "der Broker zurückmeldet (IBKR-orderRef). None, wenn keiner "
+            "gesetzt wurde. Bewusst aus der Broker-Antwort gelesen und nicht "
+            "aus dem Request gespiegelt: sonst würde das Feld einen Schlüssel "
+            "bestätigen, der beim Broker nie ankam. Auf dem "
+            "cp-legacy-Roll-Back-Profil immer None - dort wird der Schlüssel "
+            "nicht durchgereicht."
+        ),
+    )
     limit_price: str | None = None
     stop_price: str | None = Field(
         default=None,

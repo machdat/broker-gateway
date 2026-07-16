@@ -312,4 +312,4 @@ Noch nicht festgelegt.
 
 ---
 
-*Version 2.12.4*
+*Version 2.13.0*

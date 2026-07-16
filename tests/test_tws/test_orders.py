@@ -895,6 +895,87 @@ class TestBuildIbOrder:
         assert order.lmtPrice == 200.5
         assert order.auxPrice == 195.0
 
+    def test_client_order_id_wird_als_order_ref_gesetzt(self) -> None:
+        """Der Schreibpfad, der Karte 0cfea205 überhaupt auslöst."""
+        request = _order_request(client_order_id="bot-task-42")
+        order = _build_ib_order(request)
+        assert order.orderRef == "bot-task-42"
+
+    def test_ohne_client_order_id_bleibt_order_ref_leer(self) -> None:
+        """Regression: bestehende Aufrufer verhalten sich unverändert.
+
+        ib_async defaultet orderRef auf den leeren String; _str_or_none
+        macht daraus beim Zurückkehren wieder None. Der Frame trägt
+        dann null wie vor der Änderung.
+        """
+        request = _order_request()
+        order = _build_ib_order(request)
+        assert order.orderRef == ""
+
+
+class TestClientOrderIdRoundTrip:
+    """Der Riegel gegen die Falle, die Karte 0cfea205 überhaupt entstehen ließ.
+
+    Der Bug konnte jahrelang überleben, WEIL das Test-Double mehr kann
+    als der Adapter: ``_make_order_obj`` (oben, Zeile ~59) nimmt einen
+    ``order_ref``-Parameter und setzt ``orderRef`` brav auf dem
+    SimpleNamespace. Ein Test, der ``_trade_to_sor_frame`` mit so einem
+    Double füttert, ist deshalb auch dann grün, wenn ``_build_ib_order``
+    das Feld nie setzt - er beweist nur, dass das Double kann, was man
+    ihm eingebaut hat.
+
+    Diese Tests umgehen das Double an der entscheidenden Stelle: das
+    Order-Objekt kommt aus dem ECHTEN ``_build_ib_order``, also aus dem
+    Produktionspfad, und ist ein echtes ``ib_async.order.Order``. Fällt
+    ``kwargs["orderRef"] = ...`` weg, wird ``client_order_id`` hier
+    zwangsläufig None und der Test rot.
+    """
+
+    def test_build_ib_order_bis_sor_frame(self) -> None:
+        request = _order_request(client_order_id="bot-task-42")
+        ib_order = _build_ib_order(request)  # echtes ib_async-Order-Objekt
+        ib_order.permId = 1400455970  # IBKR vergibt die permId erst später
+
+        frame = _trade_to_sor_frame(_make_trade(order=ib_order))
+
+        assert frame is not None
+        assert frame.client_order_id == "bot-task-42"
+
+    def test_build_ib_order_bis_rest_order(self) -> None:
+        request = _order_request(client_order_id="bot-task-42")
+        ib_order = _build_ib_order(request)
+        ib_order.permId = 1400455970
+
+        order = _trade_to_order(_make_trade(order=ib_order), request=request)
+
+        assert order.client_order_id == "bot-task-42"
+
+    def test_ohne_schluessel_bleibt_das_feld_none(self) -> None:
+        """Regression über denselben echten Pfad."""
+        request = _order_request()
+        ib_order = _build_ib_order(request)
+        ib_order.permId = 1400455970
+
+        trade = _make_trade(order=ib_order)
+        assert _trade_to_sor_frame(trade).client_order_id is None
+        assert _trade_to_order(trade, request=request).client_order_id is None
+
+    def test_rest_order_spiegelt_den_request_nicht(self) -> None:
+        """``Order.client_order_id`` kommt vom Broker, nicht aus dem Request.
+
+        Würde ``_trade_to_order`` bei leerem orderRef auf
+        ``request.client_order_id`` zurückfallen, bestätigte die Antwort
+        einen Schlüssel, den IBKR nie bekommen hat. Genau diese Sorte
+        Lüge - ein Feld, das gesetzt aussieht, obwohl der Broker nichts
+        davon weiß - ist der Grund für diese Karte.
+        """
+        request = _order_request(client_order_id="nie-angekommen")
+        trade = _make_trade(order=_make_order_obj(perm_id=1400455970, order_ref=None))
+
+        order = _trade_to_order(trade, request=request)
+
+        assert order.client_order_id is None
+
 
 # --------------------------------------------------------------------------
 # whatif_order (What-If-/Margin-Vorschau)

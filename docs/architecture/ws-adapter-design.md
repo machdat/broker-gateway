@@ -580,7 +580,7 @@ Detail-Klärungen wandern in die jeweilige AP-11-Karte.
 | Adapter-Feld | IBKR-Quelle (K4) | Bemerkung |
 |--------------|------------------|-----------|
 | `order_id` | `orderId` | int |
-| `client_order_id` | `cOID` (falls vorhanden) | Idempotency-Schlüssel |
+| `client_order_id` | `cOID` (cp) / `orderRef` (tws) | Korrelationsschlüssel des Aufrufers, **kein** Idempotency-Schlüssel — siehe Hinweis unter der Tabelle |
 | `parent_id` | `parentId` | für Brackets |
 | `account` | `acct` | |
 | `symbol` | `ticker` | |
@@ -594,6 +594,8 @@ Detail-Klärungen wandern in die jeweilige AP-11-Karte.
 | `reject_reason` | `orderRejectReason` (falls vorhanden) | |
 
 UI-only Felder (`bgColor`, `fgColor`) werden **nicht** durchgereicht.
+
+> **Zu `client_order_id` (Karte `0cfea205`, korrigiert 2026-07-16).** Dieses Dokument führte das Feld als „Idempotency-Schlüssel". Das galt aus der cp-Perspektive, in der es auf `cOID` abbildet — dort prüft der Broker die Eindeutigkeit. Für das TWS-Backend, das den Pfad seit v2.0.0 trägt, stimmt es nicht: dort bildet das Feld auf `orderRef` ab, und IBKR erzwingt darauf **keine** Eindeutigkeit. Gegen Paper gemessen: zwei Orders mit identischem `orderRef` werden beide angenommen und bekommen verschiedene `permId`s. Das Feld korreliert eine Order über ihren Lebenszyklus (die `order_id` wechselt von `orderId` auf `permId` und taugt dafür nicht); gegen Doppel-Submit schützt allein der `Idempotency-Key`-Header. Details in [`docs/api/v1.md`](../api/v1.md) Section 7.1.
 
 ---
 
