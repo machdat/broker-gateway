@@ -278,23 +278,26 @@ async def cancel_all_open_orders(
     account_id: str,
     *,
     max_rounds: int = 4,
-    settle_s: float = 1.0,
+    settle_s: float = 0.5,
 ) -> list[Any]:
     """Liest ``GET /v1/orders?account=`` und DELETEt pro Order.
 
     Idempotent: wenn keine offenen Orders, liefert ``[]``. Liefert die
-    Liste der gecancelten ``order_id``-Werte (mit Duplikaten ueber
-    Runden hinweg, falls eine Order spaeter erneut auftaucht).
+    Liste der gecancelten ``order_id``-Werte, jede genau einmal.
 
     Pollt in mehreren Runden, weil eine gerade erst platzierte Order im
     Moment des ersten GET noch ``PendingSubmit`` und damit nicht in der
     offenen Liste sein kann - ein einzelner Durchlauf liesse sie stehen
-    (am Paper-Stack beobachtet, Karte 0cfea205). Bricht ab, sobald eine
-    Runde keine offenen Orders mehr findet, spaetestens nach
-    ``max_rounds``.
+    (am Paper-Stack beobachtet, Karte 0cfea205). Jede ``order_id`` wird
+    nur einmal gecancelt (``seen``); die Schleife bricht ab, sobald eine
+    Runde keine NOCH-NICHT-gesehene Order mehr findet, spaetestens nach
+    ``max_rounds``. Deshalb terminiert sie auch dann, wenn dieselbe Order
+    ueber mehrere GETs hinweg gelistet bleibt (Cancel broker-seitig noch
+    nicht verarbeitet).
     """
     assert_paper_account(account_id)
     cancelled: list[Any] = []
+    seen: set[Any] = set()
     for _ in range(max_rounds):
         # Query-Param heisst account_id (GET /v1/orders, Karte def3e8f5) -
         # nicht 'account'; sonst bleibt der Filter wirkungslos und es
@@ -311,21 +314,24 @@ async def cancel_all_open_orders(
             orders = body
         else:
             orders = []
-        if not orders:
-            break
+        new_ids = []
         for order in orders:
             order_id = (
                 order.get("order_id")
                 or order.get("id")
                 or order.get("orderId")
             )
-            if order_id is None:
+            if order_id is None or order_id in seen:
                 continue
+            new_ids.append(order_id)
+        if not new_ids:
+            break
+        for order_id in new_ids:
             await cancel_order(client, account_id, order_id)
+            seen.add(order_id)
             cancelled.append(order_id)
-        # Cancels broker-seitig setzen lassen, bevor die naechste Runde
-        # prueft - und nachziehenden PendingSubmit-Orders Zeit geben,
-        # in der offenen Liste aufzutauchen.
+        # Nachziehenden PendingSubmit-Orders Zeit geben, in der offenen
+        # Liste aufzutauchen, bevor die naechste Runde prueft.
         await asyncio.sleep(settle_s)
     return cancelled
 
