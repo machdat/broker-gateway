@@ -4,6 +4,49 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.19.0] - 2026-07-21 (Karte `c1c159d1`: `order_id` trägt überall denselben JSON-Typ)
+
+`order_id` lief im Stream-Frame als JSON-Zahl, in der REST-Antwort dagegen als
+String - derselbe Wert in zwei Typen. Ein Konsument, der über beide Flächen
+korreliert (`GET /v1/orders` gegen `/v1/orders/stream`), verglich damit einen
+`int` mit einem `str` und fand nie eine Übereinstimmung, ohne dass irgendwo ein
+Fehler auftauchte.
+
+- **Stream-Frame zieht auf String nach.** `_frame_to_payload` serialisiert
+  `order_id` als String, für den `order`- wie für den `bootstrap`-Frame. Damit
+  tragen REST-Antwort, SSE-Frame und WS-Frame denselben Typ.
+- **Interne Repräsentation unverändert.** `SorFrame.order_id` bleibt `int` - die
+  IBKR-IDs sind numerisch und der Adapter nutzt sie als Dict-Key. Geändert wird
+  allein die Wire-Darstellung.
+- **Der Wert bleibt, wie er war.** Dieselbe Order trägt weiterhin nacheinander
+  zwei IDs (`POST` antwortet mit der `orderId`, Listen und Stream tragen die
+  `permId`, gemessen am 2026-07-16 gegen DUQ312230). Der stabile
+  Korrelationsschlüssel ist und bleibt `client_order_id`. Diese Karte
+  vereinheitlicht den Typ, nicht die Semantik.
+- **`parent_id` bewusst nicht mitgezogen.** Es trägt die `orderId` des Parents,
+  während `order_id` die `permId` führt - beide sind ohnehin nicht
+  gegeneinander matchbar. Das ist eine eigene Baustelle und keine Typfrage; in
+  `docs/api/v1.md` Section 7.1 als Warnung dokumentiert.
+
+Nebenwirkung im Broadcaster: der Dedup-Merker (`_last_order_key`) ist jetzt auf
+String-Keys aufgebaut, weil er den serialisierten Payload-Wert verwendet.
+Funktional äquivalent, in den Tests nachgezogen.
+
+**Konsumenten-Risiko geprüft.** Der einzige bekannte Konsument des Streams ist
+typ-agnostisch: `trading_robot` liest die Broker-ID als `str(roh_id)`
+(`event_mappers.py:142`, gegengelesen am 2026-07-21) und korreliert seit Karte
+`9b96f1e5` ohnehin über `client_order_id` statt über `order_id`. Ein JSON-String
+bricht ihn also nicht. Die Paper-Tests dieses Repos sind ebenfalls typ-tolerant
+(`int | str`, `str(order_id)`). Anders als beim Status-Vokabular (wo der
+Bot-Mapper unbekannte Werte still verwirft) ist hier kein Konsumenten-Vorlauf
+nötig.
+
+Spec: `docs/api/v1.md` v1.50.0 (Section 7.1 Typ-Zusage, Section 9.2 Status der
+beiden zurückgestellten Punkte). Der zweite zurückgestellte Punkt, das
+Status-Vokabular `pending_cancel`/`inactive`, bleibt offen (Karte `36443f2d`):
+der trading_robot-Mapper verwirft Frames mit unbekanntem Status still, neue
+Werte brauchen deshalb erst den Konsumenten-Vorlauf.
+
 ## [2.18.0] — 2026-07-16 (Karte `f43a1514`: Last-Event-ID-Durability auf `/v1/orders/stream` — Cool-Down + Doku-Ehrlichkeit)
 
 Der `Last-Event-ID`-Reconnect auf `/v1/orders/stream` war für einen

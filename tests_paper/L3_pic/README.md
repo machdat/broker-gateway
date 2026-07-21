@@ -22,6 +22,9 @@ beginnt mit `DU` (Whitelist im DSL-Safety-Layer).
 |-------|-------|--------|
 | `test_place_and_cancel.py` | AP-12 L3-1 | BUY-LMT 20% unter Markt, Submit-Status, Cancel, Cancel-Status; 404 bei unbekannter order_id |
 | `test_idempotency_replay.py` | AP-12 L3-1 | Zweimal POST + DELETE mit gleichem Idempotency-Key liefert bitidentischen Body |
+| `test_gtc_stp_modify.py` | `35ac9a17` | GTC-STP platzieren, Stop-Level per PATCH ändern, Lifecycle bis Cancel |
+| `test_client_order_id.py` | `0cfea205` | `client_order_id` als IBKR-`orderRef`: kommt vom Broker zurück, überlebt Modify/Cancel, Non-ASCII wird mit 422 abgelehnt |
+| `test_order_id_typ.py` | `c1c159d1` | `order_id` ist auf allen drei Flächen ein JSON-String: POST, `GET /v1/orders` und der SSE-Bootstrap-Frame |
 
 ## Safety-Garantien
 
