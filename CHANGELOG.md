@@ -32,6 +32,15 @@ Nebenwirkung im Broadcaster: der Dedup-Merker (`_last_order_key`) ist jetzt auf
 String-Keys aufgebaut, weil er den serialisierten Payload-Wert verwendet.
 Funktional äquivalent, in den Tests nachgezogen.
 
+**Konsumenten-Risiko geprüft.** Der einzige bekannte Konsument des Streams ist
+typ-agnostisch: `trading_robot` liest die Broker-ID als `str(roh_id)`
+(`event_mappers.py:142`, gegengelesen am 2026-07-21) und korreliert seit Karte
+`9b96f1e5` ohnehin über `client_order_id` statt über `order_id`. Ein JSON-String
+bricht ihn also nicht. Die Paper-Tests dieses Repos sind ebenfalls typ-tolerant
+(`int | str`, `str(order_id)`). Anders als beim Status-Vokabular (wo der
+Bot-Mapper unbekannte Werte still verwirft) ist hier kein Konsumenten-Vorlauf
+nötig.
+
 Spec: `docs/api/v1.md` v1.50.0 (Section 7.1 Typ-Zusage, Section 9.2 Status der
 beiden zurückgestellten Punkte). Der zweite zurückgestellte Punkt, das
 Status-Vokabular `pending_cancel`/`inactive`, bleibt offen (Karte `36443f2d`):

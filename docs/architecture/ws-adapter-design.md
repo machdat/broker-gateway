@@ -581,7 +581,7 @@ Detail-Klärungen wandern in die jeweilige AP-11-Karte.
 
 | Adapter-Feld | IBKR-Quelle (K4) | Bemerkung |
 |--------------|------------------|-----------|
-| `order_id` | `orderId` | int |
+| `order_id` | `orderId` | int im Adapter-Objekt (`SorFrame`), **String auf dem Draht** — seit Karte `c1c159d1` / Spec v1.50.0 tragen REST, SSE und WS denselben JSON-Typ |
 | `client_order_id` | `cOID` (cp) / `orderRef` (tws) | Korrelationsschlüssel des Aufrufers, **kein** Idempotency-Schlüssel — siehe Hinweis unter der Tabelle |
 | `parent_id` | `parentId` | für Brackets |
 | `account` | `acct` | |
