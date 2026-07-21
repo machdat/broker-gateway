@@ -60,14 +60,17 @@ async def place_limit_far_from_market(
     qty: Decimal | int = 1,
     idempotency_key: str | None = None,
     client_order_id: str | None = None,
-) -> int | None:
+) -> str | None:
     """Platziert eine Limit-Order weit weg vom Markt.
 
     Holt zuerst den letzten Quote (``GET /v1/quotes/snapshot``) und
     leitet einen Limit-Preis ab, der ``distance_pct`` Prozent unter
     (BUY) bzw. ueber (SELL) dem letzten Quote liegt. Liefert die
     ``order_id`` aus dem 201-Body zurueck oder ``None``, wenn der
-    Server eine andere Form liefert.
+    Server eine andere Form liefert. Der Rueckgabetyp ist ``str``: das
+    Order-Schema traegt ``order_id`` als String, und seit Karte
+    ``c1c159d1`` gilt das auf allen Flaechen (der frueher hier stehende
+    ``int``-Hint war schon vorher falsch).
 
     ``client_order_id`` reicht den Korrelationsschlüssel durch (Karte
     0cfea205). Er ist etwas anderes als ``idempotency_key``: der Key
@@ -411,6 +414,25 @@ async def subscribe_quote_stream(
     params = {"conids": conid_list, "fields": ",".join(fields)}
     async with client.stream(
         "GET", "/v1/quotes/stream", params=params
+    ) as response:
+        yield response
+
+
+@asynccontextmanager
+async def subscribe_orders_stream(
+    client: httpx.AsyncClient,
+    account_id: str,
+) -> AsyncIterator[httpx.Response]:
+    """Async-Context-Manager um den Order-SSE-Stream.
+
+    Gegenstueck zu ``subscribe_quote_stream`` fuer ``/v1/orders/stream``.
+    Beim Verlassen des ``async with``-Blocks wird die Connection
+    geschlossen; die Subscription bleibt danach noch den Cool-Down lang
+    warm (5 s, siehe streams/orders.py).
+    """
+    assert_paper_account(account_id)
+    async with client.stream(
+        "GET", "/v1/orders/stream", params={"account": account_id}
     ) as response:
         yield response
 

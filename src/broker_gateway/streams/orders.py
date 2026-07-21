@@ -300,7 +300,15 @@ class OrdersBroadcaster:
 
 def _frame_to_payload(frame: SorFrame) -> dict[str, Any]:
     return {
-        "order_id": frame.order_id,
+        # Karte c1c159d1: order_id lief hier als JSON-Zahl, in der REST-Antwort
+        # (order_models.Order.order_id) dagegen als String - derselbe Wert in
+        # zwei Typen, ueber die ein Konsument nicht korrelieren kann. Der Stream
+        # zieht auf String nach; die interne Repraesentation im SorFrame bleibt
+        # int, weil IBKR-IDs numerisch sind und der Adapter sie als Dict-Key
+        # nutzt. Der Wert selbst wechselt weiter die Bedeutung (POST liefert die
+        # orderId, Listen und Stream die permId) - das ist eine eigene Baustelle,
+        # siehe docs/api/v1.md Section 7.1.
+        "order_id": str(frame.order_id),
         "account": frame.account,
         "client_order_id": frame.client_order_id,
         "parent_id": frame.parent_id,

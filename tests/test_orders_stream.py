@@ -97,7 +97,7 @@ async def test_publish_after_subscribe_reaches_consumer() -> None:
     )
     event = await asyncio.wait_for(_first(iterator), timeout=1.0)
     assert event.event_type == "order"
-    assert event.payload["order_id"] == 2
+    assert event.payload["order_id"] == "2"
     assert event.payload["status"] == "filled"
 
 
@@ -173,7 +173,7 @@ async def test_broadcaster_dedups_identical_consecutive_frames() -> None:
     ]
     events = await _publish_then_replay(bc, frames)
     assert len(events) == 1
-    assert events[0].payload["order_id"] == 7
+    assert events[0].payload["order_id"] == "7"
 
 
 async def test_broadcaster_dedups_when_only_last_event_at_differs() -> None:
@@ -210,7 +210,7 @@ async def test_broadcaster_does_not_dedup_across_order_ids() -> None:
         SorFrame(order_id=2, account="U1", status="accepted"),
     ]
     events = await _publish_then_replay(bc, frames)
-    assert sorted(e.payload["order_id"] for e in events) == [1, 2]
+    assert sorted(e.payload["order_id"] for e in events) == ["1", "2"]
 
 
 async def test_broadcaster_dedup_cache_is_bounded(
@@ -227,9 +227,10 @@ async def test_broadcaster_dedup_cache_is_bounded(
     for oid in range(6):
         bc.publish("U1", SorFrame(order_id=oid, account="U1", status="accepted"))
     sub = bc._subs["U1"]
-    # Gedeckelt auf 3, und es bleiben die drei juengsten order_ids.
+    # Gedeckelt auf 3, und es bleiben die drei juengsten order_ids. Die Keys
+    # sind Strings, seit der Payload order_id als String traegt (c1c159d1).
     assert len(sub._last_order_key) == 3
-    assert set(sub._last_order_key.keys()) == {3, 4, 5}
+    assert set(sub._last_order_key.keys()) == {"3", "4", "5"}
 
 
 async def test_broadcaster_active_order_survives_lru_pressure(
@@ -248,7 +249,7 @@ async def test_broadcaster_active_order_survives_lru_pressure(
                                   last_event_at=f"t{oid}"))
         bc.publish("U1", SorFrame(order_id=oid, account="U1", status="accepted"))
     sub = bc._subs["U1"]
-    assert 99 in sub._last_order_key
+    assert "99" in sub._last_order_key
     assert len(sub._last_order_key) == 3
 
 
@@ -274,6 +275,61 @@ async def test_broadcaster_does_not_dedup_distinct_raw_status() -> None:
     ]
     events = await _publish_then_replay(bc, frames)
     assert [e.payload["raw_status"] for e in events] == ["PendingCancel", "Inactive"]
+
+
+# ---------------------------------------------------------------------------
+# order_id-Typ im Wire-Vertrag (Karte c1c159d1)
+# ---------------------------------------------------------------------------
+
+
+async def test_frame_payload_order_id_ist_string() -> None:
+    # Karte c1c159d1: order_id lief im Frame als JSON-Zahl, in der REST-Antwort
+    # als String - derselbe Wert in zwei Typen. Der Stream zieht auf String nach.
+    from broker_gateway.streams.orders import _frame_to_payload
+
+    payload = _frame_to_payload(SorFrame(order_id=380195763, account="U1"))
+    assert payload["order_id"] == "380195763"
+    assert isinstance(payload["order_id"], str)
+
+
+async def test_bootstrap_payload_order_id_ist_string() -> None:
+    # Der Bootstrap-Frame laeuft durch dieselbe Serialisierung und darf nicht
+    # den alten Zahl-Typ behalten - sonst wechselt der Typ mitten im Stream.
+    bc = OrdersBroadcaster()
+    iterator = await bc.subscribe(
+        account="U1",
+        consumer_id="c1",
+        bootstrap=[SorFrame(order_id=1211, account="U1", status="accepted")],
+    )
+    event = await asyncio.wait_for(_first(iterator), timeout=1.0)
+    assert event.event_type == "bootstrap"
+    assert event.payload["orders"][0]["order_id"] == "1211"
+
+
+async def test_stream_und_rest_tragen_order_id_im_selben_typ() -> None:
+    """Der eigentliche Vertragstest: beide Flaechen, ein JSON-Typ.
+
+    Nagelt fest, was die Karte entschieden hat - ein Konsument, der ueber
+    ``GET /v1/orders`` und ``/v1/orders/stream`` korreliert, sieht denselben
+    Typ. Der Wert selbst darf abweichen (POST liefert die orderId, das Listen
+    die permId), das ist eine andere Baustelle.
+    """
+    from broker_gateway.order_models import Order, OrderSide, OrderStatus, OrderType, TimeInForce
+    from broker_gateway.streams.orders import _frame_to_payload
+
+    rest_order = Order(
+        order_id="380195763",
+        account_id="U1",
+        conid=265598,
+        side=OrderSide.SELL,
+        quantity="1",
+        order_type=OrderType.STP,
+        tif=TimeInForce.GTC,
+        status=OrderStatus.SUBMITTED,
+    )
+    frame_payload = _frame_to_payload(SorFrame(order_id=380195763, account="U1"))
+    assert type(frame_payload["order_id"]) is type(rest_order.order_id)
+    assert frame_payload["order_id"] == rest_order.order_id
 
 
 # ---------------------------------------------------------------------------
