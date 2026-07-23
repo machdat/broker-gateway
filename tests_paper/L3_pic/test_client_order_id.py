@@ -12,10 +12,16 @@ Cleanup-Disziplin wie im Nachbarmodul ``test_place_and_cancel.py``:
 jeder Test ruft ``cancel_all_open_orders`` im ``finally``. Der
 Cleanup pollt in mehreren Runden, weil eine gerade platzierte Order im
 Moment des ersten GET noch nicht in der offenen Liste sein muss.
-Vor US-Marktöffnung verarbeitet IBKR-Paper Cancels verzögert (die Order
-bleibt kurz ``Submitted``, obwohl der Cancel mit 200 quittiert wurde) -
-der Cleanup ist dort best-effort; die LMT-Orders liegen 20% unter Markt
-und können ohnehin nicht fillen.
+
+Bis Karte f42eb6cf blieben nach grünen Läufen offene Orders stehen.
+Dieser Docstring erklärte das mit verzögerter IBKR-Cancel-Verarbeitung
+vor US-Marktöffnung - die Erklärung war falsch und hat den echten Grund
+verdeckt: der Cleanup schickte den Pflicht-Header ``Idempotency-Key``
+nicht, der Service lehnte jeden DELETE mit 400 ab, und weil die Antwort
+nicht ausgewertet wurde, galt die Order trotzdem als storniert. Der
+Cleanup bleibt best-effort, meldet einen Fehlschlag jetzt aber als
+Warnung. Fill-Risiko besteht dabei nicht: die LMT-Orders liegen 20%
+unter Markt.
 
 Aufruf:
 
