@@ -39,6 +39,11 @@ class _FakeResponse:
     def json(self) -> Any:
         return self._body
 
+    @property
+    def text(self) -> str:
+        """Body als String - wie ``httpx.Response.text``."""
+        return str(self._body)
+
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise httpx.HTTPStatusError(
@@ -192,6 +197,51 @@ async def test_cancel_all_open_orders_deletes_each_order() -> None:
     assert sorted(cancelled) == [1, 2]
     deletes = [c for c in client.calls if c[0] == "DELETE"]
     assert {c[1] for c in deletes} == {"/v1/orders/1", "/v1/orders/2"}
+
+
+async def test_cancel_all_open_orders_sends_idempotency_key() -> None:
+    """Ohne Idempotency-Key lehnt der Service den DELETE mit 400 ab.
+
+    Karte f42eb6cf: der Cleanup schickte den Pflicht-Header nicht, der
+    Cancel erreichte IBKR nie und die Order blieb offen stehen.
+    """
+    client = _FakeClient()
+    client.route(
+        "GET",
+        "/v1/orders",
+        _FakeResponse(200, [{"order_id": 1}, {"order_id": 2}]),
+    )
+    client.route("DELETE", "/v1/orders/1", _FakeResponse(204, {}))
+    client.route("DELETE", "/v1/orders/2", _FakeResponse(204, {}))
+
+    await cancel_all_open_orders(client, "DU1234567")
+
+    keys = [
+        c[2]["headers"].get("Idempotency-Key")
+        for c in client.calls
+        if c[0] == "DELETE"
+    ]
+    assert len(keys) == 2
+    assert all(keys), "jeder Cancel braucht einen Idempotency-Key"
+    assert len(set(keys)) == 2, "je Order ein eigener Key"
+
+
+async def test_cancel_all_open_orders_skips_failed_cancel() -> None:
+    """Nicht-2xx zählt nicht als storniert, warnt aber sichtbar."""
+    client = _FakeClient()
+    client.route(
+        "GET", "/v1/orders", _FakeResponse(200, [{"order_id": 7}])
+    )
+    client.route(
+        "DELETE",
+        "/v1/orders/7",
+        _FakeResponse(400, {"error": "invalid_input"}),
+    )
+
+    with pytest.warns(UserWarning, match="400"):
+        cancelled = await cancel_all_open_orders(client, "DU1234567")
+
+    assert cancelled == []
 
 
 # ---------------------------------------------------------------------------

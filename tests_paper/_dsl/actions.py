@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 import time
+import warnings
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from typing import Any, AsyncIterator, Iterable
@@ -286,7 +288,11 @@ async def cancel_all_open_orders(
     """Liest ``GET /v1/orders?account=`` und DELETEt pro Order.
 
     Idempotent: wenn keine offenen Orders, liefert ``[]``. Liefert die
-    Liste der gecancelten ``order_id``-Werte, jede genau einmal.
+    Liste der ``order_id``-Werte, deren DELETE mit 2xx quittiert wurde -
+    jede genau einmal. Ein fehlgeschlagener Cancel taucht dort NICHT auf
+    und erzeugt stattdessen eine Warnung (Karte f42eb6cf: ohne
+    Auswertung galt jede Order als storniert, auch wenn der Service den
+    Aufruf mit 400 abgelehnt hatte).
 
     Pollt in mehreren Runden, weil eine gerade erst platzierte Order im
     Moment des ersten GET noch ``PendingSubmit`` und damit nicht in der
@@ -330,9 +336,28 @@ async def cancel_all_open_orders(
         if not new_ids:
             break
         for order_id in new_ids:
-            await cancel_order(client, account_id, order_id)
+            # Der Idempotency-Key ist Pflicht (Spec Section 7.0) - ohne
+            # ihn antwortet der Service mit 400 und der Cancel erreicht
+            # IBKR nie. Je Order ein eigener Key: ein wiederverwendeter
+            # Key würde als Replay des vorherigen Cancels gelten.
+            response = await cancel_order(
+                client,
+                account_id,
+                order_id,
+                idempotency_key=f"cleanup-{secrets.token_hex(8)}",
+            )
+            # Immer als gesehen markieren, auch bei Fehlschlag: sonst
+            # läuft die Schleife bis ``max_rounds`` gegen dieselbe Order.
             seen.add(order_id)
-            cancelled.append(order_id)
+            if 200 <= response.status_code < 300:
+                cancelled.append(order_id)
+            else:
+                # Best-effort bleibt best-effort - aber nicht still.
+                warnings.warn(
+                    f"Cleanup-Cancel für Order {order_id} fehlgeschlagen: "
+                    f"HTTP {response.status_code} {response.text[:200]}",
+                    stacklevel=2,
+                )
         # Nachziehenden PendingSubmit-Orders Zeit geben, in der offenen
         # Liste aufzutauchen, bevor die naechste Runde prueft.
         await asyncio.sleep(settle_s)
