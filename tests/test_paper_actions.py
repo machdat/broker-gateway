@@ -227,7 +227,7 @@ async def test_cancel_all_open_orders_sends_idempotency_key() -> None:
 
 
 async def test_cancel_all_open_orders_skips_failed_cancel() -> None:
-    """Nicht-2xx zaehlt nicht als storniert, warnt aber sichtbar."""
+    """Nicht-2xx zählt nicht als storniert, warnt aber sichtbar."""
     client = _FakeClient()
     client.route(
         "GET", "/v1/orders", _FakeResponse(200, [{"order_id": 7}])

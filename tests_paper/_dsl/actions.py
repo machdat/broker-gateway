@@ -339,7 +339,7 @@ async def cancel_all_open_orders(
             # Der Idempotency-Key ist Pflicht (Spec Section 7.0) - ohne
             # ihn antwortet der Service mit 400 und der Cancel erreicht
             # IBKR nie. Je Order ein eigener Key: ein wiederverwendeter
-            # Key wuerde als Replay des vorherigen Cancels gelten.
+            # Key würde als Replay des vorherigen Cancels gelten.
             response = await cancel_order(
                 client,
                 account_id,
@@ -347,14 +347,14 @@ async def cancel_all_open_orders(
                 idempotency_key=f"cleanup-{secrets.token_hex(8)}",
             )
             # Immer als gesehen markieren, auch bei Fehlschlag: sonst
-            # laeuft die Schleife bis ``max_rounds`` gegen dieselbe Order.
+            # läuft die Schleife bis ``max_rounds`` gegen dieselbe Order.
             seen.add(order_id)
             if 200 <= response.status_code < 300:
                 cancelled.append(order_id)
             else:
                 # Best-effort bleibt best-effort - aber nicht still.
                 warnings.warn(
-                    f"Cleanup-Cancel fuer Order {order_id} fehlgeschlagen: "
+                    f"Cleanup-Cancel für Order {order_id} fehlgeschlagen: "
                     f"HTTP {response.status_code} {response.text[:200]}",
                     stacklevel=2,
                 )
