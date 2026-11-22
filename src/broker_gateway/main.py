@@ -22,6 +22,7 @@ from broker_gateway.api.v1.exchanges import get_calendar_service
 from broker_gateway.api.v1.instruments import (
     get_historical_service,
     get_instruments_service,
+    require_instruments_session_ok,
 )
 from broker_gateway.api.v1.internal_tws_health import get_tws_client
 from broker_gateway.api.v1.orders_stream import (
@@ -460,6 +461,18 @@ def create_app(
         else:
             inst_service = InstrumentsService(
                 cast(CPGatewayClient, services_client)
+            )
+        if isinstance(inst_service, TWSInstrumentsService):
+            # BRO-0158: Im TWS-Pfad entscheidet der Service pro Request
+            # selbst über die Verfügbarkeit (frischer Cache → Live-Fetch →
+            # Last-Known-Good → 503 ``tws_unavailable``). Der
+            # heartbeat-basierte Session-Guard würde im Lifecycle-Status
+            # TWS_DOWN den Cache-Fallback mit 503 auth_lost vorwegnehmen,
+            # während statische Contract-Details im Wartungsfenster aus
+            # dem Cache geliefert werden sollen. Im cp-Backend bleibt die
+            # Dependency-Default (require_session_ok) unverändert aktiv.
+            app.dependency_overrides[require_instruments_session_ok] = (
+                lambda: None
             )
         # Karte a5c7ff1c: TWSHistoricalService bedient /v1/instruments/
         # {conid}/historical/* und /v1/instruments/{conid}/fundamentals.

@@ -52,6 +52,14 @@ _DEFAULT_TTL_S = 7 * 24 * 60 * 60  # 7 Tage, analog zu cp-Variante
 _DEFAULT_HOURS_TTL_S = 60 * 60.0  # 1 Stunde, siehe _hours_ttl_from_env
 _HOURS_TTL_ENV = "BG_INSTRUMENT_HOURS_TTL_S"
 _MATCHING_SYMBOLS_RATE_LIMIT_S = 1.05  # IBKR: 1 req/sec, kleiner Sicherheitsabstand
+# BRO-0158: TTL des Last-Known-Good-Fallbacks. Statische Contract-Details
+# (conid, Symbol, Exchange, Hours, Zeitzone) gelten im TWS-Down-Fenster als
+# gut genug, solange sie jünger sind als das 4-Tage-Hours-Fenster der
+# Mapping-Caches; die 7-Tage-Schranke deckt mehrere Wartungsfenster.
+_DEFAULT_STALE_TTL_S = _DEFAULT_TTL_S
+# Retry-After für den 503-Fallback (BRO-0158), gleicher Wert wie
+# `_RETRY_AFTER_S` in `cp/lifecycle.py`.
+_RETRY_AFTER_S = 30
 
 
 def _hours_ttl_from_env() -> float:
@@ -93,6 +101,22 @@ class TWSInstrumentsService:
     ein Hours-Miss zwingt also ohnehin zum IBKR-Call, der die Stammdaten
     gratis mitliefert. Ein zweiter, lang cachender Stammdaten-Cache wäre nie
     die bindende Schranke und spart keinen einzigen Request.
+
+    Last-Known-Good-Fallback (BRO-0158):
+
+    - ``_info_stale_cache`` hält das zuletzt erfolgreich gelieferte
+      ``InstrumentDetail`` pro conid bis zu ``stale_ttl_seconds`` (Default
+      7 Tage) — unabhängig von der kurzen Hours-TTL.
+    - Er wird **nur** konsultiert, wenn der Live-Fetch an der
+      TWS-Verbindung scheitert (``OSError``/``TimeoutError``, z. B.
+      ``ConnectionError("Not connected")`` von ib_async im
+      IBKR-Wartungsfenster). Dann liefert ``info`` den Stale-Eintrag (200) statt einer
+      500, und falls auch kein Stale-Eintrag existiert, eine 503 mit
+      Code ``tws_unavailable``.
+    - ``InstrumentDetail`` trägt ausschließlich statische Referenzdaten
+      (kein Preis), daher darf der Stale-Wert ohne Freshness-Markierung
+      ausgeliefert werden. Die 1-h-Frischezusage der Hours gilt weiterhin
+      für den Normalbetrieb (TWS erreichbar).
     """
 
     def __init__(
@@ -101,6 +125,7 @@ class TWSInstrumentsService:
         *,
         ttl_seconds: float = _DEFAULT_TTL_S,
         hours_ttl_seconds: float | None = None,
+        stale_ttl_seconds: float | None = None,
         rate_limit_s: float = _MATCHING_SYMBOLS_RATE_LIMIT_S,
     ) -> None:
         self._client = client
@@ -116,6 +141,18 @@ class TWSInstrumentsService:
             else _hours_ttl_from_env()
         )
         self._info_cache: TTLCache[int, InstrumentDetail] = TTLCache(hours_ttl)
+        # Last-Known-Good-Fallback für den TWS-Down-Pfad (BRO-0158).
+        # Bewusst kein ENV-Schalter: der Fallback ist ein Ausnahmepfad,
+        # die 7-Tage-Default-Schranke ist stabil, Tests steuern sie per
+        # Konstruktor-Parameter.
+        stale_ttl = (
+            stale_ttl_seconds
+            if stale_ttl_seconds is not None
+            else _DEFAULT_STALE_TTL_S
+        )
+        self._info_stale_cache: TTLCache[int, InstrumentDetail] = TTLCache(
+            stale_ttl
+        )
         # IBKR-seitig 1 req/sec auf reqMatchingSymbols. Lock serialisiert
         # parallele Aufrufe; _last_search_at sorgt dafuer, dass aufeinander-
         # folgende Calls den Mindestabstand einhalten.
@@ -142,9 +179,19 @@ class TWSInstrumentsService:
         return self._info_cache
 
     @property
+    def info_stale_cache(self) -> TTLCache[int, InstrumentDetail]:
+        """Last-Known-Good-Store des TWS-Down-Fallbacks (BRO-0158)."""
+        return self._info_stale_cache
+
+    @property
     def hours_ttl_seconds(self) -> float:
         """TTL des Hours-tragenden ``info``-Cache (Karte 35162b2d)."""
         return self._info_cache.ttl_seconds
+
+    @property
+    def stale_ttl_seconds(self) -> float:
+        """TTL des Last-Known-Good-Store (BRO-0158)."""
+        return self._info_stale_cache.ttl_seconds
 
     # ---- Endpunkt-Logik ----------------------------------------------
 
@@ -253,7 +300,14 @@ class TWSInstrumentsService:
 
         contract_class = await self._import_contract_class()
         probe = contract_class(conId=conid, exchange="SMART")
-        details = await self._req_contract_details(probe)
+        try:
+            details = await self._req_contract_details(probe)
+        except (OSError, TimeoutError) as exc:
+            # TWS nicht erreichbar (z. B. ib_async ``ConnectionError``
+            # "Not connected" im Wartungsfenster): statt uncaught 500
+            # den Last-Known-Good-Eintrag liefern oder eine 503 mit
+            # Diagnose (BRO-0158).
+            return self._info_tws_down_fallback(conid, exc)
         if not details:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -297,7 +351,48 @@ class TWSInstrumentsService:
             time_zone_id=_str_or_none(getattr(first, "timeZoneId", None)),
         )
         self._info_cache.set(conid, result)
+        # Fallback-Store synchron mit dem frischen Cache befüllen
+        # (BRO-0158): jeder erfolgreiche Live-Fetch ist das neue
+        # Last-Known-Good für den TWS-Down-Pfad.
+        self._info_stale_cache.set(conid, result)
         return result
+
+    def _info_tws_down_fallback(
+        self, conid: int, exc: OSError | TimeoutError
+    ) -> InstrumentDetail:
+        """TWS-Down-Antwort für :meth:`info` (BRO-0158).
+
+        Letzter gecachter ``InstrumentDetail`` (200), falls vorhanden;
+        sonst 503 ``tws_unavailable`` mit Diagnose und ``Retry-After``.
+        """
+        stale, hit = self._info_stale_cache.get(conid)
+        if hit and stale is not None:
+            logger.warning(
+                "TWS nicht erreichbar, liefere Last-Known-Good "
+                "InstrumentDetail für conid=%s (alter Eintrag, TTL %ss): %s",
+                conid,
+                int(self.stale_ttl_seconds),
+                exc,
+            )
+            return stale
+        logger.error(
+            "TWS nicht erreichbar und kein Last-Known-Good für conid=%s: %s",
+            conid,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "tws_unavailable",
+                "message": (
+                    f"TWS nicht erreichbar und kein gecachtes "
+                    f"InstrumentDetail für conid {conid} vorhanden"
+                ),
+                "retry_after_s": _RETRY_AFTER_S,
+                "diagnostic": str(exc),
+            },
+            headers={"Retry-After": str(_RETRY_AFTER_S)},
+        )
 
     # ---- Helpers -----------------------------------------------------
 

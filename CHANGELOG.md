@@ -4,6 +4,71 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.20.0] - 2026-11-22 (Karte `1b96bba7`: `GET /v1/instruments/{conid}` antwortet im IBKR-Wartungsfenster aus dem Cache statt mit 500)
+
+Im nächtlichen IBKR-Wartungsfenster (~21:45 UTC, TWS unten) lieferte
+`GET /v1/instruments/{conid}` HTTP 500, sobald der Detail-Cache (1-h-TTL,
+Karte `35162b2d`) für den conid abgelaufen war und der Live-Call gegen den
+abgerissenen TWS-Socket scheiterte — ib_async wirft dann `ConnectionError`,
+der uncaught blieb (Beleg: trading_robot-Bot-Log 2026-07-24 21:45:23-24
+UTC, conid 14079, 3x 500). Später im Fenster, wenn der Lifecycle-Status auf
+`TWS_DOWN` umgeschaltet ist, antwortete der Session-Guard mit 503
+`auth_lost` — ebenfalls statt des zuletzt gelieferten `InstrumentDetail`.
+Die 7-Tage-Cache-Aussage in der trading_robot-Adapter-Doku beschreibt den
+Stand vor Karte `35162b2d`; der Detail-Cache ist seitdem kürzer, der
+Wartungsfenster-Pfad hat nie einen Fallback gehabt.
+
+- **Last-Known-Good-Fallback.** `TWSInstrumentsService` führt neben dem
+  frischen Hours-Cache (1 h) einen eigenen Store mit 7-Tage-TTL
+  (konfigurierbar per Konstruktor, kein ENV), der bei jedem erfolgreichen
+  Live-Fetch befüllt wird. Scheitert der Live-Fetch an der TWS-Verbindung
+  (`OSError`, das den ib_async-`ConnectionError` deckt, oder
+  `TimeoutError`), liefert `info()` den Stale-Eintrag — der Endpunkt
+  antwortet 200 statt 500. Andere Exceptions bleiben uncaught wie bisher.
+  Der Stale-Eintrag füllt den frischen Cache **nicht** auf, damit ein
+  bis zu 7 Tage alter Wert nie 1 Stunde lang als frisch markiert
+  ausgeliefert wird.
+- **Session-Guard auf der Detail-Route backend-aware.** Im TWS-Backend ist
+  der Guard für `GET /v1/instruments/{conid}` ein Pass-Through (eigene
+  Dependency `require_instruments_session_ok`, im cp-Backend delegiert sie
+  unverändert an `require_session_ok`): der Service entscheidet pro
+  Request (frischer Cache → Live → Last-Known-Good → 503). Der
+  heartbeat-basierte Guard würde im Status `TWS_DOWN` den Cache-Fallback
+  mit 503 `auth_lost` vorwegnehmen, während statische Contract-Details
+  genau dann aus dem Cache geliefert werden sollen. Die
+  Historical-/Fundamentals-Endpunkte teilen das Muster.
+- **503 statt 500 ohne Cache-Eintrag.** Existiert kein (frischer oder
+  Stale-)Eintrag, liefert der Endpunkt 503 mit neuem `code`
+  `tws_unavailable`, `retry_after_s: 30` und der
+  Verbindungsfehler-Meldung in `extra.diagnostic` — saubere
+  Fallunterscheidung „TWS down" gegen „conid unbekannt" (404) für
+  Konsumenten.
+- **cp-Backend unverändert.** Session-Verlust antwortet weiterhin mit 503
+  `auth_lost` + `Retry-After: 30` (Regressionstest nachgezogen).
+- **Frischezusage der Hours:** im Normalbetrieb unverändert (≤ 1 h);
+  während TWS-Down können die Stunden-Werte bis zu 7 Tage alt sein
+  (dokumentierte Ausnahme). `InstrumentDetail` trägt nur statische
+  Referenzdaten, keine Preise.
+
+**Konsumenten-Risiko geprüft.** trading_robot liest die Handelszeiten aus
+`liquid_hours`/`time_zone_id`; ein bis zu
+7-Tage-altes Fenster fehlt der heutige Tag, was das Bot-Gate
+konservativ (keine Handelszeit) entscheidet — und der Bot macht sich mit
+einem last-known-good-Kalender im eigenen Adapter unabhängig (separate
+trading_robot-Karte). Neue 503-Code `tws_unavailable` ist für Konsumenten
+ein klarer Sonderfall (bisher 500 ohne Struktur).
+
+**Tests.** Service-Pfad (Mock-`ConnectionError`/`TimeoutError`,
+Stale-TTL-Ablauf, Recovery, Exception-Durchlass) in
+`tests/test_tws/test_instruments.py` (`TestTwsDownFallback`) und
+Endpoint-Regression gegen die komplette TWS-App (inkl. Lifecycle-Status
+`TWS_DOWN`) in `tests/test_instruments_tws_down.py`.
+
+**Spec.** v1.50.0 → v1.51.0: Section 4.2 um
+„TWS-Down-Verhalten des Detail-Endpunkts" ergänzt,
+Aktualitäts-Zusage um die TWS-Down-Ausnahme, Implementation-Status-Tabelle
+aktualisiert.
+
 ## [2.19.0] - 2026-07-21 (Karte `c1c159d1`: `order_id` trägt überall denselben JSON-Typ)
 
 `order_id` lief im Stream-Frame als JSON-Zahl, in der REST-Antwort dagegen als
