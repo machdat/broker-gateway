@@ -299,7 +299,10 @@ class TWSInstrumentsService:
             return cached
 
         contract_class = await self._import_contract_class()
-        probe = contract_class(conId=conid, exchange="SMART")
+        # A conId alone identifies the contract. Pinning exchange="SMART" makes
+        # IBKR answer Error 200 for listings without SMART routing (SEHK,
+        # BRO-0160). Without it, US/EU contracts resolve field-identical.
+        probe = contract_class(conId=conid)
         try:
             details = await self._req_contract_details(probe)
         except (OSError, TimeoutError) as exc:
@@ -337,6 +340,7 @@ class TWSInstrumentsService:
             conid=int(contract.conId),
             symbol=str(getattr(contract, "symbol", "") or "").upper(),
             company_name=getattr(first, "longName", None),
+            isin=_isin_from_details(first),
             currency=getattr(contract, "currency", None),
             sec_type=getattr(contract, "secType", None),
             exchange=exchange,
@@ -441,6 +445,19 @@ def _str_or_none(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _isin_from_details(detail: Any) -> str | None:
+    """Return the ISIN from ``ContractDetails.secIdList``, if IBKR sent one.
+
+    ``secIdList`` is a list of ``TagValue(tag, value)``. IBKR fills it per
+    contract (measured for US, EU and SEHK stocks); a missing or empty list
+    means "not delivered" and maps to ``None``.
+    """
+    for entry in getattr(detail, "secIdList", None) or []:
+        if str(getattr(entry, "tag", "")).upper() == "ISIN":
+            return _str_or_none(getattr(entry, "value", None))
+    return None
 
 
 def _detail_exchange_code(detail: Any) -> str | None:

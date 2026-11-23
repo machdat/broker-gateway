@@ -41,8 +41,9 @@ class Instrument(BaseModel):
         default=None,
         description=(
             "ISO 6166 ISIN, falls beim Lookup angegeben oder von IBKR mitgeliefert. "
-            "Symbol-Pfad: heute None (CP-Gateway liefert keine ISIN). "
-            "ISIN-Pfad: Echo des Query-Werts."
+            "Symbol-Suche: None (weder CP-Gateway noch TWS liefern dort eine ISIN). "
+            "ISIN-Pfad: Echo des Query-Werts. "
+            "Detail per conid (TWS-Backend): aus der IBKR-secIdList, None ohne Angabe."
         ),
     )
 

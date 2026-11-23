@@ -4,7 +4,7 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
-## [2.20.0] - 2026-11-22 (Karte `1b96bba7`: `GET /v1/instruments/{conid}` antwortet im IBKR-Wartungsfenster aus dem Cache statt mit 500)
+## [2.21.0] - 2026-11-23 (Karte `1b96bba7`: `GET /v1/instruments/{conid}` antwortet im IBKR-Wartungsfenster aus dem Cache statt mit 500)
 
 Im nächtlichen IBKR-Wartungsfenster (~21:45 UTC, TWS unten) lieferte
 `GET /v1/instruments/{conid}` HTTP 500, sobald der Detail-Cache (1-h-TTL,
@@ -64,10 +64,41 @@ Stale-TTL-Ablauf, Recovery, Exception-Durchlass) in
 Endpoint-Regression gegen die komplette TWS-App (inkl. Lifecycle-Status
 `TWS_DOWN`) in `tests/test_instruments_tws_down.py`.
 
-**Spec.** v1.50.0 → v1.51.0: Section 4.2 um
+**Spec.** v1.51.0 → v1.52.0: Section 4.2 um
 „TWS-Down-Verhalten des Detail-Endpunkts" ergänzt,
 Aktualitäts-Zusage um die TWS-Down-Ausnahme, Implementation-Status-Tabelle
 aktualisiert.
+
+## [2.20.0] - 2026-11-21 (Karte BRO-0160: conids von Börsen ohne SMART-Routing auflösbar)
+
+Für Hongkong-Titel (SEHK) lieferten `GET /v1/instruments/{conid}`, die
+Historik- und Fundamentals-Endpunkte `404` („conid unbekannt“), obwohl der
+Scanner die conids fand. Europa und USA waren nicht betroffen.
+
+- **Ursache.** Das TWS-Backend löste jede conid mit fest gesetztem
+  `exchange="SMART"` auf. SEHK-Titel haben kein SMART-Routing, IBKR antwortet
+  auf diese Probe mit Error 200 („No security definition“). Dieselbe conid
+  ohne Börsenangabe löst sauber auf. Gemessen am 21.11.2026 gegen den
+  Paper-Stack: alle elf SEHK-Titel der Watchlist plus 9988. Ein Scanner-Treffer
+  je Standort des Standortbaums zeigt 18 von 37 Standorten betroffen (Tabelle
+  in `docs/api/v1.md` Section 4.2).
+- **Fix.** `instruments.info` und `historical._resolve_contract` (Bars und
+  Fundamentals) lösen die conid ohne Börsenangabe auf. Für alle Standorte mit
+  SMART-Routing ist der aufgelöste Kontrakt feldgleich, dort ändert sich
+  nichts.
+- **`isin` im Instrument-Detail gefüllt (additiv).** Das Feld war im
+  TWS-Backend immer `null`, obwohl IBKR die ISIN in der `secIdList` mitliefert.
+  Es wird jetzt daraus gefüllt, auch für US- und EU-Titel.
+- **Order- und Quote-Pfad bewusst unverändert.** `orders._qualify` und
+  `quotes._qualify` bleiben bei `SMART`. Orders an SEHK zu öffnen ist eine
+  Verhaltensänderung im Handelspfad. Im Quote-Snapshot würde eine SEHK-conid
+  ohne HK-Marktdaten rund 11 s auf leere Werte warten und einen gemischten
+  Batch entsprechend verzögern (gemessen: 13,2 s statt 0,6 s), statt wie
+  bisher übersprungen zu werden. Beides gehört in eigene Karten.
+- **Grenze Symbol-Suche.** `GET /v1/instruments/search?symbol=...` liefert im
+  TWS-Backend weiter `company_name` und `isin` als `null`, weil
+  `reqMatchingSymbols` beides nicht kennt. Name und ISIN kommen über das
+  Detail per conid.
 
 ## [2.19.0] - 2026-07-21 (Karte `c1c159d1`: `order_id` trägt überall denselben JSON-Typ)
 
