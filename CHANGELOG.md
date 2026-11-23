@@ -4,6 +4,33 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.21.0] - 2026-11-23 (Karte BRO-0161: Quotes für Börsen ohne SMART-Routing)
+
+`GET /v1/quotes/snapshot` und `/v1/quotes/stream` übersprangen conids von
+Börsen ohne SMART-Routing (SEHK, SGX, NSE, TWSE u. a.) still: kein Kurs,
+kein Fehler. Gleiche Ursache wie BRO-0160, `quotes._qualify` pinnte
+`exchange="SMART"`.
+
+- **Fix.** `_qualify` löst die conid ohne Börsenangabe auf. Für
+  SMART-fähige Listings ist der Kontrakt feldgleich, ihre Werte ändern sich
+  nicht.
+- **Snapshot nebenläufig.** Die conids laufen parallel (höchstens 10). Ein
+  IBKR-Marktdaten-Fehler (354/10168/10197) bricht die conid sofort ab; sobald
+  eine conid Daten hat und nur noch Listings ohne SMART-Routing offen sind,
+  warten diese höchstens 2 s. Vorher: gemischter Batch `[SEHK, AAPL]`
+  13,2 s statt 0,6 s (BRO-0160). Reine SMART-Batches unverändert. Die
+  Paper-Nachmessung steht im Kartenlog.
+- **Nicht mehr still fehlend (additiv).** Ohne Marktdaten liefert die conid
+  einen Quote mit dem neuen Feld `unavailable_reason` (`no_market_data`,
+  `timeout`, `ibkr_<code>`), Werte und `availability` `null`. Das gilt auch
+  für einen SMART-Snapshot, der in den Timeout läuft (vorher fehlte die
+  conid im Ergebnis).
+- **Sentinel.** `-1` in `last`/`bid`/`ask`/`high`/`low` wird `null`.
+- **Stream.** Börsen ohne SMART-Routing werden abonniert; ohne Marktdaten
+  kommt ein `unavailable_reason`-Frame (sofort bei IBKR-Fehler, sonst nach dem
+  Snapshot-Timeout).
+- Spec `docs/api/v1.md` v1.52.0 (Section 4.2, 5.1). Order-Pfad unverändert.
+
 ## [2.20.0] - 2026-11-21 (Karte BRO-0160: conids von Börsen ohne SMART-Routing auflösbar)
 
 Für Hongkong-Titel (SEHK) lieferten `GET /v1/instruments/{conid}`, die

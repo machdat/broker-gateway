@@ -64,11 +64,13 @@ class _PendingTickersEvent:
         return len(self._listeners)
 
 
-def _make_contract(*, conid: int, symbol: str = "AAPL") -> SimpleNamespace:
+def _make_contract(
+    *, conid: int, symbol: str = "AAPL", exchange: str = "SMART"
+) -> SimpleNamespace:
     return SimpleNamespace(
         conId=conid,
         symbol=symbol,
-        exchange="SMART",
+        exchange=exchange,
         currency="USD",
         secType="STK",
     )
@@ -140,6 +142,7 @@ def _make_client(
         qualifyContractsAsync=qualify_mock,
         cancelMktData=cancel_mock,
         pendingTickersEvent=pending_event,
+        errorEvent=_PendingTickersEvent(),
     )
     client = MagicMock()
     client._ib = ib
@@ -207,7 +210,11 @@ class TestSnapshotWithPrime:
         )
         service = TWSQuotesService(client, snapshot_timeout_s=0.05)
         result = await service.snapshot_with_prime([99], ["31"])
-        assert result == []
+        # Nicht still fehlend: klar erkennbares "nicht verfuegbar".
+        assert len(result) == 1
+        assert result[0].conid == 99
+        assert result[0].unavailable_reason == "timeout"
+        assert result[0].last is None and result[0].availability is None
 
     async def test_snapshot_empty_ticker_list_skips_quote(self) -> None:
         # reqTickersAsync kann eine leere Liste liefern (z.B. Disconnect
@@ -256,6 +263,135 @@ class TestSnapshotWithPrime:
         client = _make_client(qualify_side_effect=_qualify)
         service = TWSQuotesService(client)
         assert await service.snapshot_with_prime([1, 2], ["31"]) == []
+
+
+class TestNoSmartRouting:
+    async def test_qualify_probes_without_exchange(self) -> None:
+        # Eine SMART-gepinnte Probe scheitert fuer SEHK mit Error 200.
+        sehk = _make_contract(conid=152791428, symbol="700", exchange="SEHK")
+
+        async def _qualify(contract: Any) -> Any:
+            return [sehk] if contract.exchange == "" else []
+
+        client = _make_client(
+            qualify_side_effect=_qualify,
+            snapshot_returns=[_make_ticker(conid=152791428, last=400.0)],
+        )
+        service = TWSQuotesService(client)
+        result = await service.snapshot_with_prime([152791428], ["31"])
+        probe = client._ib.qualifyContractsAsync.await_args.args[0]
+        assert probe.conId == 152791428
+        assert probe.exchange == ""
+        assert len(result) == 1 and result[0].last == "400.0"
+
+    async def test_sentinel_minus_one_is_none(self) -> None:
+        ticker = _make_ticker(conid=1, last=None, bid=-1.0, ask=-1.0)
+        quote = _quote_from_ticker(1, ticker, 3)
+        assert quote.bid is None and quote.ask is None
+
+    async def test_sehk_without_market_data_is_marked_unavailable(self) -> None:
+        sehk = _make_contract(conid=7, exchange="SEHK")
+        client = _make_client(
+            qualify_returns=[[sehk]],
+            snapshot_returns=[_make_ticker(conid=7, last=None, bid=-1.0, ask=-1.0)],
+        )
+        result = await TWSQuotesService(client).snapshot_with_prime([7], ["31"])
+        assert len(result) == 1
+        assert result[0].unavailable_reason == "no_market_data"
+        assert result[0].availability is None
+        assert result[0].bid is None
+
+    async def test_slow_conid_does_not_delay_fast_one(self) -> None:
+        sehk = _make_contract(conid=7, exchange="SEHK")
+        aapl = _make_contract(conid=265598)
+
+        async def _qualify(contract: Any) -> Any:
+            return [sehk if contract.conId == 7 else aapl]
+
+        async def _snapshot(contract: Any, **_kw: Any) -> Any:
+            if contract.conId == 7:
+                await asyncio.sleep(30.0)  # haengt bis zum Timeout
+            return [_make_ticker(conid=contract.conId, last=180.0)]
+
+        client = _make_client(
+            qualify_side_effect=_qualify, snapshot_side_effect=_snapshot
+        )
+        service = TWSQuotesService(
+            client, snapshot_timeout_s=30.0, mixed_batch_grace_s=0.1
+        )
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        result = await service.snapshot_with_prime([7, 265598], ["31"])
+        assert loop.time() - start < 2.0
+        by_conid = {q.conid: q for q in result}
+        assert by_conid[265598].last == "180.0"
+        assert by_conid[7].unavailable_reason == "timeout"
+        client._ib.cancelMktData.assert_called_once_with(sehk)
+
+    async def test_smart_conid_is_not_cut_short(self) -> None:
+        # Nur Listings ohne SMART-Routing duerfen auf die Gnadenfrist
+        # gekuerzt werden; eine langsame SMART-conid wird abgewartet.
+        aapl = _make_contract(conid=1)
+        msft = _make_contract(conid=2)
+
+        async def _qualify(contract: Any) -> Any:
+            return [aapl if contract.conId == 1 else msft]
+
+        async def _snapshot(contract: Any, **_kw: Any) -> Any:
+            if contract.conId == 2:
+                await asyncio.sleep(0.3)
+            return [_make_ticker(conid=contract.conId, last=1.0)]
+
+        client = _make_client(
+            qualify_side_effect=_qualify, snapshot_side_effect=_snapshot
+        )
+        service = TWSQuotesService(client, mixed_batch_grace_s=0.0)
+        result = await service.snapshot_with_prime([1, 2], ["31"])
+        assert [q.conid for q in result] == [1, 2]
+        assert all(q.unavailable_reason is None for q in result)
+
+    async def test_ibkr_market_data_error_aborts_early(self) -> None:
+        sehk = _make_contract(conid=7, exchange="SEHK")
+
+        async def _snapshot(contract: Any, **_kw: Any) -> Any:
+            client._ib.errorEvent.emit(5, 354, "not subscribed", contract)
+            await asyncio.sleep(30.0)
+
+        client = _make_client(qualify_returns=[[sehk]], snapshot_side_effect=_snapshot)
+        client._ib.errorEvent.emit = lambda *a: [
+            f(*a) for f in list(client._ib.errorEvent._listeners)
+        ]
+        service = TWSQuotesService(client, snapshot_timeout_s=30.0)
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        result = await service.snapshot_with_prime([7], ["31"])
+        assert loop.time() - start < 2.0
+        assert result[0].unavailable_reason == "ibkr_354"
+        assert client._ib.errorEvent.listener_count == 0
+
+    async def test_stream_subscribes_sehk_and_reports_no_data(self) -> None:
+        sehk = _make_contract(conid=7, exchange="SEHK")
+        ticker = _make_ticker(conid=7, last=None)
+        client = _make_client(qualify_returns=[[sehk]], stream_ticker=ticker)
+        service = TWSQuotesService(client, snapshot_timeout_s=0.05)
+        iterator = await service.subscribe([7], ["31"], "c1")
+        event = await asyncio.wait_for(iterator.__anext__(), timeout=2.0)
+        assert event.conid == 7
+        assert event.quote.unavailable_reason == "no_market_data"
+        client._ib.reqMktData.assert_called_once()
+        await iterator.aclose()
+
+    async def test_stream_no_data_error_pushes_frame(self) -> None:
+        sehk = _make_contract(conid=7, exchange="SEHK")
+        client = _make_client(
+            qualify_returns=[[sehk]], stream_ticker=_make_ticker(conid=7)
+        )
+        service = TWSQuotesService(client, snapshot_timeout_s=30.0)
+        iterator = await service.subscribe([7], ["31"], "c1")
+        service._on_ib_error(1, 10168, "x", sehk)  # noqa: SLF001
+        event = await asyncio.wait_for(iterator.__anext__(), timeout=2.0)
+        assert event.quote.unavailable_reason == "ibkr_10168"
+        await iterator.aclose()
 
 
 # --------------------------------------------------------------------------

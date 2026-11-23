@@ -78,6 +78,14 @@ class Quote(BaseModel):
         description="Originaler IBKR-6509-Code (z.B. DPB)",
     )
     updated_at: datetime | None = None
+    unavailable_reason: str | None = Field(
+        default=None,
+        description=(
+            "Gesetzt, wenn fuer die conid keine Marktdaten vorliegen "
+            "(no_market_data, timeout, ibkr_<code>); Werte und "
+            "availability sind dann null"
+        ),
+    )
 
 
 def resolve_fields(field_names: Iterable[str]) -> list[str]:

@@ -63,6 +63,22 @@ _AVAILABILITY_CODE = "6509"
 _DEFAULT_SNAPSHOT_TIMEOUT_S = 11.5  # IBKR cap=11s, kleiner Puffer
 _DEFAULT_MARKET_DATA_TYPE = 3  # delayed-frozen, robust gegen Sub-Konflikte
 _REPLAY_BUFFER_SIZE = 200
+# Snapshot-Parallelitaet: IBKR erlaubt standardmaessig 100 gleichzeitige
+# Marktdaten-Zeilen, die Live-Bots teilen sich die Sitzung. 10 parallele
+# Snapshots (je eine Zeile, nach Snapshot-Ende automatisch frei) lassen
+# reichlich Reserve.
+_SNAPSHOT_CONCURRENCY = 10
+# Gemischter Batch: sobald mindestens eine conid Daten hat und nur noch
+# Listings ohne SMART-Routing offen sind, warten diese hoechstens so lange.
+_DEFAULT_MIXED_BATCH_GRACE_S = 2.0
+# IBKR-Fehler, die fuer eine Marktdaten-Anfrage "keine Daten" bedeuten:
+# 354 = nicht abonniert, 10168 = nicht abonniert und delayed nicht
+# aktiviert, 10197 = kein Marktdaten-Zugriff (Konkurrenz-Session).
+# 10167 (nicht abonniert, "displaying delayed") ist bewusst NICHT dabei:
+# dort kommen trotzdem Daten.
+_NO_DATA_ERROR_CODES = frozenset({354, 10168, 10197})
+_REASON_NO_MARKET_DATA = "no_market_data"
+_REASON_TIMEOUT = "timeout"
 _CONSUMER_QUEUE_MAX = 1024
 
 # ib_async Ticker.volume ist - wie das cp-Field 7762 - das Tagesvolumen
@@ -102,11 +118,13 @@ class TWSQuotesService:
         *,
         market_data_type: int = _DEFAULT_MARKET_DATA_TYPE,
         snapshot_timeout_s: float = _DEFAULT_SNAPSHOT_TIMEOUT_S,
+        mixed_batch_grace_s: float = _DEFAULT_MIXED_BATCH_GRACE_S,
         replay_buffer_size: int = _REPLAY_BUFFER_SIZE,
     ) -> None:
         self._client = client
         self._market_data_type = market_data_type
         self._snapshot_timeout_s = snapshot_timeout_s
+        self._mixed_batch_grace_s = mixed_batch_grace_s
         self._replay_buffer_size = replay_buffer_size
         self._stream_lock = asyncio.Lock()
         self._stream_subs: dict[int, _ConidStreamSub] = {}
@@ -124,12 +142,19 @@ class TWSQuotesService:
     ) -> list[Quote]:
         """One-shot Snapshot fuer bis zu N conids.
 
-        Pro conid wird der Contract qualifiziert und per ``reqTickersAsync``
-        gesnapshottet - ib_async wartet intern, bis die Snapshot-Daten da
-        sind, und IBKR cancelt die Subscription danach automatisch. Bei
-        Timeout oder leerer Ticker-Liste wird der conid uebersprungen,
-        nicht 504 - analog zum cp-Verhalten, das auch leere Felder als
-        gueltige Antwort gibt.
+        Die conids laufen nebenlaeufig (begrenzt durch
+        ``_SNAPSHOT_CONCURRENCY``): je conid wird der Contract ohne
+        Boersenangabe qualifiziert und per ``reqTickersAsync``
+        gesnapshottet. IBKR cancelt die Subscription danach automatisch.
+
+        Eine conid ohne Marktdaten (Boerse ohne SMART-Routing, kein
+        Abo) liefert einen Quote mit ``unavailable_reason`` statt zu
+        fehlen und haelt den Batch nicht auf: ein IBKR-Marktdaten-Fehler
+        (354/10168/10197) bricht sie sofort ab, und sobald eine andere
+        conid Daten hat und nur noch Listings ohne SMART-Routing offen
+        sind, warten diese hoechstens ``mixed_batch_grace_s``. Nicht
+        qualifizierbare conids (unbekannt) fehlen weiterhin im Ergebnis.
+        Bei leerer Ticker-Liste wird die conid uebersprungen.
 
         ``fields`` (cp-Field-IDs) wird nicht zur Filterung verwendet -
         ib_async liefert immer die voll bestueckten Ticker-Attribute,
@@ -143,36 +168,131 @@ class TWSQuotesService:
         ib.reqMarketDataType(self._market_data_type)
         contract_class = await self._import_contract_class()
 
-        results: list[Quote] = []
-        for cid in conids:
-            qualified = await self._qualify(contract_class, int(cid))
-            if qualified is None:
-                continue
-            try:
-                # reqTickersAsync ist der async-Snapshot-Weg in ib_async
-                # (das frueher genutzte reqMktDataAsync existiert nicht).
-                # Es liefert eine list[Ticker] und wartet intern, bis die
-                # Snapshot-Daten da sind; IBKR cancelt die Subscription
-                # danach automatisch.
-                tickers = await asyncio.wait_for(
-                    ib.reqTickersAsync(qualified, regulatorySnapshot=False),
-                    timeout=self._snapshot_timeout_s,
-                )
-            except (TimeoutError, asyncio.TimeoutError):
-                logger.warning(
-                    "TWSQuotesService snapshot timeout fuer conid=%s", cid
-                )
-                continue
-            if not tickers:
-                logger.warning(
-                    "TWSQuotesService snapshot: keine Ticker-Daten fuer conid=%s",
-                    cid,
-                )
-                continue
-            results.append(
-                _quote_from_ticker(int(cid), tickers[0], self._market_data_type)
+        semaphore = asyncio.Semaphore(_SNAPSHOT_CONCURRENCY)
+        no_smart: set[int] = set()
+        tasks: dict[int, asyncio.Task[Quote | None]] = {
+            int(cid): asyncio.ensure_future(
+                self._snapshot_one(ib, contract_class, int(cid), semaphore, no_smart)
             )
+            for cid in dict.fromkeys(conids)
+        }
+        try:
+            pending = set(tasks.values())
+            has_data = False
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    quote = task.result()
+                    if quote is not None and quote.unavailable_reason is None:
+                        has_data = True
+                if (
+                    pending
+                    and has_data
+                    and all(cid in no_smart for cid, t in tasks.items() if t in pending)
+                ):
+                    _, pending = await asyncio.wait(
+                        pending, timeout=self._mixed_batch_grace_s
+                    )
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+                    break
+        finally:
+            for task in tasks.values():
+                if not task.done():
+                    task.cancel()
+        results: list[Quote] = []
+        for cid, task in tasks.items():
+            if task.cancelled():
+                results.append(_unavailable_quote(cid, _REASON_TIMEOUT))
+                continue
+            quote = task.result()
+            if quote is not None:
+                results.append(quote)
         return results
+
+    async def _snapshot_one(
+        self,
+        ib: Any,
+        contract_class: Any,
+        cid: int,
+        semaphore: asyncio.Semaphore,
+        no_smart: set[int],
+    ) -> Quote | None:
+        qualified = await self._qualify(contract_class, cid)
+        if qualified is None:
+            return None
+        routed_via_smart = _routes_via_smart(qualified)
+        if not routed_via_smart:
+            no_smart.add(cid)
+        async with semaphore:
+            abort = asyncio.Event()
+            abort_codes: list[int] = []
+
+            def _on_error(
+                _req_id: int, code: int, _msg: str, contract: Any = None
+            ) -> None:
+                if (
+                    code in _NO_DATA_ERROR_CODES
+                    and getattr(contract, "conId", None) == cid
+                ):
+                    abort_codes.append(code)
+                    abort.set()
+
+            ib.errorEvent += _on_error
+            # reqTickersAsync ist der async-Snapshot-Weg in ib_async
+            # (das frueher genutzte reqMktDataAsync existiert nicht).
+            request = asyncio.ensure_future(
+                ib.reqTickersAsync(qualified, regulatorySnapshot=False)
+            )
+            watcher = asyncio.ensure_future(abort.wait())
+            try:
+                await asyncio.wait(
+                    {request, watcher},
+                    timeout=self._snapshot_timeout_s,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            except asyncio.CancelledError:
+                self._drop_snapshot(ib, qualified, request)
+                raise
+            finally:
+                ib.errorEvent -= _on_error
+                watcher.cancel()
+            if not request.done():
+                self._drop_snapshot(ib, qualified, request)
+                reason = (
+                    f"ibkr_{abort_codes[0]}" if abort_codes else _REASON_TIMEOUT
+                )
+                logger.warning(
+                    "TWSQuotesService snapshot conid=%s ohne Marktdaten (%s)",
+                    cid,
+                    reason,
+                )
+                return _unavailable_quote(cid, reason)
+            tickers = request.result()
+        if not tickers:
+            logger.warning(
+                "TWSQuotesService snapshot: keine Ticker-Daten fuer conid=%s", cid
+            )
+            return None
+        quote = _quote_from_ticker(cid, tickers[0], self._market_data_type)
+        if not routed_via_smart and not _has_price(quote):
+            logger.warning(
+                "TWSQuotesService snapshot conid=%s ohne Marktdaten (Boerse %s)",
+                cid,
+                getattr(qualified, "exchange", None),
+            )
+            return _unavailable_quote(cid, _REASON_NO_MARKET_DATA)
+        return quote
+
+    def _drop_snapshot(self, ib: Any, contract: Any, request: Any) -> None:
+        request.cancel()
+        try:
+            ib.cancelMktData(contract)
+        except Exception as exc:  # noqa: BLE001 - best effort
+            logger.info("cancelMktData fuer Snapshot gescheitert: %s", exc)
 
     # ---- Stream (SubscriptionManager-kompatibel) ---------------------
 
@@ -214,8 +334,16 @@ class TWSQuotesService:
                     if qualified is None:
                         # Unbekannter conid: skip - Konsumenten sehen keine
                         # Frames fuer diesen conid, aber der Iterator laeuft
-                        # weiter fuer die uebrigen conids.
+                        # weiter fuer die uebrigen conids. (Boersen ohne
+                        # SMART-Routing sind seit BRO-0161 qualifizierbar.)
                         continue
+                    if not _routes_via_smart(qualified):
+                        logger.info(
+                            "TWSQuotesService stream conid=%s ohne SMART-Routing "
+                            "(Boerse %s)",
+                            cid_int,
+                            getattr(qualified, "exchange", None),
+                        )
                     ticker = ib.reqMktData(
                         qualified, "", snapshot=False, regulatorySnapshot=False
                     )
@@ -226,6 +354,16 @@ class TWSQuotesService:
                         replay_buffer_size=self._replay_buffer_size,
                     )
                     self._stream_subs[cid_int] = sub
+                    if not _routes_via_smart(qualified):
+                        # Ohne HK-Marktdaten u. ae. kommt unter Umstaenden
+                        # weder Tick noch Fehler: nach dem Snapshot-Timeout
+                        # ein "keine Marktdaten"-Frame statt Schweigen.
+                        sub.no_data_timer = asyncio.get_running_loop().call_later(
+                            self._snapshot_timeout_s,
+                            self._on_no_data,
+                            sub,
+                            _REASON_NO_MARKET_DATA,
+                        )
                 sub.attach_consumer(consumer_id, queue)
                 attached.append(sub)
 
@@ -263,6 +401,7 @@ class TWSQuotesService:
                     sub.conid,
                     exc,
                 )
+            sub.cancel_no_data_timer()
             for queue in list(sub.consumers.values()):
                 try:
                     queue.put_nowait(None)
@@ -271,6 +410,7 @@ class TWSQuotesService:
         if self._pending_listener_attached:
             try:
                 ib.pendingTickersEvent -= self._on_pending_tickers
+                ib.errorEvent -= self._on_ib_error
             except Exception:  # noqa: BLE001 - best effort
                 pass
             self._pending_listener_attached = False
@@ -286,7 +426,27 @@ class TWSQuotesService:
             return
         ib = self._client._ib  # noqa: SLF001
         ib.pendingTickersEvent += self._on_pending_tickers
+        ib.errorEvent += self._on_ib_error
         self._pending_listener_attached = True
+
+    def _on_ib_error(
+        self, _req_id: int, code: int, _msg: str, contract: Any = None
+    ) -> None:
+        # Marktdaten-Fehler einer abonnierten conid -> "keine Marktdaten"-
+        # Frame, damit der Konsument nicht still im Leeren steht.
+        if code not in _NO_DATA_ERROR_CODES:
+            return
+        cid = getattr(contract, "conId", None)
+        sub = self._stream_subs.get(int(cid)) if cid else None
+        if sub is not None:
+            self._on_no_data(sub, f"ibkr_{code}")
+
+    def _on_no_data(self, sub: "_ConidStreamSub", reason: str) -> None:
+        if sub.has_data or sub.unavailable_sent:
+            return
+        sub.unavailable_sent = True
+        sub.cancel_no_data_timer()
+        sub.push_event(_unavailable_quote(sub.conid, reason))
 
     def _on_pending_tickers(self, tickers: Any) -> None:
         # ib_async feuert mit set[Ticker]. Wir routen pro Ticker an die
@@ -304,6 +464,14 @@ class TWSQuotesService:
             if sub is None:
                 continue
             quote = _quote_from_ticker(int(cid), ticker, self._market_data_type)
+            if _has_price(quote):
+                sub.has_data = True
+                sub.cancel_no_data_timer()
+            elif not _routes_via_smart(contract):
+                # Tick ohne Kurs (z. B. nur Sentinel -1) von einer Boerse
+                # ohne SMART-Routing: keine Marktdaten, kein leerer Frame.
+                self._on_no_data(sub, _REASON_NO_MARKET_DATA)
+                continue
             sub.push_event(quote)
 
     async def _detach_consumer(
@@ -314,6 +482,7 @@ class TWSQuotesService:
                 sub.detach_consumer(consumer_id)
                 if sub.refcount == 0:
                     self._stream_subs.pop(sub.conid, None)
+                    sub.cancel_no_data_timer()
                     ib = self._client._ib  # noqa: SLF001
                     try:
                         ib.cancelMktData(sub.contract)
@@ -326,7 +495,11 @@ class TWSQuotesService:
 
     async def _qualify(self, contract_class: Any, cid: int) -> Any | None:
         ib = self._client._ib  # noqa: SLF001
-        contract = contract_class(conId=cid, exchange="SMART")
+        # conId allein identifiziert den Kontrakt. Ein fest gesetztes
+        # exchange="SMART" scheitert fuer Listings ohne SMART-Routing mit
+        # Error 200 (SEHK u. a., BRO-0160/BRO-0161); fuer SMART-faehige
+        # Listings ist der Kontrakt feldgleich.
+        contract = contract_class(conId=cid)
         try:
             qualified = await ib.qualifyContractsAsync(contract)
         except Exception as exc:  # noqa: BLE001
@@ -371,6 +544,14 @@ class _ConidStreamSub:
             maxlen=replay_buffer_size
         )
         self._next_event_id = 0
+        self.has_data = False
+        self.unavailable_sent = False
+        self.no_data_timer: asyncio.TimerHandle | None = None
+
+    def cancel_no_data_timer(self) -> None:
+        if self.no_data_timer is not None:
+            self.no_data_timer.cancel()
+            self.no_data_timer = None
 
     @property
     def refcount(self) -> int:
@@ -415,17 +596,36 @@ class _ConidStreamSub:
 # ---- Ticker -> Quote-Mapping -----------------------------------------
 
 
+def _routes_via_smart(contract: Any) -> bool:
+    """True, wenn der qualifizierte Kontrakt ueber SMART geroutet wird."""
+    exchange = getattr(contract, "exchange", None)
+    return not isinstance(exchange, str) or exchange in ("", "SMART")
+
+
+def _has_price(quote: Quote) -> bool:
+    return any(v is not None for v in (quote.last, quote.bid, quote.ask))
+
+
+def _unavailable_quote(conid: int, reason: str) -> Quote:
+    """Quote ohne Werte und ohne Availability: "keine Marktdaten".
+
+    Der Konsument erkennt ihn an ``unavailable_reason`` (statt dass die
+    conid still im Ergebnis fehlt).
+    """
+    return Quote(conid=conid, unavailable_reason=reason)
+
+
 def _quote_from_ticker(conid: int, ticker: Any, market_data_type: int) -> Quote:
     """Mappt einen ib_async-Ticker auf das cp-Quote-Schema.
 
     NaN-Werte (Pandas/Numpy-Konvention bei "kein Wert") werden auf
     None gemappt, damit das Pydantic-Schema dem cp-Pfad entspricht.
     """
-    last = _str_or_none(getattr(ticker, "last", None))
-    bid = _str_or_none(getattr(ticker, "bid", None))
-    ask = _str_or_none(getattr(ticker, "ask", None))
-    high = _str_or_none(getattr(ticker, "high", None))
-    low = _str_or_none(getattr(ticker, "low", None))
+    last = _price_or_none(getattr(ticker, "last", None))
+    bid = _price_or_none(getattr(ticker, "bid", None))
+    ask = _price_or_none(getattr(ticker, "ask", None))
+    high = _price_or_none(getattr(ticker, "high", None))
+    low = _price_or_none(getattr(ticker, "low", None))
     volume = _volume_from_ticker(getattr(ticker, "volume", None))
     change_pct = _change_pct_from_ticker(ticker)
     raw_avail, mapped_avail = _availability_for_market_data_type(market_data_type)
@@ -443,6 +643,13 @@ def _quote_from_ticker(conid: int, ticker: Any, market_data_type: int) -> Quote:
         availability_raw=raw_avail,
         updated_at=updated_at,
     )
+
+
+def _price_or_none(value: Any) -> str | None:
+    """Preisfeld; der IBKR-Sentinel -1 ("kein Kurs") wird zu ``None``."""
+    if isinstance(value, (int, float)) and value == -1:
+        return None
+    return _str_or_none(value)
 
 
 def _str_or_none(value: Any) -> str | None:
