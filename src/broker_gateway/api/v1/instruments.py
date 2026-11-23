@@ -17,7 +17,11 @@ from broker_gateway.cp.instruments import (
     InstrumentDetail,
     InstrumentsService,
 )
-from broker_gateway.cp.lifecycle import AuthLifecycle, require_session_ok
+from broker_gateway.cp.lifecycle import (
+    AuthLifecycle,
+    get_cp_lifecycle,
+    require_session_ok,
+)
 from broker_gateway.tws.historical import (
     BAR_SIZE_15MIN,
     BAR_SIZE_1MIN,
@@ -43,6 +47,26 @@ def get_instruments_service() -> InstrumentsService:
     raise RuntimeError(
         "get_instruments_service muss in der App per dependency_overrides gesetzt werden"
     )
+
+
+def require_instruments_session_ok(
+    lifecycle: Annotated[AuthLifecycle, Depends(get_cp_lifecycle)],
+) -> AuthLifecycle:
+    """Session-Guard für die Instruments-Endpunkte, Backend-aware (BRO-0158).
+
+    Default (cp-Backend): identisch zu :func:`require_session_ok` (503 +
+    ``Retry-After`` bei nicht verfügbarer Session). Im TWS-Backend ersetzt
+    ``main.py`` diese Dependency für den Detail-Endpunkt durch einen
+    Pass-Through: :class:`~broker_gateway.tws.instruments.TWSInstrumentsService`
+    entscheidet pro Request selbst über die Verfügbarkeit (frischer Cache
+    → Live-Fetch → Last-Known-Good → 503 ``tws_unavailable``). Bleibt der
+    heartbeat-basierte Guard im Lifecycle-Status ``TWS_DOWN`` aktiv, würde
+    er den Cache-Fallback mit 503 ``auth_lost`` vorwegnehmen, während
+    statische Contract-Details genau dann aus dem Cache geliefert werden
+    sollen (BRO-0158). Das Muster (kein Session-Guard, der Service mappt
+    die Fehler) teilen sich die Historical-/Fundamentals-Endpunkte.
+    """
+    return require_session_ok(lifecycle)
 
 
 def get_historical_service() -> TWSHistoricalService:
@@ -132,7 +156,10 @@ async def search_instruments(
 async def get_instrument(
     conid: int,
     _scope: Annotated[Token, Depends(require_scope(SCOPE_INSTRUMENTS_READ))],
-    _session: Annotated[AuthLifecycle, Depends(require_session_ok)],
+    # BRO-0158: Backend-aware Guard — im TWS-Backend Pass-Through
+    # (Verfügbarkeit entscheidet der Service selbst, inkl. Cache-Fallback),
+    # im cp-Backend unverändert wie require_session_ok.
+    _session: Annotated[AuthLifecycle, Depends(require_instruments_session_ok)],
     service: Annotated[InstrumentsService, Depends(get_instruments_service)],
 ) -> InstrumentDetail:
     return await service.info(conid)

@@ -715,3 +715,248 @@ class TestHoursTtl:
         # conid/symbol-Mapping hängt an der 7-Tage-TTL und bleibt gecacht.
         await service.search("AAPL")
         assert client._ib.reqMatchingSymbolsAsync.await_count == 1
+
+
+# --------------------------------------------------------------------------
+# TWS-Down-Fallback (BRO-0158)
+# --------------------------------------------------------------------------
+
+
+class TestTwsDownFallback:
+    """Regressionstests für das IBKR-Wartungsfenster (BRO-0158).
+
+    Nachstellung des TWS-Down-Pfads: ib_async``Client.send()`` wirft
+    ``ConnectionError("Not connected")``, wenn die Socket-Verbindung zu
+    TWS unten ist. Vor dem Fix schlug diese Exception uncaught als
+    HTTP 500 aus ``GET /v1/instruments/{conid}`` aus (Beleg im
+    Bot-Log 2026-07-24 21:45 UTC, conid 14079).
+    """
+
+    def _contract_class(self) -> type:
+        class _Contract:
+            def __init__(self, **kwargs: Any) -> None:
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        return _Contract
+
+    def _make_service(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        client: MagicMock,
+        hours_ttl: float = 0.05,
+        stale_ttl: float = 10.0,
+    ) -> TWSInstrumentsService:
+        service = TWSInstrumentsService(
+            client,
+            hours_ttl_seconds=hours_ttl,
+            stale_ttl_seconds=stale_ttl,
+            rate_limit_s=0.0,
+        )
+
+        async def _fake_import(_self: Any) -> Any:
+            return self._contract_class()
+
+        monkeypatch.setattr(
+            TWSInstrumentsService, "_import_contract_class", _fake_import
+        )
+        return service
+
+    @staticmethod
+    def _tws_down(client: MagicMock, message: str = "Not connected") -> None:
+        """Simuliert den abgerissenen TWS-Socket (ib_async-Verhalten).
+
+        Konfiguriert den bestehenden Mock um (statt eines Ersatzes),
+        damit ``await_count`` über den Zustandwechsel hinweg zählt.
+        """
+        client._ib.reqContractDetailsAsync.side_effect = ConnectionError(
+            message
+        )
+
+    async def test_down_after_expiry_serves_stale_cache(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verifikation 1: während TWS-Down liefert info() den zuvor
+        abgefragten Eintrag (200-Semantik) statt einer 500."""
+        contract = _make_contract(conid=14079, symbol="SAP")
+        details = [
+            _make_details(
+                contract=contract,
+                long_name="SAP SE",
+                trading_hours="20260724:0400-20260724:2000",
+                liquid_hours="20260724:0930-20260724:1600",
+                time_zone_id="Europe/Berlin",
+            )
+        ]
+        client = _make_client(contract_details=details)
+        service = self._make_service(monkeypatch, client)
+
+        # TWS erreichbar: erster, erfolgreicher Fetch füllt beide Caches.
+        first = await service.info(14079)
+        assert first.trading_hours == "20260724:0400-20260724:2000"
+        assert client._ib.reqContractDetailsAsync.await_count == 1
+
+        # TWS geht im Wartungsfenster unten.
+        self._tws_down(client)
+        # Frische Hours-TTL läuft ab (der 500-Fall: Eintrag abgelaufen,
+        # Live-Call schlägt fehl).
+        await asyncio.sleep(0.06)
+
+        result = await service.info(14079)
+        assert result.conid == 14079
+        assert result.symbol == "SAP"
+        assert result.trading_hours == "20260724:0400-20260724:2000"
+        assert result.liquid_hours == "20260724:0930-20260724:1600"
+        assert result.time_zone_id == "Europe/Berlin"
+        # Der Live-Versuch lief (und scheiterte), es gab keinen zweiten
+        # erfolgreichen Fetch.
+        assert client._ib.reqContractDetailsAsync.await_count == 2
+        # Der Stale-Eintrag füllt den frischen Cache NICHT auf: das wäre
+        # eine 1-h-alte Auslieferung als frisch markiert.
+        assert service.info_cache.get(14079) == (None, False)
+
+    async def test_down_with_fresh_cache_serves_cache_without_live_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Frischer Cache-Treffer während TWS-Down: kein Live-Versuch,
+        200 aus dem Cache."""
+        contract = _make_contract(conid=1, symbol="AAPL")
+        client = _make_client(
+            contract_details=[_make_details(contract=contract)]
+        )
+        service = self._make_service(monkeypatch, client)
+        await service.info(1)
+        assert client._ib.reqContractDetailsAsync.await_count == 1
+
+        self._tws_down(client)
+        result = await service.info(1)
+        assert result.conid == 1
+        # Kein zusätzlicher Live-Versuch.
+        assert client._ib.reqContractDetailsAsync.await_count == 1
+
+    async def test_down_without_any_cache_returns_503_with_diagnostic(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verifikation 2: kein Cache-Eintrag → 503 statt 500, mit
+        Diagnose und klarem Code."""
+        client = _make_client()
+        service = self._make_service(monkeypatch, client)
+        self._tws_down(client, "Not connected (Wartungsfenster)")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.info(14079)
+        exc = exc_info.value
+        assert exc.status_code == 503
+        detail = exc.detail
+        assert isinstance(detail, dict)
+        assert detail["code"] == "tws_unavailable"
+        assert "14079" in detail["message"]
+        assert detail["retry_after_s"] == 30
+        assert "Wartungsfenster" in detail["diagnostic"]
+        assert exc.headers == {"Retry-After": "30"}
+
+    async def test_stale_ttl_expiry_returns_503(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stale-Eintrag selbst abgelaufen (älter als die Stale-TTL)
+        → 503, kein überalter Wert."""
+        contract = _make_contract(conid=2, symbol="TSLA")
+        client = _make_client(
+            contract_details=[_make_details(contract=contract)]
+        )
+        service = self._make_service(
+            monkeypatch, client, hours_ttl=0.05, stale_ttl=0.05
+        )
+        await service.info(2)
+        self._tws_down(client)
+        await asyncio.sleep(0.12)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.info(2)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["code"] == "tws_unavailable"
+
+    async def test_recovered_tws_refetches_and_refreshes_stale(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verifikation 3 (Außerhalb des Fensters unverändert): nach
+        dem Fenster holt der abgelaufene Eintrag wieder frisch, und der
+        Stale-Store wird auf den neuen Wert aktualisiert."""
+        contract = _make_contract(conid=3, symbol="MSFT")
+        old_details = [
+            _make_details(
+                contract=contract, trading_hours="ALT"
+            )
+        ]
+        client = _make_client(contract_details=old_details)
+        service = self._make_service(monkeypatch, client)
+        await service.info(3)
+
+        # Fenster: Stale-Auslieferung.
+        self._tws_down(client)
+        await asyncio.sleep(0.06)
+        stale_result = await service.info(3)
+        assert stale_result.trading_hours == "ALT"
+
+        # TWS ist zurück, IBKR liefert ein neues Hours-Fenster.
+        new_details = [
+            _make_details(contract=contract, trading_hours="NEU")
+        ]
+        client._ib.reqContractDetailsAsync.side_effect = None
+        client._ib.reqContractDetailsAsync.return_value = list(new_details)
+        result = await service.info(3)
+        assert result.trading_hours == "NEU"
+        # Stale-Store jetzt auf dem neuen Wert.
+        stale_now, hit = service.info_stale_cache.get(3)
+        assert hit and stale_now.trading_hours == "NEU"
+
+    async def test_timeout_error_treated_as_down(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Auch ein Timeout des Live-Fetchs gilt als TWS-Nicht-
+        verfügbarkeit (Stale-Fallback statt 500)."""
+        contract = _make_contract(conid=4, symbol="NVDA")
+        client = _make_client(
+            contract_details=[_make_details(contract=contract)]
+        )
+        service = self._make_service(monkeypatch, client)
+        await service.info(4)
+
+        client._ib.reqContractDetailsAsync.side_effect = TimeoutError(
+            "request timed out"
+        )
+        await asyncio.sleep(0.06)
+        result = await service.info(4)
+        assert result.conid == 4
+
+    async def test_other_exceptions_still_propagate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nur Verbindungsfehler/Timeouts gelten als TWS-Down; ein
+        Programmierfehler (RuntimeError) bleibt uncaught und wird nicht
+        als Fallback verschluckt."""
+        client = _make_client()
+        service = self._make_service(monkeypatch, client)
+        client._ib.reqContractDetailsAsync.side_effect = RuntimeError(
+            "kaputt"
+        )
+        with pytest.raises(RuntimeError, match="kaputt"):
+            await service.info(5)
+
+    def test_stale_cache_properties(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _make_client()
+        service = TWSInstrumentsService(client, rate_limit_s=0.0)
+        assert service.info_stale_cache is service._info_stale_cache
+        seven_days = 7 * 24 * 60 * 60
+        assert service.stale_ttl_seconds == seven_days
+
+    def test_explicit_stale_ttl_argument(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _make_client()
+        service = TWSInstrumentsService(
+            client, stale_ttl_seconds=30.0, rate_limit_s=0.0
+        )
+        assert service.stale_ttl_seconds == 30.0
