@@ -369,6 +369,76 @@ class TestNoSmartRouting:
         assert result[0].unavailable_reason == "ibkr_354"
         assert client._ib.errorEvent.listener_count == 0
 
+    @staticmethod
+    def _wire_errors(client: Any) -> None:
+        client._ib.errorEvent.emit = lambda *a: [
+            f(*a) for f in list(client._ib.errorEvent._listeners)
+        ]
+
+    async def test_error_finishing_request_gives_ibkr_reason_for_smart(self) -> None:
+        aapl = _make_contract(conid=265598)
+
+        async def _snapshot(contract: Any, **_kw: Any) -> Any:
+            # reqTickersAsync endet zusammen mit dem Fehler, Ticker leer.
+            client._ib.errorEvent.emit(5, 10197, "competing session", contract)
+            return [_make_ticker(conid=contract.conId, last=None)]
+
+        client = _make_client(qualify_returns=[[aapl]], snapshot_side_effect=_snapshot)
+        self._wire_errors(client)
+        result = await TWSQuotesService(client).snapshot_with_prime([265598], ["31"])
+        assert len(result) == 1
+        assert result[0].unavailable_reason == "ibkr_10197"
+        assert result[0].availability is None
+
+    async def test_error_finishing_request_gives_ibkr_reason_for_sehk(self) -> None:
+        sehk = _make_contract(conid=7, exchange="SEHK")
+
+        async def _snapshot(contract: Any, **_kw: Any) -> Any:
+            client._ib.errorEvent.emit(5, 10197, "competing session", contract)
+            return [_make_ticker(conid=7, last=None, bid=-1.0, ask=-1.0)]
+
+        client = _make_client(qualify_returns=[[sehk]], snapshot_side_effect=_snapshot)
+        self._wire_errors(client)
+        result = await TWSQuotesService(client).snapshot_with_prime([7], ["31"])
+        assert result[0].unavailable_reason == "ibkr_10197"
+
+    async def test_error_with_price_keeps_normal_quote(self) -> None:
+        aapl = _make_contract(conid=1)
+
+        async def _snapshot(contract: Any, **_kw: Any) -> Any:
+            client._ib.errorEvent.emit(5, 10168, "delayed", contract)
+            return [_make_ticker(conid=1, last=5.0)]
+
+        client = _make_client(qualify_returns=[[aapl]], snapshot_side_effect=_snapshot)
+        self._wire_errors(client)
+        result = await TWSQuotesService(client).snapshot_with_prime([1], ["31"])
+        assert result[0].unavailable_reason is None
+        assert result[0].last == "5.0"
+
+    async def test_priceless_quote_does_not_trigger_grace(self) -> None:
+        aapl = _make_contract(conid=1)
+        sehk = _make_contract(conid=7, exchange="SEHK")
+
+        async def _qualify(contract: Any) -> Any:
+            return [aapl if contract.conId == 1 else sehk]
+
+        async def _snapshot(contract: Any, **_kw: Any) -> Any:
+            if contract.conId == 1:
+                client._ib.errorEvent.emit(5, 10197, "competing session", contract)
+                return [_make_ticker(conid=1, last=None)]
+            await asyncio.sleep(0.3)
+            return [_make_ticker(conid=7, last=400.0)]
+
+        client = _make_client(
+            qualify_side_effect=_qualify, snapshot_side_effect=_snapshot
+        )
+        self._wire_errors(client)
+        service = TWSQuotesService(client, mixed_batch_grace_s=0.05)
+        result = await service.snapshot_with_prime([1, 7], ["31"])
+        by_conid = {q.conid: q for q in result}
+        assert by_conid[1].unavailable_reason == "ibkr_10197"
+        assert by_conid[7].last == "400.0"
+
     async def test_stream_subscribes_sehk_and_reports_no_data(self) -> None:
         sehk = _make_contract(conid=7, exchange="SEHK")
         ticker = _make_ticker(conid=7, last=None)

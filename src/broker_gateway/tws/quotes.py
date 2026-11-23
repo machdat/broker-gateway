@@ -185,7 +185,11 @@ class TWSQuotesService:
                 )
                 for task in done:
                     quote = task.result()
-                    if quote is not None and quote.unavailable_reason is None:
+                    if (
+                        quote is not None
+                        and quote.unavailable_reason is None
+                        and _has_price(quote)
+                    ):
                         has_data = True
                 if (
                     pending
@@ -278,6 +282,16 @@ class TWSQuotesService:
             )
             return None
         quote = _quote_from_ticker(cid, tickers[0], self._market_data_type)
+        if abort_codes and not _has_price(quote):
+            # reqTickersAsync kann mit dem IBKR-Fehler selbst enden; die
+            # Anfrage ist dann schon fertig, der Ticker aber leer.
+            reason = f"ibkr_{abort_codes[0]}"
+            logger.warning(
+                "TWSQuotesService snapshot conid=%s ohne Marktdaten (%s)",
+                cid,
+                reason,
+            )
+            return _unavailable_quote(cid, reason)
         if not routed_via_smart and not _has_price(quote):
             logger.warning(
                 "TWSQuotesService snapshot conid=%s ohne Marktdaten (Boerse %s)",

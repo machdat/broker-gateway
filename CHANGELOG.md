@@ -25,6 +25,12 @@ kein Fehler. Gleiche Ursache wie BRO-0160, `quotes._qualify` pinnte
   `timeout`, `ibkr_<code>`), Werte und `availability` `null`. Das gilt auch
   für einen SMART-Snapshot, der in den Timeout läuft (vorher fehlte die
   conid im Ergebnis).
+  Meldet IBKR für die conid einen Marktdaten-Fehler (354/10168/10197) und der
+  Ticker trägt keinen Kurs, ist der Grund `ibkr_<code>` — auch wenn
+  `reqTickersAsync` mit dem Fehler selbst endet, und auch für SMART-conids
+  (vorher leerer Quote ohne Grund). Trägt der Ticker trotz Fehler einen Kurs,
+  bleibt es beim normalen Quote. Ein Quote ohne Kurs löst die Gnadenfrist
+  nicht aus.
 - **Sentinel.** `-1` in `last`/`bid`/`ask`/`high`/`low` wird `null`.
 - **Stream.** Börsen ohne SMART-Routing werden abonniert; ohne Marktdaten
   kommt ein `unavailable_reason`-Frame (sofort bei IBKR-Fehler, sonst nach dem
