@@ -279,7 +279,10 @@ class TWSHistoricalService:
     async def _resolve_contract(self, conid: int) -> Any:
         """Aufloesung conid → qualifizierter Contract via ib_async."""
         contract_class = await self._import_contract_class()
-        probe = contract_class(conId=conid, exchange="SMART")
+        # A conId alone identifies the contract. Pinning exchange="SMART" makes
+        # IBKR answer Error 200 for listings without SMART routing (SEHK,
+        # BRO-0160). Without it, US/EU contracts resolve field-identical.
+        probe = contract_class(conId=conid)
         ib = self._client._ib  # noqa: SLF001 - Low-Level-Bruecke
         try:
             results = await ib.qualifyContractsAsync(probe)

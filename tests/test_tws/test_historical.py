@@ -726,3 +726,56 @@ class TestFundamentals:
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail["code"] == "fundamentals_unavailable"
         assert client._fund_calls == ["ReportSnapshot"]
+
+
+# --------------------------------------------------------------------------
+# conId probe shape (BRO-0160)
+# --------------------------------------------------------------------------
+
+
+def _sehk_like_qualify(qualified: SimpleNamespace) -> AsyncMock:
+    """Mimic IBKR: a conId pinned to SMART has no definition for SEHK (Error 200)."""
+
+    async def _qualify(probe: Any) -> list[Any]:
+        if probe.exchange == "SMART":
+            return [None]
+        return [qualified]
+
+    return AsyncMock(side_effect=_qualify)
+
+
+class TestConidProbeWithoutExchange:
+    async def test_bars_resolve_sehk_conid_without_smart_pin(self) -> None:
+        tencent = SimpleNamespace(
+            conId=152791428, symbol="700", secType="STK", exchange="SEHK",
+            currency="HKD",
+        )
+        client = _make_client(bars=[_make_bar(day=date(2026, 11, 20))])
+        client._ib.qualifyContractsAsync = _sehk_like_qualify(tencent)
+        service = TWSHistoricalService(client, historical_pacing_s=0.0)
+
+        result = await service.historical_bars(
+            152791428, bar_size=BAR_SIZE_DAILY, duration="4 M"
+        )
+
+        assert len(result.records) == 1
+        probe = client._ib.qualifyContractsAsync.await_args.args[0]
+        assert probe.conId == 152791428
+        assert probe.exchange == ""
+
+    async def test_fundamentals_share_the_same_probe(self) -> None:
+        tencent = SimpleNamespace(
+            conId=152791428, symbol="700", secType="STK", exchange="SEHK",
+            currency="HKD",
+        )
+        client = _make_fund_client(qualify_result=[tencent])
+        client._ib.qualifyContractsAsync = _sehk_like_qualify(tencent)
+        service = TWSHistoricalService(client, historical_pacing_s=0.0)
+
+        # Resolution must succeed (no 404); the fundamentals fake answers
+        # whatever it answers - only the probe shape is under test here.
+        resolved = await service._resolve_contract(152791428)  # noqa: SLF001
+
+        assert resolved is tencent
+        probe = client._ib.qualifyContractsAsync.await_args.args[0]
+        assert probe.exchange == ""

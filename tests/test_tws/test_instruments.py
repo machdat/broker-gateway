@@ -515,6 +515,87 @@ class TestInfo:
 # --------------------------------------------------------------------------
 
 
+class TestInfoSehkAndIsin:
+    """BRO-0160: SEHK conids resolve; ISIN comes from secIdList."""
+
+    @staticmethod
+    def _sehk_details(sec_id_list: Any) -> SimpleNamespace:
+        details = _make_details(
+            contract=_make_contract(
+                conid=152791428,
+                symbol="700",
+                primary_exchange="SEHK",
+                exchange="SEHK",
+                currency="HKD",
+            ),
+            long_name="TENCENT HOLDINGS LTD",
+        )
+        details.secIdList = sec_id_list
+        return details
+
+    @staticmethod
+    def _service(
+        monkeypatch: pytest.MonkeyPatch, details: SimpleNamespace
+    ) -> tuple[TWSInstrumentsService, MagicMock]:
+        class _Contract:
+            def __init__(self, **kwargs: Any) -> None:
+                self.exchange = ""  # ib_async default
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        client = _make_client()
+
+        async def _req(contract: Any) -> list[Any]:
+            # Mimic IBKR: a conId pinned to SMART has no SEHK definition.
+            return [] if contract.exchange == "SMART" else [details]
+
+        client._ib.reqContractDetailsAsync = AsyncMock(side_effect=_req)
+
+        async def _fake_import(_self: Any) -> Any:
+            return _Contract
+
+        monkeypatch.setattr(
+            TWSInstrumentsService, "_import_contract_class", _fake_import
+        )
+        return TWSInstrumentsService(client, rate_limit_s=0.0), client
+
+    async def test_sehk_conid_resolves_with_name_currency_exchange_isin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        details = self._sehk_details(
+            [SimpleNamespace(tag="ISIN", value="KYG875721634")]
+        )
+        service, client = self._service(monkeypatch, details)
+
+        result = await service.info(152791428)
+
+        assert result.company_name == "TENCENT HOLDINGS LTD"
+        assert result.currency == "HKD"
+        assert result.exchange_id == "SEHK"
+        assert result.isin == "KYG875721634"
+        probe = client._ib.reqContractDetailsAsync.await_args.args[0]
+        assert probe.conId == 152791428
+        assert probe.exchange == ""
+
+    @pytest.mark.parametrize(
+        "sec_id_list",
+        [
+            None,
+            [],
+            [SimpleNamespace(tag="CUSIP", value="037833100")],
+            [SimpleNamespace(tag="ISIN", value="")],
+        ],
+    )
+    async def test_isin_is_none_when_not_delivered(
+        self, monkeypatch: pytest.MonkeyPatch, sec_id_list: Any
+    ) -> None:
+        service, _ = self._service(monkeypatch, self._sehk_details(sec_id_list))
+
+        result = await service.info(152791428)
+
+        assert result.isin is None
+
+
 class TestCacheProperties:
     def test_search_cache_exposed(self) -> None:
         client = _make_client()
