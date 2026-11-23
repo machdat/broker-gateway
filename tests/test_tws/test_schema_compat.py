@@ -183,6 +183,7 @@ class TestFieldSetSnapshot:
             "availability",
             "availability_raw",
             "updated_at",
+            "unavailable_reason",
         }
 
     def test_trade_fields(self) -> None:
