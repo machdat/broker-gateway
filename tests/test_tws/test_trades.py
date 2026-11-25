@@ -162,6 +162,27 @@ class TestListTrades:
             )
         assert exc_info.value.status_code == 400
 
+    async def test_hanging_req_executions_yields_504(self, monkeypatch) -> None:
+        import asyncio
+
+        from fastapi import HTTPException
+
+        from broker_gateway.tws import trades as trades_mod
+
+        async def _hang(_f):
+            await asyncio.sleep(3600)
+
+        monkeypatch.setattr(trades_mod, "_EXECUTIONS_TIMEOUT_S", 0.05)
+        client = _make_client(req_executions_side_effect=_hang)
+        service = TWSTradesService(client)
+        with pytest.raises(HTTPException) as ei:
+            await service.list_trades(
+                period_from=date(2026, 5, 9), period_to=date(2026, 5, 10)
+            )
+        assert ei.value.status_code == 504
+        assert ei.value.detail["code"] == "tws_executions_timeout"
+        assert ei.value.headers == {"Retry-After": "5"}
+
     async def test_falls_back_to_fills_when_req_executions_fails(self) -> None:
         fallback_fills = [_make_fill()]
         client = _make_client(
