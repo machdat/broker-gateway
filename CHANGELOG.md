@@ -4,6 +4,18 @@ Alle bemerkenswerten Änderungen am Service. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 SemVer in `pyproject.toml`.
 
+## [2.22.1] - 2026-11-25 (Karte BRO-0159: /v1/trades ohne offenen Hang)
+
+`GET /v1/trades` konnte unbegrenzt hängen, wenn die TWS die Antwort auf
+`reqExecutions` (`executionsEnd`) nicht lieferte. Ursache: `reqExecutionsAsync`
+lief ohne Timeout.
+
+- **Backstop.** `reqExecutionsAsync` läuft unter einem 12-s-Timeout. Bei
+  Überschreitung antwortet der Endpunkt mit `504 tws_executions_timeout` und
+  `Retry-After: 5`. Bewusst kein Fallback auf den Session-Cache `fills()`,
+  weil der für den Fill-Backfill unvollständig wäre. Die Form der `items`
+  ist unverändert; `/v1/portfolio/positions` ist nicht berührt.
+
 ## [2.22.0] - 2026-11-23 (Karte BRO-0161: Quotes für Börsen ohne SMART-Routing)
 
 `GET /v1/quotes/snapshot` und `/v1/quotes/stream` übersprangen conids von

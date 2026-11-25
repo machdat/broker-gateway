@@ -22,6 +22,7 @@ AP ``2a203c58-...`` Phase 4.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
@@ -41,6 +42,11 @@ __all__ = ["TWSTradesService", "Trade", "TradesAggregate"]
 
 
 _FALLBACK_CURRENCY = "USD"
+
+# Backstop fuer reqExecutionsAsync: ohne executionsEnd von der TWS wartet
+# ib_async unbegrenzt (BRO-0159). Unter dem typischen Client-Timeout (20 s).
+_EXECUTIONS_TIMEOUT_S = 12.0
+_RETRY_AFTER_S = 5
 
 
 class TWSTradesService:
@@ -127,7 +133,31 @@ class TWSTradesService:
         results: list[Any] = []
         if filter_obj is not None and hasattr(ib, "reqExecutionsAsync"):
             try:
-                results = list(await ib.reqExecutionsAsync(filter_obj))
+                results = list(
+                    await asyncio.wait_for(
+                        ib.reqExecutionsAsync(filter_obj),
+                        timeout=_EXECUTIONS_TIMEOUT_S,
+                    )
+                )
+            except asyncio.TimeoutError as exc:
+                # Kein stiller Fallback auf den Session-Cache: der waere fuer
+                # den Fill-Backfill unvollstaendig. Definierter Fehler statt Hang.
+                from fastapi import HTTPException, status as http_status
+
+                logger.warning(
+                    "reqExecutionsAsync Timeout nach %.0fs", _EXECUTIONS_TIMEOUT_S
+                )
+                raise HTTPException(
+                    status_code=http_status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail={
+                        "code": "tws_executions_timeout",
+                        "message": (
+                            "reqExecutions lieferte keine Antwort binnen "
+                            f"{_EXECUTIONS_TIMEOUT_S:g}s"
+                        ),
+                    },
+                    headers={"Retry-After": str(_RETRY_AFTER_S)},
+                ) from exc
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "reqExecutionsAsync fehlgeschlagen, fallback fills(): %s", exc
